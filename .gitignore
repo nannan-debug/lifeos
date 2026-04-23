@@ -1,0 +1,59 @@
+# ───── Secrets (绝对不能进仓库) ─────
+Sources/Services/Secrets.swift
+
+# ───── Xcode / iOS ─────
+# Xcode user-specific
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+*.xcscmblueprint
+*.xccheckout
+
+# Build artifacts
+build/
+DerivedData/
+.build_dd/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Claude / local tooling
+.claude/
+
+# CocoaPods / Carthage / SPM
+Pods/
+Podfile.lock
+Carthage/Build/
+.build/
+Package.resolved
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# ───── macOS ─────
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# ───── Editors ─────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ───── Logs & tmp ─────
+*.log
+tmp/
+*.tmp
+
+# ───── Project-specific ─────
+# xcodegen 生成的 xcodeproj 可以选择忽略或保留
+# 这里保留在仓库（协作者直接开即可），但忽略用户级别的设置
+PersonalSystem.xcodeproj/xcuserdata/
+PersonalSystem.xcodeproj/project.xcworkspace/xcuserdata/
