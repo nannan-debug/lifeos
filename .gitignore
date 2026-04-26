@@ -12,6 +12,7 @@ xcuserdata/
 # Build artifacts
 build/
 DerivedData/
+.deriveddata/
 .build_dd/
 *.ipa
 *.dSYM.zip

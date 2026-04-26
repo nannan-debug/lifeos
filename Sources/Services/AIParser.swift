@@ -1,6 +1,6 @@
 import Foundation
 
-/// AI-parsed record coming back from Cloudflare Worker proxy (Kimi)
+/// AI-parsed record coming back from Cloudflare Worker proxy (DeepSeek)
 /// 对应 Worker system prompt 约定的 schema
 struct AIParsedRecord: Decodable {
     let bucket: String           // "time" | "note"
@@ -34,7 +34,7 @@ struct AIParseResponse: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        // Kimi 偶尔不返回 records 字段，容错处理成空数组走本地兜底
+        // DeepSeek 偶尔不返回 records 字段，容错处理成空数组走本地兜底
         self.records = (try? c.decode([AIParsedRecord].self, forKey: .records)) ?? []
         self.needsClarification = try? c.decodeIfPresent(String.self, forKey: .needsClarification)
     }
@@ -69,11 +69,11 @@ enum AIParser {
     /// 真实值保存在 Sources/Services/Secrets.swift（被 .gitignore 忽略）。
     static var clientSecret: String { Secrets.aiClientSecret }
 
-    /// 请求超时（秒）。Kimi 偶尔会 10-20s 才返回（长段落 / 高峰期），留足余量。
+    /// 请求超时（秒）。DeepSeek 偶尔会 10-20s 才返回（长段落 / 高峰期），留足余量。
     static let timeout: TimeInterval = 30
 
     /// 轻量预热：向 Worker 发一个短请求让它从休眠中醒来，不关心返回结果。
-    /// 目的是把 Cloudflare Worker + Kimi 的冷启动开销提前摊销，避免用户真发送时才等。
+    /// 目的是把 Cloudflare Worker + DeepSeek 的冷启动开销提前摊销，避免用户真发送时才等。
     static func warmUp() {
         var req = URLRequest(url: workerURL)
         req.httpMethod = "GET"

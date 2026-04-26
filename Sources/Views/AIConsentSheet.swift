@@ -37,7 +37,7 @@ struct AIConsentSheet: View {
                                body: "不会上传你的历史记录、设备信息、账号信息；全程 HTTPS 加密")
                         bullet(icon: "bolt.fill",
                                title: "不想发送",
-                               body: "可改用 ⚡ 按钮走纯本地解析，或任何时候从「关于你」页面停止使用 AI 功能")
+                               body: "可改用 ⚡ 按钮走纯本地解析；不使用 ↑ AI 按钮时，你仍可继续手动记录，不会发送任何内容")
                     }
                     .padding(14)
                     .background(

@@ -11,7 +11,7 @@
 
 - 技术栈：SwiftUI · Swift 5.9 · iOS 16+ · XcodeGen
 - 数据存储：本地 `UserDefaults`（按 `userId` 分库）
-- AI 后端：Cloudflare Worker (`ai.dogdada.com`) + Kimi LLM
+- AI 后端：Cloudflare Worker (`ai.dogdada.com`) + DeepSeek LLM
 - 仓库：`github.com/nannan-debug/lifeos`
 
 ---

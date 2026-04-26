@@ -23,7 +23,7 @@
 - **前端**：SwiftUI · Swift 5.9 · iOS 16+
 - **项目生成**：[XcodeGen](https://github.com/yonaskolb/XcodeGen)（`project.yml`）
 - **数据存储**：本地 UserDefaults（按 userId 分库）
-- **AI 后端**：Cloudflare Worker (`ai.dogdada.com`) + Kimi 作为 LLM
+- **AI 后端**：Cloudflare Worker (`ai.dogdada.com`) + DeepSeek 作为 LLM
 
 ---
 

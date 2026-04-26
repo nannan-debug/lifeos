@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LifeOS Support</title>
+  <meta name="description" content="LifeOS 帮助与支持页面。">
+  <style>
+    :root {
+      --bg: #f6efe2;
+      --card: rgba(255, 255, 255, 0.84);
+      --text: #24342d;
+      --muted: #5c6b64;
+      --accent: #2f5c45;
+      --line: rgba(47, 92, 69, 0.16);
+      --shadow: 0 18px 40px rgba(36, 52, 45, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.55), transparent 24rem),
+        linear-gradient(180deg, #fbf6ee 0%, var(--bg) 100%);
+      line-height: 1.7;
+    }
+
+    .wrap {
+      width: min(880px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0 80px;
+    }
+
+    .hero,
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .hero {
+      padding: 36px 32px;
+      margin-bottom: 18px;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-bottom: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(47, 92, 69, 0.08);
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    h1, h2 {
+      margin: 0 0 12px;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: clamp(32px, 4vw, 48px);
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .lead {
+      max-width: 44rem;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .card {
+      padding: 28px 24px;
+    }
+
+    .card + .card {
+      margin-top: 18px;
+    }
+
+    .list {
+      margin: 12px 0 0;
+      padding-left: 20px;
+    }
+
+    .list li + li {
+      margin-top: 10px;
+    }
+
+    .faq {
+      display: grid;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .faq-item {
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid rgba(47, 92, 69, 0.12);
+    }
+
+    .faq-item strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    .footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="badge">LifeOS Support</div>
+      <h1>帮助与支持</h1>
+      <p class="lead">LifeOS 是一个为 ADHD 人群设计的人生观察系统。如果你在使用中遇到问题、发现 bug，或想给我提功能建议，欢迎直接发邮件联系。</p>
+    </section>
+
+    <section class="card">
+      <h2>联系方式</h2>
+      <p>邮箱：<a href="mailto:2944197725@qq.com">2944197725@qq.com</a></p>
+      <p>回复时间：通常 24-48 小时内。单人维护项目，如果回复稍慢，也谢谢你给我一点时间。</p>
+    </section>
+
+    <section class="card">
+      <h2>常见问题</h2>
+      <div class="faq">
+        <div class="faq-item">
+          <strong>Q：我的数据存在哪？</strong>
+          <p>A：数据默认保存在你的 iPhone 本地。卸载 App 后，本地数据会一起删除。只有你主动点击 AI 按钮时，当次输入文本才会发送到 AI 解析服务。</p>
+        </div>
+        <div class="faq-item">
+          <strong>Q：AI 是必须用的吗？</strong>
+          <p>A：不是。你可以完全手动使用 Today、Time、Inbox 和设置功能。AI 的作用只是帮你减少输入和分类时的摩擦。</p>
+        </div>
+        <div class="faq-item">
+          <strong>Q：能导出我的数据吗？</strong>
+          <p>A：可以。进入「设置 / 关于你」后，可以导出 CSV 文件，也支持导入 CSV。</p>
+        </div>
+        <div class="faq-item">
+          <strong>Q：这是医疗 app 吗？</strong>
+          <p>A：不是。LifeOS 是个人记录与观察工具，不提供诊断、治疗或医疗建议。</p>
+        </div>
+        <div class="faq-item">
+          <strong>Q：会有内购或广告吗？</strong>
+          <p>A：1.0 版本免费、无广告、无内购。未来如果产品形态变化，也会尽量保持核心记录能力简单和可负担。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>相关链接</h2>
+      <ul class="list">
+        <li><a href="./privacy.html">隐私政策</a></li>
+        <li><a href="mailto:2944197725@qq.com?subject=LifeOS%20Feedback">提交反馈</a></li>
+      </ul>
+    </section>
+
+    <p class="footer">LifeOS · Support</p>
+  </main>
+</body>
+</html>
