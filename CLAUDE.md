@@ -94,7 +94,18 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 - Build Number：单调递增，永不回退（`CFBundleVersion`）
 - 发版：改 `Sources/App/Info.plist` → 打 annotated tag `v1.x.x` → push tag
 
-**当前状态：** `1.0.0 (build 1)` — 开发完成，内部体验中，未上架
+**当前状态：** `1.0.0 (build 1)` — 已上传 TestFlight，提交审核中
+
+---
+
+## 迭代 & 发版流程
+
+详见 `RELEASE_FLOW.md`。**AI 协作者必读**——里面写了：
+
+- 用户说「做新功能 / 改 bug」→ 走 §1 日常迭代
+- 用户说「发新版 / 提审」→ 走 §2 发版流程
+- 「本地跑不起来 / 签名报错」→ 查 §3 常见坑
+- §4 列了 AI 的硬规则（改完代码必须提醒 commit、不替用户决定版本号、不替用户跑 archive/upload）
 
 ---
 
