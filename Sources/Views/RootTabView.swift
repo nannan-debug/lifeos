@@ -5,27 +5,37 @@ struct RootTabView: View {
     @StateObject private var store = AppStore()
     @AppStorage("auth.userId") private var userId = ""
 
+    private enum Tab: Hashable { case today, time, capture, settings }
+    @State private var selectedTab: Tab = .today
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            TabView {
+            TabView(selection: $selectedTab) {
                 TodayView().environmentObject(store)
                     .tabItem { Label("今日", systemImage: "sun.max") }
+                    .tag(Tab.today)
 
                 TimeView().environmentObject(store)
                     .tabItem { Label("时间", systemImage: "clock") }
+                    .tag(Tab.time)
 
                 QuickCaptureView().environmentObject(store)
                     .tabItem { Label("随记", systemImage: "square.and.pencil") }
+                    .tag(Tab.capture)
 
                 SettingsView().environmentObject(store)
                     .tabItem { Label("设置", systemImage: "gearshape") }
+                    .tag(Tab.settings)
             }
             .tint(Color(red: 0.24, green: 0.65, blue: 0.36))
 
-            // 全局 AI 输入框 —— 悬浮在 TabView 之上，所有 Tab 都能召唤
-            GlobalAIInputBar()
-                .environmentObject(store)
-                .allowsHitTesting(true)
+            // 全局 AI 输入框 —— 在「今日」打卡/待办页隐藏，避免遮挡内容；
+            // 这两个页本身已有自己的快速输入入口。
+            if selectedTab != .today {
+                GlobalAIInputBar()
+                    .environmentObject(store)
+                    .allowsHitTesting(true)
+            }
         }
         .onAppear(perform: ensureDeviceIdentity)
     }
