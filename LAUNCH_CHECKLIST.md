@@ -7,20 +7,20 @@
 
 ## 0. 当前结论
 
-**LifeOS 已经在 App Store 上线。** 🎉
+**LifeOS 已经在 App Store 上线，1.1.0 已提审等审核。** 🎉
 
-- ✅ App Store 首发：`1.0.0 (build 1)`（2026-04）
-- ✅ 应用商店可以搜到 `LifeOS` 并下载
+- ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
+- ⏳ `1.1.0 (build 2)` — 2026-04-29 Submit for Review，等待 Apple 审核（24–48h）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：**Ready for Distribution**
+- ✅ App Store Connect 状态：1.0.0 Ready for Distribution / 1.1.0 Waiting for Review
 
-当前阶段重心从"首次上架"切换到"**持续迭代 + 版本更新**"：
+当前阶段重心是"**持续迭代 + 版本更新**"：
 
 1. 收集真实用户反馈（设置页有反馈邮箱入口）
 2. 做小步迭代（feat → MINOR bump，bugfix → PATCH bump）
-3. 每个版本走 Archive → TestFlight → ASC 审核流程
+3. 每个版本走 §4 SOP：改 project.yml → Archive → ASC 审核 → 过审打 tag
 
-下一个版本：`1.1.0 (build 2)` —— 打卡页 inline 编辑重构（[PR #2](https://github.com/nannan-debug/lifeos/pull/2)）。
+**审核期间想做新功能怎么办？** 见 §4.8。
 
 ---
 
@@ -114,59 +114,132 @@
 
 ---
 
-## 4. 后续版本更新流程（以 1.1.0 为例）
+## 4. 后续版本更新流程（每次发版的标准 SOP）
 
-每次发新版本走这个 SOP，不用再走 §3 那些一次性配置：
+每次发新版本走这 6 步，不用再走 §3 那些一次性配置。
 
 ### 4.1 在 feature 分支做完代码改动并 PR 合到 main
 
-当前 `1.1.0` 的 PR：[#2](https://github.com/nannan-debug/lifeos/pull/2)
+```bash
+git checkout main && git pull
+git checkout -b feat/xxx
+# ...写代码...
+git push -u origin feat/xxx
+gh pr create --title "feat: ..." --body "..."
+# review 通过后 squash merge
+```
 
-### 4.2 改 Info.plist 版本号
+### 4.2 改 `project.yml` 的版本号（不是 Info.plist！）
 
-```xml
-<key>CFBundleShortVersionString</key>
-<string>1.1.0</string>          <!-- feat → MINOR bump，bugfix → PATCH bump -->
-<key>CFBundleVersion</key>
-<string>2</string>               <!-- 永远 +1，不能跟过往任何 build 重复 -->
+> ⚠️ **真正的 source of truth 是 `project.yml`**。`xcodegen` 每次都会用 `project.yml` 重新生成 `Info.plist` 和 `pbxproj`——直接改 `Info.plist` 会被覆盖回去。详见 [VERSIONING.md](VERSIONING.md)。
+
+`project.yml` 里**两段**版本号都要改（共 4 个字段）：
+
+```yaml
+targets:
+  PersonalSystem:
+    info:
+      properties:
+        CFBundleShortVersionString: 1.2.0   # ← Marketing version（feat = MINOR bump，bugfix = PATCH bump）
+        CFBundleVersion: "3"                # ← Build number（永远 +1，绝不能跟历史 build 重复）
+        ITSAppUsesNonExemptEncryption: false  # 已固化，别动（出口合规豁免）
+        # ...
+    settings:
+      base:
+        MARKETING_VERSION: 1.2.0            # ← 同 Marketing
+        CURRENT_PROJECT_VERSION: 3          # ← 同 Build
+```
+
+改完跑 xcodegen 同步，并做一个 PR 合并：
+
+```bash
+git checkout -b chore/bump-version-1.2.0
+# 编辑 project.yml ...
+xcodegen
+grep -A1 "CFBundleVersion" Sources/App/Info.plist  # 必须看到新版本号
+git add project.yml PersonalSystem.xcodeproj/project.pbxproj
+git commit -m "chore: bump version to 1.2.0 / build 3"
+git push -u origin chore/bump-version-1.2.0
+gh pr create --title "chore: bump 1.2.0 / build 3" --body "..."
+# squash merge 后回到 main && pull
 ```
 
 ### 4.3 Archive + 上传到 App Store Connect
 
-1. Xcode 顶部 device 选 `Any iOS Device (arm64)`
-2. Product → Archive
-3. Organizer 弹出后 → **Distribute App** → **App Store Connect** → **Upload**
-4. 等 5–30 分钟，ASC 后台 TestFlight 出现新 build
+> 💡 上次踩坑：如果 Xcode 在 xcodegen 之前就开着项目，先**完全关闭 Xcode 再重开**，否则 Xcode 缓存的是旧 pbxproj，archive 出来还是旧版本。
+
+```bash
+open PersonalSystem.xcodeproj
+```
+
+1. Xcode 顶部 device 选 **`Any iOS Device (arm64)`**（不要选模拟器、不要选 iPhone）
+2. **Product → Archive**（等 1–3 分钟编译）
+3. Organizer 弹出后**先看右侧面板的 Version**——必须是新版本号，不是别 distribute
+4. **Distribute App → App Store Connect → Upload**
+5. 看到 "Successfully uploaded" 就关 Organizer，等 5–30 分钟 ASC 处理
+
+> 💡 Organizer 里如果累积了很多旧 archive，建议右键删掉避免之后手滑选错——本地 archive 删了不影响线上。
 
 ### 4.4（可选）TestFlight 内测一轮
 
 - 把自己加进 internal testers
-- TestFlight app 装一下、自己跑几天 / 找 1–2 人帮跑
-- 发现 bug → 改代码 → build +1 重传
+- TestFlight app 装一下，自己跑几天 / 找 1–2 人帮跑
+- 发现 bug → 改代码 → build +1 重传（按 4.2 的方式 bump build，4.3 重新上传）
 
-### 4.5 在 ASC 创建新版本
+### 4.5 在 ASC 创建新版本 + 提交审核
 
-1. App Store Connect → LifeOS → Distribution → 左侧 `iOS App` 点 `+`
-2. 选 `1.1.0` 版本号
-3. 填 **What's New in This Version**（用户更新时看到的"更新内容"，建议中文，每条一行 / 总长不超过 4000 字符）
-4. 选刚刚上传的 build
-5. 截图如果有新功能引起 UI 变化，需要重新生成（参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)）
-6. App Privacy / Age Rating / Pricing 通常无需改
+1. App Store Connect → LifeOS → Distribution → 左侧 `iOS App` 旁的 **+** → 输入新版本号 → Create
+2. 填 **What's New in This Version**（用户更新时看到的"更新内容"，中文，每条一行，总长不超过 4000 字符）
+3. 滚到 **Build** 区域 → Add Build → 选刚才上传的 build（如果还没出现就过几分钟刷新）
+4. 截图如果新功能引起明显 UI 变化，重新生成（参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)）；变化不大就不换
+5. App Privacy / Age Rating / Pricing 通常无需改
+6. **Save** → 顶部 **Add for Review** → **Submit to App Review**
 
-### 4.6 提交审核
+> 💡 出口合规已永久豁免。`project.yml` 里的 `ITSAppUsesNonExemptEncryption: false` 会让每次新 build 自动跳过"missing export compliance information"那个弹窗，无需手动到 TestFlight 标签答题。
 
-按 [ASC_FINAL_REVIEW_CHECKLIST.md](ASC_FINAL_REVIEW_CHECKLIST.md) 过一遍 → Submit for Review。
+按 [ASC_FINAL_REVIEW_CHECKLIST.md](ASC_FINAL_REVIEW_CHECKLIST.md) 过一遍提交前自检。
 
-通常 24–48h 出结果。
+### 4.6 等审核
 
-### 4.7 通过后打 git tag
+通常 24–48h 出结果。期间状态在 ASC 显示 `Waiting for Review` → `In Review` → `Pending Developer Release` / `Ready for Distribution`。
+
+被拒的话邮件会写明原因，按提示改代码，回 §4.2 bump build（不必 bump marketing）重传。
+
+### 4.7 过审后：打 git tag + 发 GitHub Release
+
+> ⚠️ **必须等 Apple 邮件通知 "Ready for Distribution" 后再做**。提前打 tag 一旦被拒就指错 commit。
 
 ```bash
 git checkout main && git pull
-git tag -a v1.1.0 -m "1.1.0 · 打卡页 inline 编辑"
-git push origin v1.1.0
-gh release create v1.1.0 --title "v1.1.0" --notes "..."
+git tag -a v1.2.0 -m "1.2.0 · 一句话说明本次更新"
+git push origin v1.2.0
+
+gh release create v1.2.0 --title "v1.2.0" --notes "$(cat <<'EOF'
+## 新功能
+- ...
+
+## 改进
+- ...
+
+## 修复
+- ...
+EOF
+)"
 ```
+
+如果在 ASC 选了手动 release（默认就是手动），还要去 ASC 网页点 **Release this version** 把 app 真正推到所有用户。
+
+### 4.8 审核期间想做新功能 / 修 bug 怎么办？
+
+**核心原则：审核期间不动 main 上的版本号、不重新 archive。** 让 1.1.0 安静过审。
+
+| 想做的事 | 做法 |
+|---|---|
+| 新功能 / 小优化 | 正常开 `feat/xxx` 分支写代码、PR 合到 main，**不要在 main 上改 project.yml 的 MARKETING_VERSION / CURRENT_PROJECT_VERSION**。等当前版本上线后，开新分支 bump 到下一个版本（1.1.x patch 或 1.x.0 minor）|
+| 发现当前提审 build 有严重 bug | 在 ASC 点 **Remove This Version from Review**（撤回审核）→ 改代码 → bump build 到下一个数字（不必 bump marketing）→ 重新 archive 上传 → 重新 Submit |
+| 发现 metadata / 截图问题（非代码） | ASC 里改即可，**审核期间也能改大部分 metadata**，改完 Save 不影响排队。但 What's New 一旦提交就锁了，要改得撤审 |
+
+实际操作中，告诉 AI："审核中，我想加 X 功能"，AI 会从最新 main 拉 `feat/xxx` 分支让你正常开发。所有 PR 照常合 main，只是别动版本号。
 
 ---
 
@@ -209,18 +282,30 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 如果新版本的 UI 跟商店截图差距明显（比如打卡页大改），上版本前需要重新出图。当前规则参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)。
 
+### 5.6 出口合规已永久豁免
+
+`project.yml` 的 `info.properties` 已加 `ITSAppUsesNonExemptEncryption: false`（PR #4，2026-04-29）。理由：LifeOS 只通过 `URLSession` 走 HTTPS（iOS 系统级 TLS），不实现自定义加密，符合 Apple 出口合规豁免条件。
+
+**如果未来引入了任何自定义加密**（bundle openssl、用 CryptoKit 做端到端加密、引入第三方 SDK 自带加密等），必须把这行删掉，并按 Apple 流程重新声明。
+
 ---
 
-## 6. 下一步（针对 1.1.0 提交）
+## 6. 下一步
 
-按 §4 的 SOP 走：
+### 6.1 等 1.1.0 审核结果（被动等）
 
-1. 把 PR #2 合到 main
-2. 打开 Xcode → Archive → 上传 ASC（build 2）
-3. 自己 TestFlight 装一下，跑几天验证 inline 编辑没回归 bug
-4. 在 ASC 创建 1.1.0 版本，填 What's New
-5. 如果打卡页 UI 改动够明显，重新生成截图（建议至少把"打卡 inline 编辑"这一张换新）
-6. Submit for Review，过审打 tag `v1.1.0`
+收到 Apple 邮件 **Ready for Distribution** 后：
+
+1. ASC 网页点 **Release this version**（如果选了手动 release）
+2. 按 §4.7 打 tag `v1.1.0` + 发 GitHub Release
+
+被拒的话邮件会写明原因，按 §4.8 第二行处理。
+
+### 6.2 审核期间可以做的事
+
+- 收集 1.0.0 真实用户反馈（设置页反馈邮箱）
+- 在 feature 分支开发下一个版本的内容（按 §4.8 原则）
+- 想清楚下一个版本是 1.1.x（patch）还是 1.2.0（minor）
 
 ---
 
@@ -242,4 +327,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 已上架 App Store（2026-04 首发）。当前在 `claude/optimistic-pare-7aee7f` 分支上准备 `1.1.0` 更新（PR #2，打卡页 inline 编辑），合并后按 §4 的 SOP 走 Archive → ASC → 提审流程。**
+**LifeOS 1.0.0 已上架 App Store（2026-04 首发），1.1.0 (build 2) 已于 2026-04-29 提审，等待 Apple 审核。`main` 上有出口合规永久豁免（PR #4）。下次发版按 §4 SOP 走，关键：改 `project.yml` 不是 `Info.plist`。**
