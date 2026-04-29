@@ -94,7 +94,7 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 - Build Number：单调递增，永不回退（`CFBundleVersion`）
 - 发版：改 `Sources/App/Info.plist` → 打 annotated tag `v1.x.x` → push tag
 
-**当前状态：** `1.0.0 (build 1)` — 开发完成，内部体验中，未上架
+**当前状态：** `1.0.0 (build 1)` 已上架 App Store（2026-04 首发，App ID `6763877227`）；下一个版本 `(build 2)` 准备中（视改动幅度决定是否 bump 到 `1.1.0`）。
 
 ---
 
