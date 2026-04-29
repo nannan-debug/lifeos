@@ -17,6 +17,9 @@ final class AppStore: ObservableObject {
     @Published var isAILoading: Bool = false
     @Published var aiDebugMessage: String? = nil
 
+    // TodayView 当前 segment（"check" / "todo"），供 RootTabView 控制 AI 输入框可见性
+    @Published var todaySegment: String = "check"
+
     /// 上一轮 AI 追问的上下文：当 AI 返回 needsClarification 时，暂存原文与 hint。
     /// 用户下次提交时自动把两段拼起来发给 AI，避免"9 点到 10 点"这种裸时间丢失上下文。
     @Published var pendingClarification: PendingClarification? = nil
@@ -48,7 +51,17 @@ final class AppStore: ObservableObject {
     private let legacyKeyDailyFields = "fields.daily"
     private let legacyKeyDailyInitialized = "fields.daily.initialized"
 
-    private let fallbackCheckTitles = ["吃药", "健康饮食", "感恩", "冥想", "写日记"]
+    // 全新用户首次启动时预置的打卡项（按顺序展示，分到「早上 / 晚上」两组）。
+    // 老用户（已 initialized）不会被覆盖。
+    private let fallbackCheckEntries: [(title: String, tag: String)] = [
+        ("吃维生素", "早上"),
+        ("回忆梦境", "早上"),
+        ("洗漱", "早上"),
+        ("出门", "早上"),
+        ("写日记", "晚上"),
+        ("洗澡", "晚上"),
+        ("上床看书", "晚上"),
+    ]
 
     init() {
         loadInbox()
@@ -1001,7 +1014,7 @@ final class AppStore: ObservableObject {
         if let r = rawOpt {
             raw = r
         } else if !initialized {
-            raw = fallbackCheckTitles.joined(separator: ",")
+            raw = encodeCheckEntries(fallbackCheckEntries)
         } else {
             raw = ""
         }
@@ -1019,7 +1032,7 @@ final class AppStore: ObservableObject {
         }.filter { !$0.0.isEmpty }
         // 已初始化但为空 → 如实返回空；未初始化且 fallback 也空 → 返回空
         if entries.isEmpty && !initialized {
-            return fallbackCheckTitles.map { ($0, "") }
+            return fallbackCheckEntries
         }
         // 一次性把旧的 "早"/"晚"/"默认" 落盘成统一形式，避免新旧标签在打卡页分两栏显示
         if didNormalize {

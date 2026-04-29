@@ -82,7 +82,9 @@ struct TodayView: View {
             }
             .onAppear {
                 displayMonth = startOfMonth(for: store.selectedDate)
+                store.todaySegment = segment
             }
+            .onChange(of: segment) { store.todaySegment = $0 }
             .onChange(of: store.selectedDate) { newDate in
                 let m = startOfMonth(for: newDate)
                 if !calendar.isDate(m, equalTo: displayMonth, toGranularity: .month) {
@@ -207,15 +209,6 @@ struct TodayView: View {
                 .listRowSeparator(.hidden)
 
             ForEach(Array(groupedCheckTags.enumerated()), id: \.element) { idx, tag in
-                // 非首个分组前加一条细线
-                if idx > 0 {
-                    Divider()
-                        .overlay(Color.black.opacity(0.08))
-                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
                 collapsibleHeader(for: tag)
 
                 if !isTagCollapsed(tag) {
@@ -231,25 +224,12 @@ struct TodayView: View {
             // 只有在确实存在未分组项时才显示这块（含其末尾的 inline 添加行），
             // 避免所有分组都收起后，未分组添加行假装是最后一组的"漏网"添加行。
             if !untaggedCheckItems.isEmpty {
-                if !groupedCheckTags.isEmpty {
-                    Divider()
-                        .overlay(Color.black.opacity(0.08))
-                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
                 ForEach(untaggedCheckItems) { item in
                     checkRow(item)
                 }
                 inlineAddItemRow(forGroup: "")
             }
 
-            // "新建分组"并入同一 Section 末尾（B 方案：去掉一个 ~32pt 的 section gap）
-            Divider()
-                .overlay(Color.black.opacity(0.08))
-                .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
             inlineAddGroupRow
         }
     }

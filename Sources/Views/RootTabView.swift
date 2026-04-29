@@ -29,9 +29,9 @@ struct RootTabView: View {
             }
             .tint(Color(red: 0.24, green: 0.65, blue: 0.36))
 
-            // 全局 AI 输入框 —— 在「今日」打卡/待办页隐藏，避免遮挡内容；
-            // 这两个页本身已有自己的快速输入入口。
-            if selectedTab != .today {
+            // 全局 AI 输入框 —— 在「今日·打卡」隐藏（打卡页有 inline 添加），
+            // 切换到「待办」时显示，其余 Tab 始终显示。
+            if selectedTab != .today || store.todaySegment == "todo" {
                 GlobalAIInputBar()
                     .environmentObject(store)
                     .allowsHitTesting(true)
