@@ -40,8 +40,8 @@ Build     = 1           Build     = 2           Build     = 3
 | 版本 | 状态 | 说明 |
 |---|---|---|
 | `1.0.0` (build 1) | ✅ 已上架 | **App Store 首发**（2026-04，App ID `6763877227`）|
-| `1.1.0` (build 2) | **当前** | 打卡页 inline 编辑重构（PR #2）—— 准备提交 ASC |
-| `1.0.x` 或 `1.1.x` | 视情况 | 上架后修 bug（build 继续 +1）|
+| `1.1.0` (build 2) | ⏳ 已提审 | 打卡页 inline 编辑重构（PR #2）—— 2026-04-29 Submit for Review，等待 Apple 审核 |
+| `1.1.x` | 之后 | 1.1.0 上架后修 bug（build 继续 +1）|
 | `1.x.0` | 之后 | 后续小功能更新（如复盘模块）|
 | `2.0.0` | 未来 | 大改版（如云端同步、多账号）|
 
@@ -49,31 +49,54 @@ Build     = 1           Build     = 2           Build     = 3
 
 ## 怎么改版本号
 
-### 1. 改 Info.plist
+> ⚠️ **真正的 source of truth 是 `project.yml`，不是 `Info.plist`。**
+> 每次 `xcodegen` 都会用 `project.yml` 重新生成 `Info.plist` 和 `pbxproj`——直接改 `Info.plist` 会被下一次 xcodegen 覆盖回去（这是 1.1.0 提审前踩过的坑）。
 
-`Sources/App/Info.plist`：
+### 1. 改 `project.yml`（共 4 处版本号要全部同步）
 
-```xml
-<key>CFBundleShortVersionString</key>
-<string>1.0.1</string>       ← 改这里
-<key>CFBundleVersion</key>
-<string>3</string>            ← 每次上传 TestFlight/App Store 必须 +1
+```yaml
+targets:
+  PersonalSystem:
+    info:
+      properties:
+        CFBundleShortVersionString: 1.1.0     # ← 改这里
+        CFBundleVersion: "2"                  # ← 改这里（永远 +1）
+        ITSAppUsesNonExemptEncryption: false  # ← 出口合规豁免，已固化，别动
+        # ...
+    settings:
+      base:
+        MARKETING_VERSION: 1.1.0              # ← 改这里
+        CURRENT_PROJECT_VERSION: 2            # ← 改这里
 ```
 
-### 2. 打 git tag
+### 2. 跑 xcodegen 同步到 Info.plist 和 pbxproj
+
+```bash
+xcodegen
+grep -A1 "CFBundleVersion" Sources/App/Info.plist
+# 必须看到新版本号，否则别 archive
+```
+
+### 3. commit 改动
+
+`project.yml` 和 `PersonalSystem.xcodeproj/project.pbxproj` 都要 stage（pbxproj 是 xcodegen 重新生成的，diff 包含版本号字段更新）。
+
+### 4. 打 git tag（**审核通过且 Release 后再打，不要提前**）
+
+> ⚠️ tag 必须指向真正上线的 commit。如果在 Apple 审核期间提前打 tag，一旦被拒需要新 build，就要 force-update tag 或者 tag 指向错误 commit——都是埋坑。**等 Apple 邮件通知 Ready for Distribution 后再做这步。**
 
 ```bash
 # 发版前确保 main 最新、干净
 git checkout main && git pull
 
 # 打 annotated tag（带消息的 tag，比 lightweight tag 规范）
-git tag -a v1.0.1 -m "1.0.1 · 修复键盘遮挡与感恩合并"
+git tag -a v1.1.0 -m "1.1.0 · 打卡页 inline 编辑 + 分组 CRUD"
 
 # 推 tag 到远程
-git push origin v1.0.1
+git push origin v1.1.0
 ```
 
-### 3. 发 GitHub Release（可选但推荐）
+### 5. 发 GitHub Release（可选但推荐）
 
 ```bash
 gh release create v1.0.1 \
