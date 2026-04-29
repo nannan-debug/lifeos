@@ -42,6 +42,7 @@ final class AppStore: ObservableObject {
     private var keyTurns: String { scopedKey("ps.turns") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
+    private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
 
     // 兼容旧版本（未按用户隔离）
     private let legacyKeyDailyFields = "fields.daily"
@@ -66,7 +67,7 @@ final class AppStore: ObservableObject {
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
-        [keyChecks, keyTime, keyInbox, keyTasks, keyTurns, keyDailyFields, keyDailyInitialized].forEach { defaults.removeObject(forKey: $0) }
+        [keyChecks, keyTime, keyInbox, keyTasks, keyTurns, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
         checkItems = []
         timeEntries = []
         inbox = []
@@ -220,17 +221,25 @@ final class AppStore: ObservableObject {
 
     // MARK: - Daily check-in item management
     /// 新增打卡项目（追加到 fields.daily 末尾，按 title 去重）
+    /// tag 为空表示"未分组"，UI 上不会出现在分组 header 下，单独排在最后
     @discardableResult
-    func addDailyCheckItem(_ title: String, tag: String = "默认") -> Bool {
+    func addDailyCheckItem(_ title: String, tag: String = "") -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanTag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return false }
-        let finalTag = cleanTag.isEmpty ? "默认" : cleanTag
         var entries = currentCheckEntries()
         guard !entries.contains(where: { $0.title == cleanTitle }) else { return false }
-        entries.append((title: cleanTitle, tag: finalTag))
+        entries.append((title: cleanTitle, tag: cleanTag))
         defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
         defaults.set(true, forKey: keyDailyInitialized)
+        // 如果带了一个尚未注册的分组，顺手注册进 groups 列表
+        if !cleanTag.isEmpty {
+            var groups = savedGroups
+            if !groups.contains(cleanTag) {
+                groups.append(cleanTag)
+                saveGroups(groups)
+            }
+        }
         reloadFieldConfig()
         return true
     }
@@ -244,21 +253,148 @@ final class AppStore: ObservableObject {
         reloadFieldConfig()
     }
 
+    /// 重命名打卡项。会同步迁移历史所有日期的勾选状态（按 title 落库），
+    /// 这样中途改名不会导致今天/历史的"已完成"被清零。
+    /// 重名（与已有打卡项冲突）或源不存在 → false。
+    @discardableResult
+    func renameDailyCheckItem(from oldTitle: String, to newTitle: String) -> Bool {
+        let oldClean = oldTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newClean = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !oldClean.isEmpty, !newClean.isEmpty else { return false }
+        guard oldClean != newClean else { return true }
+
+        var entries = currentCheckEntries()
+        guard let idx = entries.firstIndex(where: { $0.title == oldClean }) else { return false }
+        guard !entries.contains(where: { $0.title == newClean }) else { return false }
+        entries[idx] = (title: newClean, tag: entries[idx].tag)
+        defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
+        defaults.set(true, forKey: keyDailyInitialized)
+
+        // 迁移所有日期的勾选状态：oldTitle 的 done 值搬到 newTitle 名下
+        var map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        var changed = false
+        for (date, var day) in map {
+            if let done = day.removeValue(forKey: oldClean) {
+                day[newClean] = done
+                map[date] = day
+                changed = true
+            }
+        }
+        if changed {
+            defaults.set(map, forKey: keyChecks)
+        }
+
+        reloadFieldConfig()
+        return true
+    }
+
     /// 给外部 UI 列出所有打卡项标题
     var dailyCheckTitles: [String] { currentCheckEntries().map { $0.title } }
 
     /// 给外部 UI 列出所有打卡项（含 tag）
     var dailyCheckEntries: [(title: String, tag: String)] { currentCheckEntries() }
 
-    /// 历史出现过的全部 tag，按首次出现顺序
+    /// 历史出现过的全部 tag，按首次出现顺序（不含空分组）
     var dailyCheckTags: [String] {
         var seen = Set<String>()
         var ordered: [String] = []
-        for e in currentCheckEntries() where !seen.contains(e.tag) {
+        for e in currentCheckEntries() where !e.tag.isEmpty && !seen.contains(e.tag) {
             seen.insert(e.tag)
             ordered.append(e.tag)
         }
         return ordered
+    }
+
+    // MARK: - Daily check-in group management
+    /// 用户显式管理过的分组顺序（独立于打卡项保存，允许空分组存在）
+    private var savedGroups: [String] {
+        let raw = defaults.string(forKey: keyDailyGroups) ?? ""
+        return raw.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func saveGroups(_ groups: [String]) {
+        defaults.set(groups.joined(separator: ","), forKey: keyDailyGroups)
+    }
+
+    /// 全部分组（手动建的 + 项目里出现过的，去重保序）。空字符串不算分组。
+    var dailyCheckGroups: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for g in savedGroups where !g.isEmpty && seen.insert(g).inserted {
+            ordered.append(g)
+        }
+        for e in currentCheckEntries() where !e.tag.isEmpty && seen.insert(e.tag).inserted {
+            ordered.append(e.tag)
+        }
+        return ordered
+    }
+
+    /// 某分组下打卡项数量（用于删除确认弹窗）
+    func dailyCheckItemCount(forGroup name: String) -> Int {
+        currentCheckEntries().filter { $0.tag == name }.count
+    }
+
+    /// 新建一个空分组。重名返回 false。
+    @discardableResult
+    func addDailyCheckGroup(_ name: String) -> Bool {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return false }
+        var groups = savedGroups
+        // 跟"已有分组（含从 items 推出来的）"判重，否则新建跟现有 item tag 同名会变成同一组
+        guard !dailyCheckGroups.contains(clean) else { return false }
+        groups.append(clean)
+        saveGroups(groups)
+        reloadFieldConfig()
+        return true
+    }
+
+    /// 重命名分组。组内打卡项的 tag 同步更新。重名（与现有分组冲突）返回 false。
+    @discardableResult
+    func renameDailyCheckGroup(from oldName: String, to newName: String) -> Bool {
+        let oldClean = oldName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newClean = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !oldClean.isEmpty, !newClean.isEmpty else { return false }
+        guard oldClean != newClean else { return true } // 名字没变，视为成功
+        guard !dailyCheckGroups.contains(newClean) else { return false }
+
+        // 更新 saved groups 列表
+        var groups = savedGroups
+        if let idx = groups.firstIndex(of: oldClean) {
+            groups[idx] = newClean
+        } else {
+            // 来自 items 的隐式分组，没注册过 → 直接追加
+            groups.append(newClean)
+        }
+        saveGroups(groups)
+
+        // 同步更新所有 items 的 tag
+        let entries = currentCheckEntries().map { entry -> (title: String, tag: String) in
+            entry.tag == oldClean ? (title: entry.title, tag: newClean) : entry
+        }
+        defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
+        defaults.set(true, forKey: keyDailyInitialized)
+
+        reloadFieldConfig()
+        return true
+    }
+
+    /// 删除分组（连带删除该分组下所有打卡项）
+    func removeDailyCheckGroup(_ name: String) {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+
+        // 从 saved groups 移除
+        let groups = savedGroups.filter { $0 != clean }
+        saveGroups(groups)
+
+        // 级联删除该分组下打卡项
+        let entries = currentCheckEntries().filter { $0.tag != clean }
+        defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
+        defaults.set(true, forKey: keyDailyInitialized)
+
+        reloadFieldConfig()
     }
 
     // MARK: - Conversation turns (voice timeline)
@@ -870,19 +1006,37 @@ final class AppStore: ObservableObject {
             raw = ""
         }
         let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var didNormalize = false
         let entries: [(String, String)] = parts.map { item in
             if let sep = item.firstIndex(of: "|") {
                 let title = String(item[..<sep]).trimmingCharacters(in: .whitespaces)
-                let tag = String(item[item.index(after: sep)...]).trimmingCharacters(in: .whitespaces)
-                return (title, tag.isEmpty ? "默认" : tag)
+                let rawTag = String(item[item.index(after: sep)...]).trimmingCharacters(in: .whitespaces)
+                let normalized = normalizeCheckTag(rawTag)
+                if normalized != rawTag { didNormalize = true }
+                return (title, normalized)
             }
-            return (item, "默认")
+            return (item, "")
         }.filter { !$0.0.isEmpty }
         // 已初始化但为空 → 如实返回空；未初始化且 fallback 也空 → 返回空
         if entries.isEmpty && !initialized {
-            return fallbackCheckTitles.map { ($0, "默认") }
+            return fallbackCheckTitles.map { ($0, "") }
+        }
+        // 一次性把旧的 "早"/"晚"/"默认" 落盘成统一形式，避免新旧标签在打卡页分两栏显示
+        if didNormalize {
+            defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
         }
         return entries
+    }
+
+    /// 把历史上的简写标签归一到当前预设。
+    /// "默认" → 空字符串（未分组），UI 上不再以分组形式呈现。
+    private func normalizeCheckTag(_ tag: String) -> String {
+        switch tag {
+        case "早", "晨间", "morning": return "早上"
+        case "晚", "夜间", "evening": return "晚上"
+        case "默认": return ""
+        default: return tag
+        }
     }
 
     private func encodeCheckEntries(_ entries: [(title: String, tag: String)]) -> String {

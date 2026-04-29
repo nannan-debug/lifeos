@@ -1,26 +1,26 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-04-26
+> 最后更新：2026-04-29
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 已经进入 App Store 提审准备阶段。**
+**LifeOS 已经在 App Store 上线。** 🎉
 
-代码和基础合规材料基本齐了，最大的前置阻塞已经解除：
+- ✅ App Store 首发：`1.0.0 (build 1)`（2026-04）
+- ✅ 应用商店可以搜到 `LifeOS` 并下载
+- ✅ App ID：`6763877227`
+- ✅ App Store Connect 状态：**Ready for Distribution**
 
-- ✅ Apple Developer 个人账号已注册
-- ✅ 已脱离前公司 Team
-- ✅ 工程里已写入新的 `DEVELOPMENT_TEAM`
+当前阶段重心从"首次上架"切换到"**持续迭代 + 版本更新**"：
 
-当前最主要的剩余工作不是“继续开发功能”，而是：
+1. 收集真实用户反馈（设置页有反馈邮箱入口）
+2. 做小步迭代（feat → MINOR bump，bugfix → PATCH bump）
+3. 每个版本走 Archive → TestFlight → ASC 审核流程
 
-1. 在 App Store Connect 完成在线配置确认
-2. 生成并上传正式截图
-3. 准备 Support URL / Privacy Policy URL
-4. 做一次 Archive / TestFlight / 最终提审
+下一个版本：`1.1.0 (build 2)` —— 打卡页 inline 编辑重构（[PR #2](https://github.com/nannan-debug/lifeos/pull/2)）。
 
 ---
 
@@ -37,8 +37,8 @@
 | 主语言 | 简体中文（zh-Hans） |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
-| 当前营销版本 | `1.0.0` |
-| 当前 build | `1` |
+| 已上架营销版本 | `1.0.0` (build 1) |
+| 当前开发分支版本 | `1.1.0` (build 2) |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -96,155 +96,131 @@
 
 ---
 
-## 3. 当前状态不确定，需要到 ASC / Xcode 里确认 👀
+## 3. 首发已完成的事项 ✅（历史归档）
 
-这些项目**仓库里无法证明**，需要人工在线确认：
+下面这些都是 1.0.0 首发前后必须做、现在已经完成的事，留作记录：
 
-- ⏳ App Store Connect 里是否已创建 `LifeOS` 的 App 记录
-- ⏳ Bundle ID `ai.anna.personalsystem` 是否已在 Apple Developer Portal 注册
-- ⏳ 是否已成功 Archive 过一个可上传构建
-- ⏳ 是否已上传过 TestFlight build
-- ⏳ ASC 的 App Privacy 问卷是否已填写保存
-- ⏳ Age Rating 是否已填写
-- ⏳ Pricing & Availability 是否已排除 China mainland
-- ⏳ 正式截图是否已生成并上传
-
----
-
-## 4. 剩余必做项（按顺序）
-
-### 4.1 确认 Apple 侧对象都存在
-
-去 Apple Developer / App Store Connect 确认以下三件事：
-
-1. `ai.anna.personalsystem` 已建成 App ID
-2. ASC 里已创建 `LifeOS`
-3. Xcode 的 Signing & Capabilities 已指向个人账号
-
-### 4.2 做一版可上传构建
-
-目标：
-
-- Archive 成功
-- 上传到 App Store Connect / TestFlight
-- 如果首个上传失败，优先修签名或 metadata，不要乱改功能代码
-
-版本策略：
-
-- 首次 TestFlight 如果上传新包，建议保持 `1.0.0`
-- `CFBundleVersion` 每上传一次必须递增
-
-### 4.3 打通公开 URL
-
-准备使用 GitHub Pages：
-
-- Support URL：`https://nannan-debug.github.io/lifeos/`
-- Privacy Policy URL：`https://nannan-debug.github.io/lifeos/privacy.html`
-
-前提：
-
-1. 仓库存在于 `nannan-debug/lifeos`
-2. 仓库可开启 GitHub Pages
-3. Pages Source 选择 `main` 分支下 `/docs`
-
-### 4.4 生成并上传正式截图
-
-目标槽位：
-
-- iPhone 6.7" Display：至少 3 张，建议 5 张
-
-仓库里已有方案：
-
-- `ASC_SCREENSHOT_PLAN.md`
-
-截图原则：
-
-- 必须是真实模拟器截图
-- 可以用 Claude Design 做外层包装
-- 不要用“未来功能”假图
-
-### 4.5 填完 ASC metadata
-
-仓库里已有文案草稿：
-
-- `ASC_COPY_DRAFT_v1.md`
-
-重点字段：
-
-- Subtitle
-- Promotional Text
-- Description
-- Keywords
-- Support URL
-- Privacy Policy URL
-- Category
-- App Review Notes
+- ✅ App Store Connect 创建 `LifeOS` 的 App 记录
+- ✅ Bundle ID `ai.anna.personalsystem` 在 Apple Developer Portal 注册
+- ✅ 成功 Archive + 上传 build
+- ✅ 通过 TestFlight 测试
+- ✅ App Privacy 问卷填写保存
+- ✅ Age Rating 填写
+- ✅ Pricing & Availability 设置（已排除 China mainland）
+- ✅ 5 张 6.7" 截图生成并上传
+- ✅ ASC metadata 文案填写（按 [ASC_COPY_DRAFT_v1.md](ASC_COPY_DRAFT_v1.md)）
+- ✅ Support URL / Privacy Policy URL 公开链接落地
+- ✅ 首次审核通过、上架
 
 ---
 
-## 5. 当前我认为还要注意的问题 ⚠️
+## 4. 后续版本更新流程（以 1.1.0 为例）
 
-### 5.1 Support URL 之前没有真正落地
+每次发新版本走这个 SOP，不用再走 §3 那些一次性配置：
 
-之前只是文档里写了 Notion 方案，没有稳定链接。
-现在改成仓库内静态页会更稳，但仍需你在 GitHub 里开启 Pages 才能真正生效。
+### 4.1 在 feature 分支做完代码改动并 PR 合到 main
 
-### 5.2 `LAUNCH_CHECKLIST.md` 旧版信息已经过时
+当前 `1.1.0` 的 PR：[#2](https://github.com/nannan-debug/lifeos/pull/2)
 
-旧版里还写着：
+### 4.2 改 Info.plist 版本号
 
-- “Apple Developer 账号未完成”
-- “隐私政策仍有占位符”
+```xml
+<key>CFBundleShortVersionString</key>
+<string>1.1.0</string>          <!-- feat → MINOR bump，bugfix → PATCH bump -->
+<key>CFBundleVersion</key>
+<string>2</string>               <!-- 永远 +1，不能跟过往任何 build 重复 -->
+```
 
-这些都不再准确，不能再当真实状态使用。
+### 4.3 Archive + 上传到 App Store Connect
 
-### 5.3 本地终端无法代替你确认 ASC 在线状态
+1. Xcode 顶部 device 选 `Any iOS Device (arm64)`
+2. Product → Archive
+3. Organizer 弹出后 → **Distribute App** → **App Store Connect** → **Upload**
+4. 等 5–30 分钟，ASC 后台 TestFlight 出现新 build
 
-我能确认仓库内容，但不能从本地文件判断：
+### 4.4（可选）TestFlight 内测一轮
 
-- 你是否已创建 ASC 记录
-- 你是否已上传截图
-- 你是否已提交审核
+- 把自己加进 internal testers
+- TestFlight app 装一下、自己跑几天 / 找 1–2 人帮跑
+- 发现 bug → 改代码 → build +1 重传
 
-这些必须在 App Store Connect 网页里核对。
+### 4.5 在 ASC 创建新版本
 
-### 5.4 提审表述要避免“医疗 app”误判
+1. App Store Connect → LifeOS → Distribution → 左侧 `iOS App` 点 `+`
+2. 选 `1.1.0` 版本号
+3. 填 **What's New in This Version**（用户更新时看到的"更新内容"，建议中文，每条一行 / 总长不超过 4000 字符）
+4. 选刚刚上传的 build
+5. 截图如果有新功能引起 UI 变化，需要重新生成（参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)）
+6. App Privacy / Age Rating / Pricing 通常无需改
 
-文案里虽然会提到 `ADHD` 和 `DBT`，但要始终坚持：
+### 4.6 提交审核
+
+按 [ASC_FINAL_REVIEW_CHECKLIST.md](ASC_FINAL_REVIEW_CHECKLIST.md) 过一遍 → Submit for Review。
+
+通常 24–48h 出结果。
+
+### 4.7 通过后打 git tag
+
+```bash
+git checkout main && git pull
+git tag -a v1.1.0 -m "1.1.0 · 打卡页 inline 编辑"
+git push origin v1.1.0
+gh release create v1.1.0 --title "v1.1.0" --notes "..."
+```
+
+---
+
+## 5. 后续迭代要持续注意的事 ⚠️
+
+### 5.1 提审文案不能漂离 UI
+
+之后改设置页 / AI 入口 / 同意弹窗的逻辑时，务必同步检查：
+
+- `AIConsentSheet.swift`
+- `ASC_COPY_DRAFT_v1.md`（用作 ASC 提审文案）
+- 截图文案
+
+### 5.2 永远不要把 LifeOS 表述成"医疗 app"
+
+文案里会提到 `ADHD` 和 `DBT`，但红线是：
 
 - 不诊断
 - 不治疗
 - 不提供医疗建议
 - 是个人记录 / 观察工具
 
-这点在 `ASC_COPY_DRAFT_v1.md` 里已经处理过，提审时不要改偏。
+`ASC_COPY_DRAFT_v1.md` 里已经处理好这条，后续改文案不要漂回敏感表述。
 
-### 5.5 截图不要使用未上线的“复盘 Tab”
+### 5.3 build number 永远 +1，永远不重复
 
-代码库里有 `ReviewView.swift` 雏形，但当前主 Tab 不是正式的“复盘产品态”。
-提审截图建议继续按已有方案，用 Today / AI / Time / Inbox / Settings 组合。
+Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archive，build 也要 +1。
 
-### 5.6 提审文案要持续和现有 UI 对齐
+### 5.4 隐私问卷与代码行为对齐
 
-目前已修正 AI 同意弹窗与 ASC 文案里关于“AI 开关”的表述。
-后续如果继续修改设置页或 AI 入口，记得同步检查：
+如果后续加了任何向第三方发数据的功能（analytics / 第三方 SDK / 新的 AI 服务商），必须更新 ASC 的 App Privacy 问卷。当前承诺：
 
-- `AIConsentSheet.swift`
-- `ASC_COPY_DRAFT_v1.md`
-- 截图文案
+- 只发往 `ai.dogdada.com`（用户主动触发的 AI 解析）
+- 不收集行为日志
+- 没有第三方 analytics
+
+新功能动到这块时记得回 ASC 更新。
+
+### 5.5 截图随版本演进
+
+如果新版本的 UI 跟商店截图差距明显（比如打卡页大改），上版本前需要重新出图。当前规则参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)。
 
 ---
 
-## 6. 建议的下一步
+## 6. 下一步（针对 1.1.0 提交）
 
-最顺的顺序是：
+按 §4 的 SOP 走：
 
-1. 开启 GitHub Pages，让 Support / Privacy 两个 URL 先可访问
-2. 用 Xcode 做一次 Archive 并上传 TestFlight
-3. 按 `ASC_SCREENSHOT_PLAN.md` 产出 5 张营销截图
-4. 把 `ASC_COPY_DRAFT_v1.md` 内容填进 ASC
-5. 完成 App Privacy / Age Rating / Pricing
-6. 提交审核
+1. 把 PR #2 合到 main
+2. 打开 Xcode → Archive → 上传 ASC（build 2）
+3. 自己 TestFlight 装一下，跑几天验证 inline 编辑没回归 bug
+4. 在 ASC 创建 1.1.0 版本，填 What's New
+5. 如果打卡页 UI 改动够明显，重新生成截图（建议至少把"打卡 inline 编辑"这一张换新）
+6. Submit for Review，过审打 tag `v1.1.0`
 
 ---
 
@@ -266,4 +242,4 @@
 
 ## 8. 一句话交接
 
-**现在不是“还没准备上架”，而是“代码和文案差不多了，正在补齐 URL、截图、ASC 在线配置，并准备首个可提审构建”。**
+**LifeOS 1.0.0 已上架 App Store（2026-04 首发）。当前在 `claude/optimistic-pare-7aee7f` 分支上准备 `1.1.0` 更新（PR #2，打卡页 inline 编辑），合并后按 §4 的 SOP 走 Archive → ASC → 提审流程。**
