@@ -10,9 +10,9 @@
 **LifeOS 已经在 App Store 上线，1.1.0 已提审等审核。** 🎉
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
-- ⏳ `1.1.0 (build 2)` — 2026-04-29 Submit for Review，等待 Apple 审核（24–48h）
+- ⏳ `1.1.0 (build 3)` — 2026-04-29 撤回 build 2、并入 PR #7 三项今日页优化后重新 Submit for Review，等待 Apple 审核（24–48h）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 Ready for Distribution / 1.1.0 Waiting for Review
+- ✅ App Store Connect 状态：1.0.0 Ready for Distribution / 1.1.0 (build 3) Waiting for Review
 
 当前阶段重心是"**持续迭代 + 版本更新**"：
 
@@ -38,7 +38,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.0.0` (build 1) |
-| 当前开发分支版本 | `1.1.0` (build 2) |
+| 当前开发分支版本 | `1.1.0` (build 3) |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -327,4 +327,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 已上架 App Store（2026-04 首发），1.1.0 (build 2) 已于 2026-04-29 提审，等待 Apple 审核。`main` 上有出口合规永久豁免（PR #4）。下次发版按 §4 SOP 走，关键：改 `project.yml` 不是 `Info.plist`。**
+**LifeOS 1.0.0 已上架 App Store（2026-04 首发），1.1.0 (build 3) 已于 2026-04-29 提审（build 2 撤审 → 并入 PR #7 三项优化 → 重新 Submit），等待 Apple 审核。`main` 上有出口合规永久豁免（PR #4）。下次发版按 §4 SOP 走，关键：改 `project.yml` 不是 `Info.plist`。**
