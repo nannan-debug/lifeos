@@ -11,11 +11,33 @@ struct TodayView: View {
     // A 方案：顶部分段 "check" | "todo"
     @State private var segment: String = "check"
 
-    // 打卡项管理面板
-    @State private var showCheckManager = false
-
     // 折叠/展开的 tag 集合（持久化到 AppStorage，重新打开保持状态）
     @AppStorage("checks.collapsedTags") private var collapsedTagsRaw: String = ""
+
+    // ── inline 编辑状态（B 方案：管理面板已下线，所有 CRUD 在打卡页就地完成）
+
+    // 当前正在哪一组的"添加打卡项"行里输入；nil = 还没开始
+    // 特殊值 ""（空字符串）表示未分组区域的 inline 添加
+    @State private var addingItemForGroup: String? = nil
+    @State private var addingItemText: String = ""
+    @FocusState private var addItemFocused: Bool
+
+    // 底部"新建分组"行
+    @State private var addingNewGroup: Bool = false
+    @State private var newGroupText: String = ""
+    @FocusState private var newGroupFocused: Bool
+
+    // 重命名 / 删除 弹窗
+    @State private var renamingItem: String? = nil
+    @State private var renameItemText: String = ""
+
+    @State private var renamingGroup: String? = nil
+    @State private var renameGroupText: String = ""
+
+    @State private var groupToDelete: String? = nil
+
+    // 错误提示（重名等）
+    @State private var inlineErrorMsg: String? = nil
 
     // 待办输入
     @State private var newTodoTitle = ""
@@ -67,10 +89,6 @@ struct TodayView: View {
                     displayMonth = m
                 }
             }
-            .sheet(isPresented: $showCheckManager) {
-                CheckItemManagerSheet()
-                    .environmentObject(store)
-            }
             .sheet(isPresented: $showNewTodoSheet) {
                 TodoEditorSheet(mode: .create(defaultDate: store.selectedDate))
                     .environmentObject(store)
@@ -78,6 +96,87 @@ struct TodayView: View {
             .sheet(item: $editingTask) { task in
                 TodoEditorSheet(mode: .edit(task: task))
                     .environmentObject(store)
+            }
+            // ── inline 编辑：重命名打卡项
+            .alert(
+                "重命名打卡项",
+                isPresented: Binding(
+                    get: { renamingItem != nil },
+                    set: { if !$0 { renamingItem = nil } }
+                ),
+                presenting: renamingItem
+            ) { _ in
+                TextField("新名称", text: $renameItemText)
+                Button("保存") {
+                    if let old = renamingItem {
+                        let ok = store.renameDailyCheckItem(from: old, to: renameItemText)
+                        if !ok {
+                            inlineErrorMsg = "重命名失败：可能已存在同名打卡项"
+                        }
+                    }
+                    renamingItem = nil
+                }
+                Button("取消", role: .cancel) { renamingItem = nil }
+            } message: { _ in
+                Text("历史的勾选状态会跟着新名字保留")
+            }
+            // ── inline 编辑：重命名分组
+            .alert(
+                "重命名分组",
+                isPresented: Binding(
+                    get: { renamingGroup != nil },
+                    set: { if !$0 { renamingGroup = nil } }
+                ),
+                presenting: renamingGroup
+            ) { _ in
+                TextField("新名称", text: $renameGroupText)
+                Button("保存") {
+                    if let old = renamingGroup {
+                        let ok = store.renameDailyCheckGroup(from: old, to: renameGroupText)
+                        if !ok {
+                            inlineErrorMsg = "重命名失败：可能已存在同名分组"
+                        }
+                    }
+                    renamingGroup = nil
+                }
+                Button("取消", role: .cancel) { renamingGroup = nil }
+            } message: { group in
+                Text("「\(group)」下的打卡项会跟着改到新名字")
+            }
+            // ── inline 编辑：删除分组（带级联确认）
+            .alert(
+                "删除分组",
+                isPresented: Binding(
+                    get: { groupToDelete != nil },
+                    set: { if !$0 { groupToDelete = nil } }
+                ),
+                presenting: groupToDelete
+            ) { group in
+                Button("删除", role: .destructive) {
+                    store.removeDailyCheckGroup(group)
+                    groupToDelete = nil
+                }
+                Button("取消", role: .cancel) { groupToDelete = nil }
+            } message: { group in
+                let count = store.dailyCheckItemCount(forGroup: group)
+                if count == 0 {
+                    Text("「\(group)」是空分组，删除后不影响打卡项。")
+                } else {
+                    Text("删除「\(group)」会同时移除其下 \(count) 个打卡项，无法撤销。")
+                }
+            }
+            // ── inline 错误提示（轻量 alert，避免破坏温柔语气）
+            .alert(
+                "提示",
+                isPresented: Binding(
+                    get: { inlineErrorMsg != nil },
+                    set: { if !$0 { inlineErrorMsg = nil } }
+                ),
+                presenting: inlineErrorMsg
+            ) { _ in
+                Button("好的", role: .cancel) { inlineErrorMsg = nil }
+            } message: { msg in
+                Text(msg)
             }
         }
         .creamBackground()
@@ -98,15 +197,15 @@ struct TodayView: View {
 
     @ViewBuilder
     private var checkSection: some View {
+        // 全部内容并到一个 Section（备选 1：去掉 motivationalCard 与分组之间的 ~32pt section gap）
+        // motivationalCard 自带白色 RoundedRectangle 背景，会盖住下层 section 默认卡的对应区域，
+        // 视觉上像是顶部白卡 + 下面分组卡，但贴得很近。
         Section {
             motivationalCard
-                .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
+                .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 6, trailing: 6))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-        }
 
-        // 所有 tag 放进同一个 Section，用细分隔线分组，避免 Section 间距断层
-        Section {
             ForEach(Array(groupedCheckTags.enumerated()), id: \.element) { idx, tag in
                 // 非首个分组前加一条细线
                 if idx > 0 {
@@ -123,29 +222,35 @@ struct TodayView: View {
                     ForEach(store.checkItems.filter { $0.tag == tag }) { item in
                         checkRow(item)
                     }
+                    // 每个分组末尾的 inline 添加行
+                    inlineAddItemRow(forGroup: tag)
                 }
             }
-        }
 
-        // 管理打卡项按钮
-        Section {
-            Button {
-                showCheckManager = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.footnote.weight(.semibold))
-                    Text("管理打卡项")
-                        .font(.footnote.weight(.medium))
+            // 未分组的打卡项：直接列出来，不挂 header
+            // 只有在确实存在未分组项时才显示这块（含其末尾的 inline 添加行），
+            // 避免所有分组都收起后，未分组添加行假装是最后一组的"漏网"添加行。
+            if !untaggedCheckItems.isEmpty {
+                if !groupedCheckTags.isEmpty {
+                    Divider()
+                        .overlay(Color.black.opacity(0.08))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
-                .foregroundStyle(CreamTheme.green.opacity(0.75))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 10)
+                ForEach(untaggedCheckItems) { item in
+                    checkRow(item)
+                }
+                inlineAddItemRow(forGroup: "")
             }
-            .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+
+            // "新建分组"并入同一 Section 末尾（B 方案：去掉一个 ~32pt 的 section gap）
+            Divider()
+                .overlay(Color.black.opacity(0.08))
+                .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            inlineAddGroupRow
         }
     }
 
@@ -154,7 +259,6 @@ struct TodayView: View {
         switch tag {
         case "早", "早上", "晨间", "morning": return "sun.max.fill"
         case "晚", "晚上", "夜间", "evening": return "moon.stars.fill"
-        case "默认": return "checklist"
         default: return "tag.fill"
         }
     }
@@ -209,6 +313,21 @@ struct TodayView: View {
         .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 2, trailing: 6))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+        // 左滑分组头：重命名 / 删除（删除带级联确认弹窗）
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                groupToDelete = tag
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+            Button {
+                renamingGroup = tag
+                renameGroupText = tag
+            } label: {
+                Label("重命名", systemImage: "pencil")
+            }
+            .tint(CreamTheme.green)
+        }
     }
 
     /// 单个打卡行（大号字，仿提醒事项）
@@ -233,7 +352,7 @@ struct TodayView: View {
             }
             .padding(.leading, 28)   // 左边缩进，让打卡行视觉上挂在组头下面
             .padding(.trailing, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)   // 收紧（C 方案，原 8）
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -242,6 +361,142 @@ struct TodayView: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .transition(.opacity.combined(with: .move(edge: .top)))
+        // 左滑：重命名 / 删除（B 方案 inline 编辑）
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                withAnimation { store.removeDailyCheckItem(item.title) }
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+            Button {
+                renamingItem = item.title
+                renameItemText = item.title
+            } label: {
+                Label("重命名", systemImage: "pencil")
+            }
+            .tint(CreamTheme.green)
+        }
+    }
+
+    /// 分组末尾的 inline 添加行（tag == "" 表示未分组区域）
+    /// D 方案弱化：14pt 小圈 + 小字号；激活/未激活尺寸保持一致，只换颜色，
+    /// 避免点开输入时整行突然弹大跳动。
+    @ViewBuilder
+    private func inlineAddItemRow(forGroup tag: String) -> some View {
+        let isActive = (addingItemForGroup == tag)
+        HStack(spacing: 10) {
+            Image(systemName: "plus.circle")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(
+                    isActive
+                        ? CreamTheme.green.opacity(0.85)
+                        : Color(.tertiaryLabel)
+                )
+
+            if isActive {
+                TextField("新打卡项…", text: $addingItemText)
+                    .textFieldStyle(.plain)
+                    .font(.callout)            // 跟未激活的 footnote 接近，肉眼几乎不跳
+                    .submitLabel(.done)
+                    .focused($addItemFocused)
+                    .onSubmit { commitInlineAddItem(forGroup: tag) }
+            } else {
+                Text(tag.isEmpty ? "添加未分组打卡项…" : "添加到「\(tag)」…")
+                    .font(.footnote)
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+
+            Spacer()
+        }
+        .padding(.leading, 32)
+        .padding(.trailing, 14)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isActive {
+                addingItemForGroup = tag
+                addingItemText = ""
+                addItemFocused = true
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    /// 底部新建分组行
+    @ViewBuilder
+    private var inlineAddGroupRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(CreamTheme.green.opacity(addingNewGroup ? 0.9 : 0.6))
+                .frame(width: 22)
+
+            if addingNewGroup {
+                TextField("新分组名（例如：工作日、运动日…）", text: $newGroupText)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                    .submitLabel(.done)
+                    .focused($newGroupFocused)
+                    .onSubmit(commitInlineAddGroup)
+            } else {
+                Text("新建分组")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(CreamTheme.green.opacity(0.8))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !addingNewGroup {
+                addingNewGroup = true
+                newGroupText = ""
+                newGroupFocused = true
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func commitInlineAddItem(forGroup tag: String) {
+        let clean = addingItemText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty {
+            // 空输入 + 回车 → 退出 inline
+            addingItemForGroup = nil
+            addItemFocused = false
+            return
+        }
+        let ok = store.addDailyCheckItem(clean, tag: tag)
+        if ok {
+            addingItemText = ""
+            // 保持 focus，方便连续添加
+        } else {
+            inlineErrorMsg = "已存在同名打卡项"
+        }
+    }
+
+    private func commitInlineAddGroup() {
+        let clean = newGroupText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty {
+            addingNewGroup = false
+            newGroupFocused = false
+            return
+        }
+        let ok = store.addDailyCheckGroup(clean)
+        if ok {
+            newGroupText = ""
+            addingNewGroup = false
+            newGroupFocused = false
+        } else {
+            inlineErrorMsg = "已存在同名分组"
+        }
     }
 
     // MARK: - Collapsed tag helpers
@@ -260,15 +515,14 @@ struct TodayView: View {
         collapsedTagsRaw = set.sorted().joined(separator: ",")
     }
 
-    /// 当前展示的 tag 顺序：按首次出现顺序
+    /// 当前展示的分组顺序（来自 AppStore，已包含空分组；不含未分组）
     private var groupedCheckTags: [String] {
-        var seen = Set<String>()
-        var ordered: [String] = []
-        for item in store.checkItems where !seen.contains(item.tag) {
-            seen.insert(item.tag)
-            ordered.append(item.tag)
-        }
-        return ordered
+        store.dailyCheckGroups
+    }
+
+    /// 没有归到任何分组的打卡项（tag 为空），单独排在最后，无 header 渲染
+    private var untaggedCheckItems: [DailyCheckItem] {
+        store.checkItems.filter { $0.tag.isEmpty }
     }
 
 
@@ -947,138 +1201,6 @@ private struct TodoEditorSheet: View {
             )
         }
         dismiss()
-    }
-}
-
-private struct CheckItemManagerSheet: View {
-    @EnvironmentObject var store: AppStore
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var newItem = ""
-    @State private var newTag = "早"
-    @State private var customTag = ""
-    @State private var errorMsg: String?
-
-    // 快捷标签预设：用户也可自由输入自定义
-    private let presetTags = ["早", "晚", "默认"]
-
-    private var effectiveTag: String {
-        let c = customTag.trimmingCharacters(in: .whitespacesAndNewlines)
-        return c.isEmpty ? newTag : c
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("新增打卡项") {
-                    TextField("例如：跑步、背单词…", text: $newItem)
-                        .submitLabel(.done)
-                        .onSubmit(commit)
-
-                    // 分组标签：预设快捷 + 自定义
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("分组标签")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
-                            ForEach(presetTags, id: \.self) { tag in
-                                tagChip(tag, selected: customTag.isEmpty && newTag == tag) {
-                                    newTag = tag
-                                    customTag = ""
-                                }
-                            }
-                        }
-                        TextField("或自定义（例如：工作日、运动日…）", text: $customTag)
-                            .font(.callout)
-                    }
-                    .padding(.vertical, 4)
-
-                    HStack {
-                        Spacer()
-                        Button("添加", action: commit)
-                            .buttonStyle(.borderedProminent)
-                            .tint(CreamTheme.green)
-                            .disabled(newItem.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-
-                    if let errorMsg {
-                        Text(errorMsg)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                Section("当前打卡项（左滑删除）") {
-                    if store.dailyCheckEntries.isEmpty {
-                        Text("暂无，先在上面加一个吧")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(store.dailyCheckEntries, id: \.title) { entry in
-                            HStack(spacing: 8) {
-                                Image(systemName: "circle")
-                                    .foregroundStyle(.secondary)
-                                Text(entry.title)
-                                Spacer()
-                                Text(entry.tag)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(CreamTheme.green)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(
-                                        Capsule().fill(CreamTheme.green.opacity(0.12))
-                                    )
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    store.removeDailyCheckItem(entry.title)
-                                } label: {
-                                    Label("删除", systemImage: "trash")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("管理打卡项")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .tint(CreamTheme.green)
-            .scrollContentBackground(.hidden)
-            .background(CreamTheme.glassStrong)
-        }
-    }
-
-    @ViewBuilder
-    private func tagChip(_ tag: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(tag)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(selected ? .white : CreamTheme.green)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule().fill(selected ? CreamTheme.green : CreamTheme.green.opacity(0.12))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func commit() {
-        let clean = newItem.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
-        let ok = store.addDailyCheckItem(clean, tag: effectiveTag)
-        if ok {
-            newItem = ""
-            customTag = ""
-            errorMsg = nil
-        } else {
-            errorMsg = "已存在同名打卡项"
-        }
     }
 }
 
