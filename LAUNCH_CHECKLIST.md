@@ -7,12 +7,12 @@
 
 ## 0. 当前结论
 
-**LifeOS 已经在 App Store 上线，1.1.0 已提审等审核。** 🎉
+**LifeOS 1.1.0 已上架 App Store。** 🎉
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
-- ⏳ `1.1.0 (build 3)` — 2026-04-29 撤回 build 2、并入 PR #7 三项今日页优化后重新 Submit for Review，等待 Apple 审核（24–48h）
+- ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 Ready for Distribution / 1.1.0 (build 3) Waiting for Review
+- ✅ App Store Connect 状态：1.0.0 / 1.1.0 均 Ready for Distribution
 
 当前阶段重心是"**持续迭代 + 版本更新**"：
 
@@ -37,14 +37,14 @@
 | 主语言 | 简体中文（zh-Hans） |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
-| 已上架营销版本 | `1.0.0` (build 1) |
-| 当前开发分支版本 | `1.1.0` (build 3) |
+| 已上架营销版本 | `1.1.0` (build 3) |
+| 当前开发分支版本 | `1.1.0` (build 3) — 等下一个版本 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
 
 ```text
-/Users/newblue/Projects/openclaw-project/lobster-team/ios-app/
+/Users/newblue/Projects/ios-app-lifeos/
 ├── project.yml
 ├── PersonalSystem.xcodeproj
 ├── Sources/
@@ -158,9 +158,9 @@ git checkout -b chore/bump-version-1.2.0
 xcodegen
 grep -A1 "CFBundleVersion" Sources/App/Info.plist  # 必须看到新版本号
 git add project.yml PersonalSystem.xcodeproj/project.pbxproj
-git commit -m "chore: bump version to 1.2.0 / build 3"
+git commit -m "chore: bump version to 1.2.0 / build 4"
 git push -u origin chore/bump-version-1.2.0
-gh pr create --title "chore: bump 1.2.0 / build 3" --body "..."
+gh pr create --title "chore: bump 1.2.0 / build 4" --body "..."
 # squash merge 后回到 main && pull
 ```
 
@@ -330,4 +330,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 已上架 App Store（2026-04 首发），1.1.0 (build 3) 已于 2026-04-29 提审（build 2 撤审 → 并入 PR #7 三项优化 → 重新 Submit），等待 Apple 审核。`main` 上有出口合规永久豁免（PR #4）。下次发版按 §4 SOP 走，关键：改 `project.yml` 不是 `Info.plist`。**
+**LifeOS 1.0.0（2026-04 首发）和 1.1.0 (build 3, 2026-04-30 上架) 均已在 App Store 在线。1.1.0 包含 PR #2（打卡页 inline CRUD）+ PR #7（今日页 3 项优化）。`main` 上有出口合规永久豁免（PR #4）。仓库本地路径已迁到 `/Users/newblue/Projects/ios-app-lifeos`。下次发版按 §4 SOP 走，关键：改 `project.yml` 不是 `Info.plist`，build 从 4 起。**

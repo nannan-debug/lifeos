@@ -13,7 +13,7 @@
 ````
 你将协作开发 LifeOS iOS 的新功能。
 
-仓库：/Users/newblue/Projects/openclaw-project/lobster-team/ios-app
+仓库：/Users/newblue/Projects/ios-app-lifeos
 GitHub：github.com/nannan-debug/lifeos
 
 开始任何任务前，请按顺序读完这些文件，并在回复里确认你已理解：
