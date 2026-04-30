@@ -9,7 +9,6 @@ final class AppStore: ObservableObject {
     @Published var selectedDate = Date() { didSet { loadForSelectedDate() } }
     @Published var checkItems: [DailyCheckItem] = []
     @Published var timeEntries: [TimeEntry] = []
-    @Published var inbox: [InboxNote] = []
     @Published var tasks: [TaskEntry] = []
     @Published var turns: [ConversationTurn] = []
 
@@ -40,7 +39,6 @@ final class AppStore: ObservableObject {
 
     private var keyChecks: String { scopedKey("ps.checks.byDate") }
     private var keyTime: String { scopedKey("ps.time.byDate") }
-    private var keyInbox: String { scopedKey("ps.inbox") }
     private var keyTasks: String { scopedKey("ps.tasks") }
     private var keyTurns: String { scopedKey("ps.turns") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
@@ -64,7 +62,7 @@ final class AppStore: ObservableObject {
     ]
 
     init() {
-        loadInbox()
+        cleanupLegacyInboxIfNeeded()
         loadTasks()
         loadTurns()
         loadForSelectedDate()
@@ -72,7 +70,7 @@ final class AppStore: ObservableObject {
 
     /// 登录 / 切换账号后调用，按当前 userId 重新装载所有数据
     func reloadForCurrentUser() {
-        loadInbox()
+        cleanupLegacyInboxIfNeeded()
         loadTasks()
         loadTurns()
         loadForSelectedDate()
@@ -80,12 +78,23 @@ final class AppStore: ObservableObject {
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
-        [keyChecks, keyTime, keyInbox, keyTasks, keyTurns, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
+        [keyChecks, keyTime, keyTasks, keyTurns, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
+        // 旧版本随手记镜像（已废弃）一并兜底清掉
+        defaults.removeObject(forKey: scopedKey("ps.inbox"))
         checkItems = []
         timeEntries = []
-        inbox = []
         tasks = []
         turns = []
+    }
+
+    /// 把旧版本镜像写入 `ps.inbox.<userId>` 的 InboxNote 数据一次性清掉。
+    /// 旧版本里每条 AI 输入都会同时写一份 turn + 一份 InboxNote 镜像，但 InboxView
+    /// 已经下线，那份镜像没人读。直接 removeObject 即可，turn 才是真数据。
+    private func cleanupLegacyInboxIfNeeded() {
+        let flagKey = scopedKey("ps.cleanup.legacy_inbox.v1")
+        guard !defaults.bool(forKey: flagKey) else { return }
+        defaults.removeObject(forKey: scopedKey("ps.inbox"))
+        defaults.set(true, forKey: flagKey)
     }
 
     // MARK: - Date key
@@ -127,37 +136,6 @@ final class AppStore: ObservableObject {
     func removeTimeEntry(at offsets: IndexSet) {
         timeEntries.remove(atOffsets: offsets)
         saveTimeForDate()
-    }
-
-    // MARK: - Inbox
-    @discardableResult
-    func addInbox(title: String, detail: String, kind: String = "Idea", status: String = "待整理", extra: [String: String] = [:]) -> UUID? {
-        guard !title.isEmpty else { return nil }
-        let entry = InboxNote(title: title, detail: detail, kind: kind, status: status, extra: extra)
-        inbox.insert(entry, at: 0)
-        saveInbox()
-        return entry.id
-    }
-
-    func updateInbox(id: UUID, title: String, detail: String, kind: String, status: String, extra: [String: String] = [:]) {
-        guard let idx = inbox.firstIndex(where: { $0.id == id }) else { return }
-        inbox[idx].title = title
-        inbox[idx].detail = detail
-        inbox[idx].kind = kind
-        inbox[idx].status = status
-        inbox[idx].extra = extra
-        saveInbox()
-    }
-
-    func markInboxDone(id: UUID) {
-        guard let idx = inbox.firstIndex(where: { $0.id == id }) else { return }
-        inbox[idx].status = "已整理"
-        saveInbox()
-    }
-
-    func removeInbox(at offsets: IndexSet) {
-        inbox.remove(atOffsets: offsets)
-        saveInbox()
     }
 
     // MARK: - Task entries
@@ -545,18 +523,9 @@ final class AppStore: ObservableObject {
                 turn.payload["committedTaskID"] = taskID.uuidString
             }
 
-        default: // inbox
-            let title = turn.payload["title"] ?? summarizeTurnTitle(turn.rawText)
-            let inboxID = addInbox(
-                title: title,
-                detail: turn.payload["detail"] ?? turn.rawText,
-                kind: turn.recognizedType,
-                status: turn.payload["status"] ?? "待处理",
-                extra: [:]
-            )
-            if let inboxID {
-                turn.payload["committedInboxID"] = inboxID.uuidString
-            }
+        default: // note bucket（想法/感受/感恩/做梦）
+            // turn 自身就是数据载体，不再写镜像 InboxNote
+            break
         }
 
         turn.status = "committed"
@@ -616,9 +585,8 @@ final class AppStore: ObservableObject {
             tasks.removeAll { $0.id == id }
             saveTasks()
         default:
-            guard let rawID = turn.payload["committedInboxID"], let id = UUID(uuidString: rawID) else { return }
-            inbox.removeAll { $0.id == id }
-            saveInbox()
+            // note bucket：turn 自身即数据载体，回滚不需要联动其他存储
+            break
         }
     }
 
@@ -685,22 +653,6 @@ final class AppStore: ObservableObject {
         var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
         map[selectedDateKey] = timeEntries.map { ["id": $0.id.uuidString, "name": $0.name, "start": $0.start, "end": $0.end, "category": $0.category, "extra": encodeExtra($0.extra)] }
         defaults.set(map, forKey: keyTime)
-    }
-
-    private func loadInbox() {
-        let arr = defaults.array(forKey: keyInbox) as? [[String: String]] ?? []
-        inbox = arr.map {
-            let id = UUID(uuidString: $0["id"] ?? "") ?? UUID()
-            return InboxNote(id: id, title: $0["title"] ?? "", detail: $0["detail"] ?? "", kind: $0["kind"] ?? "Idea", status: $0["status"] ?? "待整理", extra: decodeExtra($0["extra"]))
-        }
-        if inbox.isEmpty {
-            inbox = [.init(title: "把录入流程缩短到2步", detail: "先收集后整理", kind: "Idea", status: "待整理")]
-        }
-    }
-
-    private func saveInbox() {
-        let arr = inbox.map { ["id": $0.id.uuidString, "title": $0.title, "detail": $0.detail, "kind": $0.kind, "status": $0.status, "extra": encodeExtra($0.extra)] }
-        defaults.set(arr, forKey: keyInbox)
     }
 
     private func loadTasks() {
@@ -792,19 +744,9 @@ final class AppStore: ObservableObject {
 
     // 当前阶段：字段配置锁定为 Notion 结构，不开放自定义
     var timeFieldNames: [String] { ["一句话描述", "开始时间", "结束时间", "模块分类", "备注"] }
-    var inboxFieldNames: [String] { ["标题", "详情", "类型", "状态", "心情评估", "感受词"] }
-    var reviewFieldNames: [String] { ["本期复盘", "本期总结", "下期展望"] }
-
     var timeFieldTypes: [String] { ["text", "time", "time", "select", "text"] }
-    var inboxFieldTypes: [String] { ["text", "text", "select", "select", "number", "text"] }
     var timeFieldOptions: [String: [String]] {
         ["模块分类": ["睡觉", "社交", "运动", "其他", "娱乐", "工作", "学习"]]
-    }
-    var inboxFieldOptions: [String: [String]] {
-        [
-            "类型": ["Idea", "Todo", "Emotion", "Decision", "Question", "Reference"],
-            "状态": ["待整理", "已整理"]
-        ]
     }
 
     func reloadFieldConfig() {
@@ -812,48 +754,11 @@ final class AppStore: ObservableObject {
         objectWillChange.send()
     }
 
-    var totalFocusMinutes: Int {
-        timeEntries.reduce(0) { $0 + minutesBetween(start: $1.start, end: $1.end) }
-    }
-
-    var totalFocusText: String {
-        let h = totalFocusMinutes / 60
-        let m = totalFocusMinutes % 60
-        return "\(h)h\(m)m"
-    }
-
-    var weekDoneRateText: String {
-        let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
-        let keys = recentDateKeys(days: 7)
-        var done = 0, total = 0
-        for k in keys {
-            let day = map[k] ?? [:]
-            total += currentCheckTitles().count
-            done += day.values.filter { $0 }.count
-        }
-        guard total > 0 else { return "0%" }
-        return "\((done * 100) / total)%"
-    }
-
-    var weekFocusText: String {
-        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
-        let keys = recentDateKeys(days: 7)
-        let total = keys.flatMap { map[$0] ?? [] }.reduce(0) { sum, e in
-            sum + minutesBetween(start: e["start"] ?? "", end: e["end"] ?? "")
-        }
-        return "\(total / 60)h\(total % 60)m"
-    }
-
-    var weekInboxCountText: String {
-        "\(inbox.count)"
-    }
-
     var exportJSONString: String {
         let payload: [String: Any] = [
             "selectedDate": selectedDateKey,
             "checkItems": checkItems.map { ["title": $0.title, "done": $0.done] },
             "timeEntries": timeEntries.map { ["name": $0.name, "start": $0.start, "end": $0.end, "category": $0.category, "extra": $0.extra] },
-            "inbox": inbox.map { ["title": $0.title, "detail": $0.detail, "status": $0.status, "kind": $0.kind, "extra": $0.extra] },
             "tasks": tasks.map { ["title": $0.title, "detail": $0.detail, "status": $0.status, "priority": $0.priority, "dueDate": $0.dueDate, "date": $0.date] }
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]),
@@ -865,9 +770,6 @@ final class AppStore: ObservableObject {
         var lines: [String] = ["type,date,name_or_title,start,end,category,status,detail"]
         for t in timeEntries {
             lines.append("time,\(selectedDateKey),\(escapeCSV(t.name)),\(escapeCSV(t.start)),\(escapeCSV(t.end)),\(escapeCSV(t.category)),, ")
-        }
-        for n in inbox {
-            lines.append("inbox,\(selectedDateKey),\(escapeCSV(n.title)),,,,\(escapeCSV(n.status)),\(escapeCSV(n.detail))")
         }
         for t in tasks {
             lines.append("task,\(escapeCSV(t.date)),\(escapeCSV(t.title)),,,,\(escapeCSV(t.status)),\(escapeCSV(t.detail))")
@@ -882,7 +784,6 @@ final class AppStore: ObservableObject {
         guard !rows.isEmpty else { return "CSV 内容为空" }
 
         var timeMap = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
-        var inboxArr = defaults.array(forKey: keyInbox) as? [[String: String]] ?? []
         var taskArr = defaults.array(forKey: keyTasks) as? [[String: String]] ?? []
 
         var importedCount = 0
@@ -916,18 +817,6 @@ final class AppStore: ObservableObject {
                 timeMap[date] = day
                 importedCount += 1
 
-            case "inbox":
-                guard !nameOrTitle.isEmpty else { continue }
-                let item: [String: String] = [
-                    "title": nameOrTitle,
-                    "detail": detail,
-                    "kind": category.isEmpty ? "Idea" : category,
-                    "status": status.isEmpty ? "待整理" : status,
-                    "extra": "{}"
-                ]
-                inboxArr.insert(item, at: 0)
-                importedCount += 1
-
             case "task":
                 guard !nameOrTitle.isEmpty else { continue }
                 let item: [String: String] = [
@@ -949,22 +838,12 @@ final class AppStore: ObservableObject {
         if importedCount == 0 { return "未识别到可导入记录，请检查 CSV 列格式" }
 
         defaults.set(timeMap, forKey: keyTime)
-        defaults.set(inboxArr, forKey: keyInbox)
         defaults.set(taskArr, forKey: keyTasks)
 
         loadForSelectedDate()
-        loadInbox()
         loadTasks()
         objectWillChange.send()
         return nil
-    }
-
-    private func minutesBetween(start: String, end: String) -> Int {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        guard let s = f.date(from: start), let e = f.date(from: end) else { return 0 }
-        let mins = Int(e.timeIntervalSince(s) / 60)
-        return max(mins, 0)
     }
 
     private func validateTimeInput(name: String, start: String, end: String) -> String? {
@@ -1056,12 +935,6 @@ final class AppStore: ObservableObject {
         entries.map { "\($0.title)|\($0.tag)" }.joined(separator: ",")
     }
 
-    private func parseFields(key: String, fallback: [String]) -> [String] {
-        let raw = defaults.string(forKey: key) ?? fallback.joined(separator: ",")
-        let arr = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        return arr.isEmpty ? fallback : arr
-    }
-
     private func escapeCSV(_ s: String) -> String {
         let escaped = s.replacingOccurrences(of: "\"", with: "\"\"")
         return "\"\(escaped)\""
@@ -1116,29 +989,6 @@ final class AppStore: ObservableObject {
         if clean.isEmpty { return "未命名记录" }
         if clean.count <= 20 { return clean }
         return String(clean.prefix(20)) + "…"
-    }
-
-    private func parseOptionMap(key: String) -> [String: [String]] {
-        // 格式：字段名:选项1|选项2;字段名2:选项A|选项B
-        let raw = defaults.string(forKey: key) ?? ""
-        if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return [:] }
-        var map: [String: [String]] = [:]
-        for pair in raw.split(separator: ";") {
-            let parts = pair.split(separator: ":", maxSplits: 1)
-            guard parts.count == 2 else { continue }
-            let k = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            let vals = parts[1].split(separator: "|").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-            if !k.isEmpty, !vals.isEmpty { map[k] = vals }
-        }
-        return map
-    }
-
-    private func recentDateKeys(days: Int) -> [String] {
-        let cal = Calendar.current
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return (0..<days).compactMap { d in
-            cal.date(byAdding: .day, value: -d, to: Date()).map { f.string(from: $0) }
-        }
     }
 
     private func currentDateKey() -> String {
