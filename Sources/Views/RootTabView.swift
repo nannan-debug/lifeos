@@ -56,7 +56,6 @@ struct RootTabView: View {
         let pairs: [(String, String)] = [
             ("ps.checks.byDate", "ps.checks.byDate.\(uid)"),
             ("ps.time.byDate",   "ps.time.byDate.\(uid)"),
-            ("ps.inbox",         "ps.inbox.\(uid)"),
             ("ps.tasks",         "ps.tasks.\(uid)"),
             ("ps.turns",         "ps.turns.\(uid)")
         ]

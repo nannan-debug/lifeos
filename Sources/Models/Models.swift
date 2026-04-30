@@ -16,15 +16,6 @@ struct TimeEntry: Identifiable {
     var extra: [String: String] = [:]
 }
 
-struct InboxNote: Identifiable {
-    var id: UUID = UUID()
-    var title: String
-    var detail: String
-    var kind: String
-    var status: String
-    var extra: [String: String] = [:]
-}
-
 struct TaskEntry: Identifiable {
     var id: UUID = UUID()
     var title: String
