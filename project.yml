@@ -19,8 +19,8 @@ targets:
     info:
       path: Sources/App/Info.plist
       properties:
-        CFBundleShortVersionString: 1.1.0
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: 1.2.0
+        CFBundleVersion: "4"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen:
           UIColorName: LaunchBackground
@@ -37,8 +37,8 @@ targets:
     settings:
       base:
         PRODUCT_NAME: PersonalSystem
-        MARKETING_VERSION: 1.1.0
-        CURRENT_PROJECT_VERSION: 3
+        MARKETING_VERSION: 1.2.0
+        CURRENT_PROJECT_VERSION: 4
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "355RQ5S3DW"
 

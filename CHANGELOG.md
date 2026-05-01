@@ -11,7 +11,13 @@
 
 ## [Unreleased]
 
-> 灵感与反思模块 V1 已合 main，等待 bump 到 `1.2.0` 上架。设计沉淀见 [`docs/archived-features/v1-inspiration-reflection.md`](docs/archived-features/v1-inspiration-reflection.md)。
+（暂无）
+
+---
+
+## [1.2.0] (build 4) — 2026-05-01
+
+灵感与反思模块 V1。设计沉淀见 [`docs/archived-features/v1-inspiration-reflection.md`](docs/archived-features/v1-inspiration-reflection.md)。
 
 ### 新增
 - 新增第 5 个 Tab「复盘」：进入是 Hub 仪表盘，包含「Review」「第二大脑」两张卡片（[#15](https://github.com/nannan-debug/lifeos/pull/15)）
