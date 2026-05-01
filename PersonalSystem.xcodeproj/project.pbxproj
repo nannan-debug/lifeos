@@ -19,6 +19,7 @@
 		72FC952174878F7BFE036275 /* cat-lay.png in Resources */ = {isa = PBXBuildFile; fileRef = C9475D2A0A5BA75C93C54CCD /* cat-lay.png */; };
 		78835B088A90541F80888DFA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0D1FC9E60D5319B974898F99 /* Assets.xcassets */; };
 		788C8DBCBE451837609C4FA5 /* mascot-cat.pdf in Resources */ = {isa = PBXBuildFile; fileRef = BCD658611087149BE9126035 /* mascot-cat.pdf */; };
+		7E5752949C7D7F2ED2126343 /* TodoEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0601F16A417B711B5E5DA4FE /* TodoEditorSheet.swift */; };
 		804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEF70D944E0A492D3712B2F /* Models.swift */; };
 		872CB671FC91EAC997FFBCAB /* cat-lying.png in Resources */ = {isa = PBXBuildFile; fileRef = D3B2AC351391A95EB5626845 /* cat-lying.png */; };
 		8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */; };
@@ -41,6 +42,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0601F16A417B711B5E5DA4FE /* TodoEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoEditorSheet.swift; sourceTree = "<group>"; };
 		0C3838D574A4224A4001BCEB /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		0D1FC9E60D5319B974898F99 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A74F453355CC52805ED86CD /* mascot-cat.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mascot-cat.png"; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 				4740978737F177B45D684422 /* SettingsView.swift */,
 				C06AA9437C4C92DB191C4D7F /* TimeView.swift */,
 				36385E1762B561F298163F27 /* TodayView.swift */,
+				0601F16A417B711B5E5DA4FE /* TodoEditorSheet.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -271,6 +274,7 @@
 				EECA22D6609959135391624F /* SettingsView.swift in Sources */,
 				19D3943266C325922D29C221 /* TimeView.swift in Sources */,
 				ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */,
+				7E5752949C7D7F2ED2126343 /* TodoEditorSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

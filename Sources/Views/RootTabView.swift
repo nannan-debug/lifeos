@@ -74,10 +74,8 @@ struct QuickCaptureView: View {
     @State private var editingTurnID: UUID?
     @State private var editingText = ""
     @State private var editingType = "想法"
-    @State private var editingBucket = "inbox"
     @State private var previewDate = Date()
     @State private var previewFilter = "全部"
-    @State private var reviewFilter = "全部"   // 全部 / 待处理 / 已处理 / 划掉
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var displayMonth = Date()
@@ -92,8 +90,6 @@ struct QuickCaptureView: View {
     // 注：AI 输入框已全局化到 RootTabView，loading/debug 状态现在在 AppStore
 
     private let intentOptions = ["想法", "感受", "感恩", "做梦"]
-    private let reviewOptions = ["全部", "待处理", "已处理", "划掉"]
-    @State private var viewMode = "day"  // "day" or "week"
 
     private let moodLevels: [(score: Int, emoji: String, label: String)] = [
         (1, "😣", "非常不愉快"),
@@ -106,7 +102,6 @@ struct QuickCaptureView: View {
     private let positiveFeelings = ["感恩", "平静", "满足", "兴奋", "自信", "被爱", "有动力", "好奇", "放松", "成就感"]
     private let negativeFeelings = ["焦虑", "烦躁", "无力", "愤怒", "孤独", "内疚", "自责", "迷茫", "压抑", "疲惫"]
     private let calendar = Calendar.current
-    private let weekSymbols = ["日", "一", "二", "三", "四", "五", "六"]
 
     private var turnsForPreview: [ConversationTurn] {
         var result = store.turns.filter {
@@ -122,55 +117,10 @@ struct QuickCaptureView: View {
         return result
     }
 
-    private var weekRange: (start: Date, end: Date) {
-        let cal = Calendar.current
-        let weekday = cal.component(.weekday, from: previewDate)
-        let daysFromMonday = (weekday + 5) % 7
-        let monday = cal.date(byAdding: .day, value: -daysFromMonday, to: previewDate)!
-        let sunday = cal.date(byAdding: .day, value: 6, to: monday)!
-        return (cal.startOfDay(for: monday), cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: sunday))!)
-    }
-
-    private var weekNumber: Int {
-        Calendar.current.component(.weekOfYear, from: previewDate)
-    }
-
-    private var turnsForWeek: [ConversationTurn] {
-        let range = weekRange
-        var result = store.turns.filter { $0.createdAt >= range.start && $0.createdAt < range.end }
-        // 时间记录不在随记展示，直接去时间页面查看
-        result = result.filter { $0.targetBucket != "time" }
-        if previewFilter != "全部" {
-            result = result.filter { $0.recognizedType == previewFilter }
-        }
-        return result
-    }
-
-    private var weekGroupedByType: [(type: String, turns: [ConversationTurn])] {
-        let all = turnsForWeek
-        var groups: [(type: String, turns: [ConversationTurn])] = []
-        for type in intentOptions {
-            let matched = all.filter { $0.recognizedType == type }
-            if !matched.isEmpty {
-                groups.append((type: type, turns: matched))
-            }
-        }
-        let knownTypes = Set(intentOptions)
-        let others = all.filter { !knownTypes.contains($0.recognizedType) }
-        if !others.isEmpty {
-            groups.append((type: "其他", turns: others))
-        }
-        return groups
-    }
-
     var body: some View {
         NavigationStack {
             List {
-                if viewMode == "week" {
-                    weekViewContent
-                } else {
-                    dayViewContent
-                }
+                dayViewContent
             }
             .toolbar(.hidden, for: .navigationBar)
             .listStyle(.insetGrouped)
@@ -441,242 +391,12 @@ struct QuickCaptureView: View {
         }
     }
 
-    // MARK: - Week View
-    @ViewBuilder
-    private var weekViewContent: some View {
-        let range = weekRange
-        let df = DateFormatter()
-
-        Section {
-            // 周信息头
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("第 \(weekNumber) 周")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(CreamTheme.green)
-                    Text(weekRangeText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                // Review 状态筛选（只在周视图出现）
-                Menu {
-                    ForEach(reviewOptions, id: \.self) { opt in
-                        Button {
-                            reviewFilter = opt
-                        } label: {
-                            if reviewFilter == opt {
-                                Label(opt, systemImage: "checkmark")
-                            } else {
-                                Text(opt)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .font(.caption2)
-                        Text(reviewFilter)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color(red: 0.96, green: 0.96, blue: 0.96))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-
-                Text("\(turnsForWeekFiltered.count) 条")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color(red: 0.96, green: 0.96, blue: 0.96))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-        }
-
-        if weekGroupedByTypeFiltered.isEmpty {
-            Section {
-                Text("这一周还没有记录")
-                    .foregroundStyle(.secondary)
-            }
-        }
-
-        ForEach(weekGroupedByTypeFiltered, id: \.type) { group in
-            Section {
-                // 分类头
-                HStack(spacing: 6) {
-                    Image(systemName: iconForType(group.type))
-                        .font(.caption)
-                        .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .background(colorForType(group.type))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    Text(group.type)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(colorForType(group.type))
-                    Spacer()
-                    Text("\(group.turns.count)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(colorForType(group.type).opacity(0.6))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(bgColorForType(group.type))
-                        .clipShape(Capsule())
-                }
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-
-                ForEach(group.turns) { turn in
-                    weekTurnCard(turn)
-                }
-            }
-        }
-    }
-
-    private var turnsForWeekFiltered: [ConversationTurn] {
-        var result = turnsForWeek
-        if reviewFilter != "全部" {
-            let status: String
-            switch reviewFilter {
-            case "待处理": status = "pending"
-            case "已处理": status = "archived"
-            case "划掉": status = "dismissed"
-            default: status = ""
-            }
-            if !status.isEmpty {
-                result = result.filter { $0.reviewStatus == status }
-            }
-        }
-        return result
-    }
-
-    private var weekGroupedByTypeFiltered: [(type: String, turns: [ConversationTurn])] {
-        let all = turnsForWeekFiltered
-        var groups: [(type: String, turns: [ConversationTurn])] = []
-        for type in intentOptions {
-            let matched = all.filter { $0.recognizedType == type }
-            if !matched.isEmpty {
-                groups.append((type: type, turns: matched))
-            }
-        }
-        let knownTypes = Set(intentOptions)
-        let others = all.filter { !knownTypes.contains($0.recognizedType) }
-        if !others.isEmpty {
-            groups.append((type: "其他", turns: others))
-        }
-        return groups
-    }
-
-    private var weekRangeText: String {
-        let range = weekRange
-        let df = DateFormatter()
-        df.dateFormat = "M/d"
-        return "\(df.string(from: range.start)) – \(df.string(from: Calendar.current.date(byAdding: .day, value: -1, to: range.end)!))"
-    }
-
-    private func weekTurnCard(_ turn: ConversationTurn) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                // 日期 + 时间（周视图需要显示是哪天的）
-                Text(weekDayLabel(turn.createdAt))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(colorForType(turn.recognizedType))
-                Text(turn.createdAt, style: .time)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                reviewStatusIcon(turn.reviewStatus)
-                if turn.moodScore != nil, let level = moodLevels.first(where: { $0.score == turn.moodScore }) {
-                    Text(level.emoji)
-                        .font(.system(size: 12))
-                }
-            }
-
-            Text(displayText(for: turn))
-                .font(.subheadline)
-                .lineLimit(3)
-
-            if !turn.feelingTags.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(turn.feelingTags, id: \.self) { tag in
-                        Text(tag)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(colorForType(turn.recognizedType).opacity(0.7))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(bgColorForType(turn.recognizedType))
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
-        .opacity(turn.reviewStatus == "dismissed" ? 0.4 : 1.0)
-        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button {
-                store.updateTurnReviewStatus(id: turn.id, reviewStatus: "archived")
-            } label: {
-                Label("已处理", systemImage: "checkmark.circle")
-            }
-            .tint(CreamTheme.green)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button {
-                store.updateTurnReviewStatus(id: turn.id, reviewStatus: "dismissed")
-            } label: {
-                Label("划掉", systemImage: "xmark.circle")
-            }
-            .tint(.gray)
-        }
-        .contextMenu {
-            Button { beginEdit(turn) } label: { Label("编辑", systemImage: "pencil") }
-            Divider()
-            Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "pending") } label: { Label("待处理", systemImage: "tray") }
-            Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "archived") } label: { Label("已处理", systemImage: "checkmark.circle") }
-            Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "dismissed") } label: { Label("划掉", systemImage: "xmark.circle") }
-        }
-    }
-
-    private func weekDayLabel(_ date: Date) -> String {
-        let cal = Calendar.current
-        let weekday = cal.component(.weekday, from: date)
-        let symbols = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-        let df = DateFormatter()
-        df.dateFormat = "d日"
-        return "\(df.string(from: date)) \(symbols[weekday - 1])"
-    }
-
     private var topFilterBar: some View {
         VStack(spacing: 10) {
-            // 第一行：标题 + 日/周切换 + 日期
+            // 第一行：标题 + 日期
             HStack(spacing: 10) {
                 Text("随手记")
                     .font(.headline.weight(.semibold))
-
-                // 日/周 toggle
-                HStack(spacing: 0) {
-                    ForEach(["day", "week"], id: \.self) { mode in
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { viewMode = mode }
-                        } label: {
-                            Text(mode == "day" ? "日" : "周")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(viewMode == mode ? .white : .secondary)
-                                .frame(width: 32, height: 26)
-                                .background(viewMode == mode ? CreamTheme.green : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 7))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(2)
-                .background(Color(red: 0.94, green: 0.94, blue: 0.94))
-                .clipShape(RoundedRectangle(cornerRadius: 9))
 
                 Spacer()
 
@@ -685,7 +405,7 @@ struct QuickCaptureView: View {
                     showCalendarOverlay.toggle()
                 } label: {
                     HStack(spacing: 6) {
-                        Text(viewMode == "week" ? "第\(weekNumber)周" : dateTitle(previewDate))
+                        Text(dateTitle(previewDate))
                             .font(.subheadline.weight(.semibold))
                         Image(systemName: showCalendarOverlay ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.semibold))
@@ -754,36 +474,6 @@ struct QuickCaptureView: View {
         .buttonStyle(.plain)
     }
 
-    private func reviewFilterChip(_ label: String) -> some View {
-        let isSelected = reviewFilter == label
-        let icon: String
-        let chipColor: Color
-        switch label {
-        case "待处理": icon = "tray"; chipColor = .orange
-        case "已处理": icon = "checkmark.circle"; chipColor = CreamTheme.green
-        case "划掉": icon = "xmark.circle"; chipColor = .gray
-        default: icon = "tray.full"; chipColor = .secondary
-        }
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                reviewFilter = label
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 9, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .foregroundStyle(isSelected ? chipColor : .secondary.opacity(0.5))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(isSelected ? chipColor.opacity(0.10) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-    }
-
     private var quickCaptureCalendarOverlay: some View {
         CreamCalendarOverlay(
             selectedDate: $previewDate,
@@ -794,10 +484,6 @@ struct QuickCaptureView: View {
                 return hasTurns ? .dot(CreamTheme.green) : .none
             }
         )
-    }
-
-    private func changeMonth(by value: Int) {
-        displayMonth = calendar.date(byAdding: .month, value: value, to: displayMonth) ?? displayMonth
     }
 
     private func startOfMonth(for date: Date) -> Date {
@@ -972,28 +658,9 @@ struct QuickCaptureView: View {
         }
     }
 
-    private func turnCardColor(for status: String) -> Color {
-        switch status {
-        case "needs_fix":
-            return Color.orange.opacity(0.12)
-        default:
-            return Color.white.opacity(0.9)
-        }
-    }
-
-    private func turnCardBorderColor(for status: String) -> Color {
-        switch status {
-        case "needs_fix":
-            return Color.orange.opacity(0.35)
-        default:
-            return Color.black.opacity(0.08)
-        }
-    }
-
     private func beginEdit(_ turn: ConversationTurn) {
         editingTurnID = turn.id
         editingType = intentOptions.contains(turn.recognizedType) ? turn.recognizedType : "想法"
-        editingBucket = turn.targetBucket
         editingText = displayText(for: turn)
     }
 
