@@ -2,10 +2,184 @@ import XCTest
 @testable import PersonalSystem
 
 final class PersonalSystemSmokeTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        // 每个 test 开跑前清掉当前用户名下的所有 store 数据，保证测试之间独立
+        AppStore().wipeCurrentUserData()
+    }
+
+    // MARK: - Existing smoke
+
     func testAppStoreInitialStateLoads() {
         let store = AppStore()
 
         XCTAssertNotNil(store.selectedDate)
         XCTAssertGreaterThanOrEqual(store.checkItems.count, 0)
+    }
+
+    // MARK: - Codable roundtrip
+
+    func testBrainCardCodableRoundtrip() throws {
+        let now = Date()
+        let card = BrainCard(
+            id: UUID(),
+            title: "命名要简单",
+            content: "用最直接的词，别用拉丁化代号",
+            topics: ["#命名", "#设计原则"],
+            sources: [BrainCardSource(noteId: UUID(), excerpt: "想到一句话")],
+            links: [UUID()],
+            createdAt: now,
+            updatedAt: now
+        )
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .secondsSince1970
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .secondsSince1970
+        let data = try encoder.encode(card)
+        let decoded = try decoder.decode(BrainCard.self, from: data)
+        XCTAssertEqual(decoded.title, card.title)
+        XCTAssertEqual(decoded.topics, card.topics)
+        XCTAssertEqual(decoded.sources.count, 1)
+        XCTAssertEqual(decoded.sources[0].excerpt, "想到一句话")
+        XCTAssertEqual(decoded.links.count, 1)
+    }
+
+    // MARK: - Backwards compat for new fields
+
+    func testConversationTurnDerivativesDefaultsToEmpty() {
+        // 老调用点不会传 derivatives 参数（默认值生效）
+        let turn = ConversationTurn(
+            id: UUID(),
+            createdAt: Date(),
+            rawText: "test",
+            recognizedType: "想法",
+            targetBucket: "inbox",
+            confidence: 1.0,
+            status: "committed",
+            payload: [:],
+            fixHint: "",
+            moodScore: nil,
+            feelingTags: [],
+            reviewStatus: "pending"
+        )
+        XCTAssertEqual(turn.derivatives.count, 0)
+    }
+
+    func testTaskEntryNewFieldsDefaultToNilEmpty() {
+        let task = TaskEntry(
+            title: "test",
+            detail: "",
+            status: "待办",
+            priority: "",
+            dueDate: "",
+            date: "2026-05-01"
+        )
+        XCTAssertNil(task.sourceNoteId)
+        XCTAssertEqual(task.sourceExcerpt, "")
+    }
+
+    // MARK: - Brain card store API
+
+    func testAddAndRemoveBrainCard() {
+        let store = AppStore()
+        XCTAssertEqual(store.brainCards.count, 0)
+        let aId = store.addBrain(title: "A", content: "content A", topics: ["#x"], sources: [])
+        XCTAssertNotNil(aId)
+        XCTAssertEqual(store.brainCards.count, 1)
+        store.removeBrain(id: aId!)
+        XCTAssertEqual(store.brainCards.count, 0)
+    }
+
+    func testAddBrainRejectsEmptyTitle() {
+        let store = AppStore()
+        XCTAssertNil(store.addBrain(title: "  ", content: "x", topics: [], sources: []))
+        XCTAssertEqual(store.brainCards.count, 0)
+    }
+
+    func testLinkBrainCardsBidirectionalAndIdempotent() {
+        let store = AppStore()
+        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
+        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
+        store.linkBrainCards(aId, bId)
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [bId])
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [aId])
+        // 二次调应为 idempotent
+        store.linkBrainCards(aId, bId)
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links.count, 1)
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links.count, 1)
+    }
+
+    func testLinkBrainCardsRejectsSelfLink() {
+        let store = AppStore()
+        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
+        store.linkBrainCards(aId, aId)
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [])
+    }
+
+    func testUnlinkBrainCardsBidirectional() {
+        let store = AppStore()
+        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
+        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
+        store.linkBrainCards(aId, bId)
+        store.unlinkBrainCards(aId, bId)
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [])
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
+    }
+
+    func testBacklinksLookup() {
+        let store = AppStore()
+        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
+        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
+        store.linkBrainCards(aId, bId)
+        XCTAssertEqual(store.backlinks(for: bId).map { $0.id }, [aId])
+        XCTAssertEqual(store.backlinks(for: aId).map { $0.id }, [bId])
+    }
+
+    func testRemoveBrainCleansBacklinks() {
+        let store = AppStore()
+        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
+        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
+        store.linkBrainCards(aId, bId)
+        store.removeBrain(id: aId)
+        XCTAssertFalse(store.brainCards.contains { $0.id == aId })
+        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
+    }
+
+    // MARK: - Turn derivatives store API
+
+    func testAppendTurnDerivative() {
+        let store = AppStore()
+        guard let turnId = store.addTurnDraft(
+            rawText: "明天要写 PRD",
+            recognizedType: "想法",
+            targetBucket: "inbox",
+            confidence: 1.0,
+            payload: [:]
+        ) else { return XCTFail("addTurnDraft failed") }
+        let derivative = TurnDerivative(type: "todo", targetId: UUID(), createdAt: Date())
+        store.appendTurnDerivative(turnId: turnId, derivative: derivative)
+        let turn = store.turns.first(where: { $0.id == turnId })
+        XCTAssertEqual(turn?.derivatives.count, 1)
+        XCTAssertEqual(turn?.derivatives.first?.type, "todo")
+    }
+
+    func testTurnDerivativesPersistAcrossReload() {
+        let store = AppStore()
+        let turnId = store.addTurnDraft(
+            rawText: "test",
+            recognizedType: "想法",
+            targetBucket: "inbox",
+            confidence: 1.0,
+            payload: [:]
+        )!
+        let targetId = UUID()
+        store.appendTurnDerivative(turnId: turnId, derivative: TurnDerivative(type: "brain", targetId: targetId, createdAt: Date()))
+
+        // 重启 app 模拟：新建一个 AppStore 重新 loadTurns
+        let store2 = AppStore()
+        let reloadedTurn = store2.turns.first(where: { $0.id == turnId })
+        XCTAssertNotNil(reloadedTurn)
+        XCTAssertEqual(reloadedTurn?.derivatives.count, 1)
+        XCTAssertEqual(reloadedTurn?.derivatives.first?.type, "brain")
+        XCTAssertEqual(reloadedTurn?.derivatives.first?.targetId, targetId)
     }
 }
