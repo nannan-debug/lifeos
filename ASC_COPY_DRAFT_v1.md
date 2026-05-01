@@ -2,7 +2,8 @@
 
 > 用法：把每一栏直接复制到 ASC 对应输入框里。字符数都是 ASC 标准下数好的（中文 1 字 = 1 字符）。
 > 调性原则：温柔、不审判、不焦虑营销、不堆功能名词。
-> 最后更新：2026-04-26
+> 最后更新：2026-05-01（1.2.0 发版同步：定位拓宽，去掉对外文案的 ADHD 字眼；
+> 关键词字段保留 ADHD 作为 ASO 入口）
 
 ---
 
@@ -18,15 +19,15 @@ LifeOS
 
 ## 2. Subtitle（副标题，**最多 30 字符**，会显示在 App 名下）
 
-三个方向，选一个，或拼一拼：
+```
+观察生活，不优化生活
+```
 
-| 方向 | 文案 | 字符数 | 适用场景 |
-|---|---|---|---|
-| **强定位**（推荐） | `为 ADHD 设计 · 温柔的人生观察` | 17 | 直接喊出目标人群，搜 "ADHD" 一进来就认 |
-| 强卖点 | `说一句话，AI 帮你温柔归位` | 14 | 突出 AI 输入这个差异化 |
-| 强情感 | `温柔看见自己，慢慢就好` | 12 | 适合做品牌但拉新弱 |
+字符数：10 / 30 ✅
 
-**我推荐第一个。** ADHD 关键词同时进了 Subtitle 和 Keywords，对 ASO 是双重加分。
+> 直接对标"自我优化"市场（番茄钟 / habit tracker / 5AM Club 那挂），
+> 把 LifeOS 的反主流哲学摆出来。1.2.0 起从「为 ADHD 设计」改到这一句，
+> 定位拓宽到任何"被自我优化文化压垮的人"，ADHD 流量改由 Keywords 字段承接。
 
 ---
 
@@ -35,12 +36,12 @@ LifeOS
 显示在 Description 上方第一屏，最显眼的位置。建议放"现在的状态 / 想强调的东西"，**而不是产品介绍**（那是 Description 的活）。
 
 ```
-不是又一个待办 app。LifeOS 是为 ADHD 人群做的「人生脚手架」——说一句话，AI 帮你把今天的打卡、待办、时间块、心情温柔归位。可以漏，可以断，系统永远在等你回来。
+1.2 上线：新增「复盘」Tab，可以慢慢回看最近的想法和感受，沉淀成属于自己的卡片墙。说一句话，AI 帮你把今天温柔归位。可以漏，可以断，系统永远在等你回来。
 ```
 
-字符数：约 88 字 ✅（远低于 170）
+字符数：约 86 字 ✅（远低于 170）
 
-> 这条上架后随时能改，不算"宣发文案"也行。比如 1.1 加了暗色模式，可以改成"1.1 上线啦：暗色模式 + ⌘ 复盘 Tab 雏形"
+> 这条上架后随时能改，不用重审。版本之间换内容跟得上节奏。
 
 ---
 
@@ -49,23 +50,24 @@ LifeOS
 下面这一整块直接复制：
 
 ```
-LifeOS 不是又一个生产力 app。
+LifeOS 是一个温柔人生系统。你可以用一句话快速记下待办、时间安排和随手想法，也可以交给 AI 帮你自动拆解归类。
 
-它是为 ADHD（以及任何被"先选分类再填字段"压垮的人）设计的「人生观察系统」——把记录这件事压到最低摩擦：说一句话，AI 自动帮你归位到今天该去的地方。
+它不强调打卡羞耻，不制造压力，而是帮助你看见今天、整理混乱、慢慢建立属于自己的节奏。你可以记录、回看、导出，也可以在失败的时候重新开始。
 
-方法论底层借用了 DBT（辩证行为疗法）的核心理念：先观察，再调节。先看清自己，行动自然发生。
+如果你经常脑子里同时有很多事、知道重要却很难动起来，LifeOS 想做一个更轻、更稳、更不审判你的外部脚手架。
 
-【4 个 Tab，温柔覆盖一天】
+【5 个 Tab，温柔覆盖一天】
 · 今日 — 打卡 + 待办，按你自己的标签分组
 · 时间 — 时间块记录，看见时间花到哪了
 · 随记 — 想法 / 感受 / 感恩 / 做梦，给情绪起个名字
+· 复盘 — Review 模式慢慢回看最近的想法和感受；可以沉淀成第二大脑卡片
 · 设置 — 导出 CSV、清空数据、修改昵称
 
 【全局 AI 输入】
 任何页面底部都浮着一个输入框。打一句「明早 9 点和妈视频，提前去花店」，它自己拆成待办 + 时间块。不想联网时，⚡按钮走纯本地解析，一字不外传。
 
-【ADHD 友好的硬承诺】
-· 没有连续打卡 streak（断一次就 delete 的是 ADHD）
+【对你的硬承诺】
+· 没有连续打卡 streak（断一次就 delete 的是大多数人）
 · 没有「你已经 X 天没打开了」这种通知
 · 没有完成率百分比 / 排名 / 跟上周对比
 · 任何输入都能空着提交
@@ -80,7 +82,7 @@ LifeOS 不是又一个生产力 app。
 温柔地照镜子，慢慢把自己看清楚。
 ```
 
-字符数：约 530 字 ✅
+字符数：约 590 字 ✅
 
 ---
 
@@ -98,7 +100,7 @@ ADHD,注意力,多动,觉察,DBT,心理咨询,待办,打卡,时间记录,日记,
 - **自我管理 / 冥想 / 心理健康** —— 周边相关词，扩大触达
 - **AI助手 / 番茄钟** —— 当下热词，加点曝光
 
-> Apple 会自动把 App Name + Subtitle 里的词与 Keywords **合并匹配**，所以 Subtitle 里已经有的「ADHD / 人生观察」其实可以从 Keywords 里抠出去省字符 —— 我留着 ADHD 是因为它太核心了，重一遍没坏处。
+> Apple 会自动把 App Name + Subtitle 里的词与 Keywords **合并匹配**。1.2.0 起 Subtitle 改成「观察生活，不优化生活」后，Subtitle 不再含 ADHD —— 因此 ADHD 必须留在 Keywords 字段里，否则 ADHD 用户搜不到我们。
 
 ---
 
@@ -116,7 +118,7 @@ ADHD,注意力,多动,觉察,DBT,心理咨询,待办,打卡,时间记录,日记,
 ```markdown
 # LifeOS · 帮助与支持
 
-LifeOS 是一个为 ADHD 人群设计的人生观察系统。
+LifeOS 是一个温柔人生系统 —— 帮你低摩擦记录今天，慢慢看见自己的节奏。
 如果你在使用中遇到任何问题、想反馈 bug 或新功能，欢迎随时联系。
 
 ## 联系方式
@@ -175,7 +177,7 @@ A：1.0 完全免费、无内购、无广告。未来即使加内购，原有功
 - Alcohol, Tobacco, or Drug Use: None
 - Mature/Suggestive Themes: None
 - Horror/Fear Themes: None
-- Medical/Treatment Information: **None**（重要 —— 虽然提到 ADHD/DBT，但 LifeOS 不诊断也不治疗，只是"记录工具"）
+- Medical/Treatment Information: **None**（重要 —— 关键词字段虽含 ADHD，但 LifeOS 不诊断也不治疗，只是"记录工具"）
 - Gambling: None
 - Unrestricted Web Access: None
 - User-Generated Content: **No**（用户笔记只存本地，不分享给其他用户）
@@ -263,9 +265,10 @@ it for fully local, offline parsing.
 Privacy Policy: https://nannan-debug.github.io/lifeos/privacy.html
 
 The app does not contain any medical, diagnostic, or treatment-related 
-features. Mentions of "ADHD" / "DBT" in marketing copy refer to the 
-target audience and methodology inspiration only — LifeOS is a personal 
-journaling tool, not a medical app.
+features. The keywords field includes mental-health-adjacent terms 
+(e.g., "ADHD", "DBT") to help users in those communities discover this 
+journaling tool — LifeOS is a personal journaling app, not a medical app, 
+and makes no clinical claims.
 
 Thank you for your review!
 ```
@@ -279,7 +282,26 @@ Thank you for your review!
 
 ---
 
-## 14. What's New in This Version（"更新内容"，首版可选填）
+## 14. What's New in This Version（"更新内容"，每个版本提审时填）
+
+### 1.2.0（当前）
+
+```
+新增「复盘」Tab：
+
+· Review 模式 — 把最近 7 天的想法和感受按时间倒序排成队列，
+  慢慢回看，左滑放下、右滑沉淀。不计时、不催、不审判。
+
+· 想法 → 待办 — 一个还没动手的想法，右滑直接变成待办，
+  原文片段会保留作为来源。
+
+· 第二大脑 — 处理过的想法和感受可以沉淀成卡片，按主题聚合；
+  卡片之间能双向关联，自动生成反向链接，慢慢长成你自己的思维网。
+
+随手记顶部的「日 / 周」切换换了个家，回看放在「复盘」Tab 里更顺。
+```
+
+### 1.0.0（首发，历史归档）
 
 ```
 1.0 ｜ LifeOS 第一次见面。
