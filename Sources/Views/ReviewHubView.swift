@@ -25,10 +25,14 @@ struct ReviewHubView: View {
                 }
 
                 Section {
-                    secondBrainPlaceholder
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
-                        .listRowSeparator(.hidden)
+                    NavigationLink {
+                        BrainCardWallView().environmentObject(store)
+                    } label: {
+                        secondBrainCard
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
+                    .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.insetGrouped)
@@ -82,37 +86,56 @@ struct ReviewHubView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - 第二大脑 卡片（PR 4 占位）
+    // MARK: - 第二大脑 卡片（PR 5 激活）
 
-    private var secondBrainPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var brainCount: Int { store.brainCards.count }
+    private var brainPreview: [BrainCard] {
+        Array(store.brainCards.sorted { $0.createdAt > $1.createdAt }.prefix(2))
+    }
+
+    private var secondBrainCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "brain.head.profile")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CreamTheme.green)
                 Text("第二大脑")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Spacer()
-                Text("即将上线")
+                Text("\(brainCount) 张")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(red: 0.96, green: 0.96, blue: 0.96))
-                    .clipShape(Capsule())
             }
-            Text("处理过的「想法 / 感受」可以沉淀成卡片，按主题聚合。")
-                .font(.caption)
-                .foregroundStyle(.secondary.opacity(0.85))
+
+            if brainPreview.isEmpty {
+                Text("处理过的「想法 / 感受」可以沉淀成卡片，按主题聚合。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary.opacity(0.85))
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(brainPreview) { card in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(CreamTheme.green.opacity(0.5))
+                                .frame(width: 4, height: 4)
+                            Text(card.title)
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
         }
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.6))
+                .fill(Color.white.opacity(0.95))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
     }
 }
