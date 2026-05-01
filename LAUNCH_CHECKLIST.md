@@ -1,24 +1,25 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-04-29
+> 最后更新：2026-05-01
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 1.1.0 已上架 App Store。** 🎉
+**LifeOS 1.2.0 (build 4) 正在 App Store 审核中。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
+- 🟡 `1.2.0 (build 4)` — 正在审核中（灵感与反思模块 V1 + 静态开屏 + 日历体验优化）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 / 1.1.0 均 Ready for Distribution
+- 🟡 App Store Connect 状态：1.2.0 审核中；1.1.0 Ready for Distribution
 
-当前阶段重心是"**持续迭代 + 版本更新**"：
+当前阶段重心是"**等待 1.2.0 审核 + 记录下个版本改动**"：
 
-1. 收集真实用户反馈（设置页有反馈邮箱入口）
-2. 做小步迭代（feat → MINOR bump，bugfix → PATCH bump）
-3. 每个版本走 §4 SOP：改 project.yml → Archive → ASC 审核 → 过审打 tag
+1. 不动 `project.yml` 版本号，不重新 Archive / Upload / Submit。
+2. 审核期间合入 `main` 的新改动统一记到 `CHANGELOG.md` 的 `[Unreleased]`。
+3. 1.2.0 过审后，再决定下个版本是 patch 还是 minor，并按 §4 SOP 发新版。
 
 **审核期间想做新功能怎么办？** 见 §4.8。
 
@@ -38,7 +39,8 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.1.0` (build 3) |
-| 当前开发分支版本 | `1.2.0` (build 4) — 已 bump，待 Anna 提审 |
+| 当前审核版本 | `1.2.0` (build 4) — App Store 审核中 |
+| 当前 main 状态 | 仍是 `1.2.0` (build 4)；审核期间已合入的下版本改动见 `CHANGELOG.md` `[Unreleased]` |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -231,7 +233,7 @@ EOF
 
 ### 4.8 审核期间想做新功能 / 修 bug 怎么办？
 
-**核心原则：审核期间不动 main 上的版本号、不重新 archive。** 让 1.1.0 安静过审。
+**核心原则：审核期间不动 main 上的版本号、不重新 archive。** 让当前提审版本安静过审。
 
 | 想做的事 | 做法 |
 |---|---|
@@ -239,7 +241,7 @@ EOF
 | 发现当前提审 build 有严重 bug | 在 ASC 点 **Remove This Version from Review**（撤回审核）→ 改代码 → bump build 到下一个数字（不必 bump marketing）→ 重新 archive 上传 → 重新 Submit |
 | 发现 metadata / 截图问题（非代码） | ASC 里改即可，**审核期间也能改大部分 metadata**，改完 Save 不影响排队。但 What's New 一旦提交就锁了，要改得撤审 |
 
-实际操作中，告诉 AI："审核中，我想加 X 功能"，AI 会从最新 main 拉 `feat/xxx` 分支让你正常开发。所有 PR 照常合 main，只是别动版本号。
+实际操作中，告诉 AI："审核中，我想加 X 功能"，AI 会从最新 main 拉 `feat/xxx` 分支让你正常开发。所有 PR 照常合 main，只是别动版本号；合入后 AI 应主动把用户可见变化写入 `CHANGELOG.md` `[Unreleased]`。
 
 > 📝 开新 AI session 时直接套用 [AI_HANDOFF.md](AI_HANDOFF.md) 里的开场白模板，
 > 帮 AI 一次性把规范、硬约束、工作流装进上下文。
@@ -295,12 +297,12 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 6. 下一步
 
-### 6.1 等 1.1.0 审核结果（被动等）
+### 6.1 等 1.2.0 审核结果（被动等）
 
 收到 Apple 邮件 **Ready for Distribution** 后：
 
 1. ASC 网页点 **Release this version**（如果选了手动 release）
-2. 按 §4.7 打 tag `v1.1.0` + 发 GitHub Release
+2. 按 §4.7 打 tag `v1.2.0` + 发 GitHub Release
 
 被拒的话邮件会写明原因，按 §4.8 第二行处理。
 
@@ -308,7 +310,8 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 - 收集 1.0.0 真实用户反馈（设置页反馈邮箱）
 - 在 feature 分支开发下一个版本的内容（按 §4.8 原则）
-- 想清楚下一个版本是 1.1.x（patch）还是 1.2.0（minor）
+- 想清楚下一个版本是 1.2.x（patch）还是 1.3.0（minor）
+- 审核期间合入 `main` 的用户可见改动，必须同步写入 `CHANGELOG.md` `[Unreleased]`
 
 ---
 

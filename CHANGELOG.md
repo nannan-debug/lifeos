@@ -11,7 +11,11 @@
 
 ## [Unreleased]
 
-（暂无）
+### 新增
+- 设置页新增 iCloud 同步开关：使用 Apple iCloud Key-Value Storage 在同 Apple ID 设备间同步本地数据，默认关闭，用户手动开启（[#22](https://github.com/nannan-debug/lifeos/pull/22)）
+
+### 待发版注意
+- 发下个版本前，需要先在 Apple Developer 后台为 App ID 开启 iCloud Key-Value Storage capability。
 
 ---
 
@@ -28,6 +32,8 @@
 
 ### 改进
 - 砍掉随记 Tab 顶部的"日 / 周"toggle —— 周视图改放在复盘 Tab 的 Review 模式里，分工更清晰（[#12](https://github.com/nannan-debug/lifeos/pull/12)）
+- 开屏改为静态植物视觉，文案更新为"观察生活，记录生活"。
+- 优化日历弹层打开体验，减少卡顿感。
 
 ### 内部
 - 数据模型扩展：`ConversationTurn` 加 `derivatives`、`TaskEntry` 加 `sourceNoteId/sourceExcerpt`，新增 `BrainCard` 等三个类型（[#13](https://github.com/nannan-debug/lifeos/pull/13)）
