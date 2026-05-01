@@ -11,6 +11,7 @@ final class AppStore: ObservableObject {
     @Published var timeEntries: [TimeEntry] = []
     @Published var tasks: [TaskEntry] = []
     @Published var turns: [ConversationTurn] = []
+    @Published var brainCards: [BrainCard] = []
 
     // MARK: - AI dispatch state (全局输入框用)
     @Published var isAILoading: Bool = false
@@ -41,6 +42,7 @@ final class AppStore: ObservableObject {
     private var keyTime: String { scopedKey("ps.time.byDate") }
     private var keyTasks: String { scopedKey("ps.tasks") }
     private var keyTurns: String { scopedKey("ps.turns") }
+    private var keyBrain: String { scopedKey("ps.brain") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
@@ -65,6 +67,7 @@ final class AppStore: ObservableObject {
         cleanupLegacyInboxIfNeeded()
         loadTasks()
         loadTurns()
+        loadBrain()
         loadForSelectedDate()
     }
 
@@ -73,18 +76,20 @@ final class AppStore: ObservableObject {
         cleanupLegacyInboxIfNeeded()
         loadTasks()
         loadTurns()
+        loadBrain()
         loadForSelectedDate()
     }
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
-        [keyChecks, keyTime, keyTasks, keyTurns, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
+        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
         // 旧版本随手记镜像（已废弃）一并兜底清掉
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
         checkItems = []
         timeEntries = []
         tasks = []
         turns = []
+        brainCards = []
     }
 
     /// 把旧版本镜像写入 `ps.inbox.<userId>` 的 InboxNote 数据一次性清掉。
@@ -662,6 +667,9 @@ final class AppStore: ObservableObject {
             // 兼容老记录：没有 isAllDay 字段时按全天处理
             let allDayRaw = $0["isAllDay"]
             let isAllDay = allDayRaw == nil ? true : (allDayRaw == "1")
+            // 兼容老记录：没有 sourceNoteId / sourceExcerpt 字段时按手工建处理
+            let srcRaw = $0["sourceNoteId"] ?? ""
+            let srcId: UUID? = srcRaw.isEmpty ? nil : UUID(uuidString: srcRaw)
             return TaskEntry(
                 id: id,
                 title: $0["title"] ?? "",
@@ -673,7 +681,9 @@ final class AppStore: ObservableObject {
                 isAllDay: isAllDay,
                 startTime: $0["startTime"] ?? "",
                 endTime: $0["endTime"] ?? "",
-                location: $0["location"] ?? ""
+                location: $0["location"] ?? "",
+                sourceNoteId: srcId,
+                sourceExcerpt: $0["sourceExcerpt"] ?? ""
             )
         }
     }
@@ -691,7 +701,9 @@ final class AppStore: ObservableObject {
                 "isAllDay": $0.isAllDay ? "1" : "0",
                 "startTime": $0.startTime,
                 "endTime": $0.endTime,
-                "location": $0.location
+                "location": $0.location,
+                "sourceNoteId": $0.sourceNoteId?.uuidString ?? "",
+                "sourceExcerpt": $0.sourceExcerpt
             ]
         }
         defaults.set(arr, forKey: keyTasks)
@@ -717,7 +729,8 @@ final class AppStore: ObservableObject {
                 fixHint: row["fixHint"] ?? "",
                 moodScore: moodRaw.isEmpty ? nil : Int(moodRaw),
                 feelingTags: feelings,
-                reviewStatus: row["reviewStatus"] ?? "pending"
+                reviewStatus: row["reviewStatus"] ?? "pending",
+                derivatives: decodeDerivatives(row["derivatives"])
             )
         }
     }
@@ -736,10 +749,116 @@ final class AppStore: ObservableObject {
                 "fixHint": turn.fixHint,
                 "moodScore": turn.moodScore.map(String.init) ?? "",
                 "feelingTags": turn.feelingTags.joined(separator: "|"),
-                "reviewStatus": turn.reviewStatus
+                "reviewStatus": turn.reviewStatus,
+                "derivatives": encodeDerivatives(turn.derivatives)
             ]
         }
         defaults.set(arr, forKey: keyTurns)
+    }
+
+    // MARK: - Brain cards (第二大脑)
+
+    @discardableResult
+    func addBrain(title: String, content: String = "", topics: [String] = [], sources: [BrainCardSource] = []) -> UUID? {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { return nil }
+        let now = Date()
+        let card = BrainCard(
+            title: cleanTitle,
+            content: content,
+            topics: topics,
+            sources: sources,
+            links: [],
+            createdAt: now,
+            updatedAt: now
+        )
+        brainCards.insert(card, at: 0)
+        saveBrain()
+        return card.id
+    }
+
+    func updateBrain(id: UUID, title: String, content: String, topics: [String]) {
+        guard let idx = brainCards.firstIndex(where: { $0.id == id }) else { return }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { return }
+        brainCards[idx].title = cleanTitle
+        brainCards[idx].content = content
+        brainCards[idx].topics = topics
+        brainCards[idx].updatedAt = Date()
+        saveBrain()
+    }
+
+    func removeBrain(id: UUID) {
+        brainCards.removeAll { $0.id == id }
+        // 反向清理：其他卡片 links 数组里把这张卡的 id 拿掉，避免悬空引用
+        for i in brainCards.indices {
+            brainCards[i].links.removeAll { $0 == id }
+        }
+        saveBrain()
+    }
+
+    /// 在 a / b 之间建立双向 link（idempotent，重复调用不会重复加）。自我链接（a==b）忽略。
+    func linkBrainCards(_ a: UUID, _ b: UUID) {
+        guard a != b else { return }
+        guard let ai = brainCards.firstIndex(where: { $0.id == a }),
+              let bi = brainCards.firstIndex(where: { $0.id == b }) else { return }
+        if !brainCards[ai].links.contains(b) {
+            brainCards[ai].links.append(b)
+        }
+        if !brainCards[bi].links.contains(a) {
+            brainCards[bi].links.append(a)
+        }
+        saveBrain()
+    }
+
+    func unlinkBrainCards(_ a: UUID, _ b: UUID) {
+        guard let ai = brainCards.firstIndex(where: { $0.id == a }),
+              let bi = brainCards.firstIndex(where: { $0.id == b }) else { return }
+        brainCards[ai].links.removeAll { $0 == b }
+        brainCards[bi].links.removeAll { $0 == a }
+        saveBrain()
+    }
+
+    /// 反查："谁在 links 里引用了 cardId"。详情页"反向链接"section 用。
+    func backlinks(for cardId: UUID) -> [BrainCard] {
+        brainCards.filter { $0.id != cardId && $0.links.contains(cardId) }
+    }
+
+    /// 给某条 turn append 一条衍生链接（Review 模式下"→ ToDo / → 第二大脑"会调）。
+    /// derivatives 是 append-only，不去重——同一个 turn 对同一个目标建多次链接是合法的（虽不该发生）。
+    func appendTurnDerivative(turnId: UUID, derivative: TurnDerivative) {
+        guard let idx = turns.firstIndex(where: { $0.id == turnId }) else { return }
+        turns[idx].derivatives.append(derivative)
+        saveTurns()
+    }
+
+    private func loadBrain() {
+        guard let data = defaults.data(forKey: keyBrain) else { brainCards = []; return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        brainCards = (try? decoder.decode([BrainCard].self, from: data)) ?? []
+    }
+
+    private func saveBrain() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(brainCards) else { return }
+        defaults.set(data, forKey: keyBrain)
+    }
+
+    private func encodeDerivatives(_ arr: [TurnDerivative]) -> String {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(arr),
+              let str = String(data: data, encoding: .utf8) else { return "[]" }
+        return str
+    }
+
+    private func decodeDerivatives(_ raw: String?) -> [TurnDerivative] {
+        guard let raw, !raw.isEmpty, let data = raw.data(using: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return (try? decoder.decode([TurnDerivative].self, from: data)) ?? []
     }
 
     // 当前阶段：字段配置锁定为 Notion 结构，不开放自定义
