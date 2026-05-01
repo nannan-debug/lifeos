@@ -18,17 +18,20 @@ GitHub：github.com/nannan-debug/lifeos
 
 开始任何任务前，请按顺序读完这些文件，并在回复里确认你已理解：
 
-1. CLAUDE.md           — 工作规范 / ADHD 友好硬约束（红线）
-2. CONTRIBUTING.md     — 分支命名 / commit 规范
-3. VERSIONING.md       — 版本号约定（注意：project.yml 是 source of truth，不是 Info.plist）
-4. LAUNCH_CHECKLIST.md — 当前上架状态 + 发版 SOP（重点看 §4.8 审核期间开发策略）
-5. PRODUCT_BRIEF.md    — 产品背景（按需）
+1. IN_PROGRESS.md      — 当前在飞的大功能（如有）。**有内容则你接的就是这个，不要另起炉灶**
+2. CLAUDE.md           — 工作规范 / ADHD 友好硬约束（红线）
+3. CONTRIBUTING.md     — 分支命名 / commit 规范
+4. VERSIONING.md       — 版本号约定（注意：project.yml 是 source of truth，不是 Info.plist）
+5. LAUNCH_CHECKLIST.md — 当前上架状态 + 发版 SOP（重点看 §4.8 审核期间开发策略）
+6. CHANGELOG.md        — 版本变更历史（按需，发版相关时看）
+7. PRODUCT_BRIEF.md    — 产品背景（按需）
 
-读完后用 4 行向我汇报：
+读完后用 5 行向我汇报：
 （1）当前线上版本号 + ASC 审核状态
 （2）当前 git 分支 + 有没有未提交改动
-（3）你理解的"审核期间开发新功能"的核心约束（一句话）
-（4）等我下一步指令 —— 不要主动改任何文件
+（3）IN_PROGRESS.md 里有没有在飞功能 —— 如果有，下一个待办 PR 是哪个
+（4）你理解的"审核期间开发新功能"的核心约束（一句话）
+（5）等我下一步指令 —— 不要主动改任何文件
 
 重要硬规则（违反就停手问我）：
 - 不要 bump main 上的版本号（如果有审核中的 build，bump 会破坏当前提审）
