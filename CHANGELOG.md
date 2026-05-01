@@ -11,8 +11,21 @@
 
 ## [Unreleased]
 
+> 灵感与反思模块 V1 已合 main，等待 bump 到 `1.2.0` 上架。设计沉淀见 [`docs/archived-features/v1-inspiration-reflection.md`](docs/archived-features/v1-inspiration-reflection.md)。
+
 ### 新增
-- 灵感与反思模块 V1 开发中（详见 [`IN_PROGRESS.md`](IN_PROGRESS.md)）
+- 新增第 5 个 Tab「复盘」：进入是 Hub 仪表盘，包含「Review」「第二大脑」两张卡片（[#15](https://github.com/nannan-debug/lifeos/pull/15)）
+- **Review 模式**：把最近 7 天还没处理的「想法 / 感受」按时间倒序排成队列，左滑搁置 / 右滑沉淀；不计时、不催、不审判（[#15](https://github.com/nannan-debug/lifeos/pull/15)）
+- **想法 → ToDo**：Review 模式右滑可以把一个想法直接变成待办，标题自动预填，原文片段保留作为来源（[#15](https://github.com/nannan-debug/lifeos/pull/15)）
+- **第二大脑**：处理过的「想法 / 感受」可以沉淀为卡片，按主题（topic）聚合；卡片之间可以双向关联，并自动生成反向链接（[#17](https://github.com/nannan-debug/lifeos/pull/17)）
+- 第二大脑卡片墙支持「卡片墙 / 主题」两种视图切换；topic 输入支持自动补全已用过的主题（[#17](https://github.com/nannan-debug/lifeos/pull/17)）
+
+### 改进
+- 砍掉随记 Tab 顶部的"日 / 周"toggle —— 周视图改放在复盘 Tab 的 Review 模式里，分工更清晰（[#12](https://github.com/nannan-debug/lifeos/pull/12)）
+
+### 内部
+- 数据模型扩展：`ConversationTurn` 加 `derivatives`、`TaskEntry` 加 `sourceNoteId/sourceExcerpt`，新增 `BrainCard` 等三个类型（[#13](https://github.com/nannan-debug/lifeos/pull/13)）
+- 抽出 `TodoEditorSheet` 独立文件 + 清理旧版 InboxView 镜像写入（[#11](https://github.com/nannan-debug/lifeos/pull/11)、[#12](https://github.com/nannan-debug/lifeos/pull/12)）
 
 ---
 
