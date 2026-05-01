@@ -21,6 +21,8 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                iCloudSection
+
                 Section("账号信息") {
                     editableProfileRow(title: "昵称", value: user, field: .nickname)
                 }
@@ -79,6 +81,46 @@ struct SettingsView: View {
             .background(CreamTheme.glassStrong)
         }
         .creamBackground()
+    }
+
+    @ViewBuilder
+    private var iCloudSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { store.isICloudSyncEnabled },
+                set: { store.setICloudSyncEnabled($0) }
+            )) {
+                HStack(spacing: 12) {
+                    syncGlyph
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("iCloud 同步")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(CreamTheme.text)
+                        Text(store.iCloudSyncStatusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .tint(CreamTheme.green)
+        } header: {
+            Text("同步")
+        } footer: {
+            Text("不需要登录 App；使用系统 iCloud 在同一 Apple ID 的设备间同步。")
+        }
+    }
+
+    private var syncGlyph: some View {
+        ZStack {
+            Circle()
+                .fill(CreamTheme.green.opacity(0.12))
+            Image(systemName: "icloud")
+                .font(.system(size: 19, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(CreamTheme.green)
+        }
+        .frame(width: 36, height: 36)
     }
 
     @ViewBuilder

@@ -3,7 +3,6 @@ import Foundation
 
 struct RootTabView: View {
     @StateObject private var store = AppStore()
-    @AppStorage("auth.userId") private var userId = ""
 
     private enum Tab: Hashable { case today, time, capture, review, settings }
     @State private var selectedTab: Tab = .today
@@ -44,7 +43,9 @@ struct RootTabView: View {
                     .allowsHitTesting(true)
             }
         }
-        .onAppear(perform: ensureDeviceIdentity)
+        .onAppear {
+            store.ensureLocalIdentity()
+        }
     }
 
     private var shouldShowAIInputBar: Bool {
@@ -53,32 +54,6 @@ struct RootTabView: View {
         return true
     }
 
-    /// 首次启动给当前设备分配一个稳定 ID，后续所有本地数据都挂在它名下。
-    /// 未来要接 Sign in with Apple / 云端账号时，只需在登录成功后把这里的值换成真实 userId。
-    private func ensureDeviceIdentity() {
-        if userId.isEmpty {
-            userId = "dev-" + UUID().uuidString
-            // 把未登录阶段落在全局 key 的旧数据一次性搬到新 userId 名下
-            migrateLegacyGlobalData(to: userId)
-            store.reloadForCurrentUser()
-        }
-    }
-
-    private func migrateLegacyGlobalData(to uid: String) {
-        let defaults = UserDefaults.standard
-        let pairs: [(String, String)] = [
-            ("ps.checks.byDate", "ps.checks.byDate.\(uid)"),
-            ("ps.time.byDate",   "ps.time.byDate.\(uid)"),
-            ("ps.tasks",         "ps.tasks.\(uid)"),
-            ("ps.turns",         "ps.turns.\(uid)")
-        ]
-        for (src, dst) in pairs {
-            guard defaults.object(forKey: dst) == nil else { continue }
-            if let v = defaults.object(forKey: src) {
-                defaults.set(v, forKey: dst)
-            }
-        }
-    }
 }
 
 struct QuickCaptureView: View {
