@@ -14,7 +14,7 @@
 | PRD 来源 | `~/Desktop/灵感与反思模块_PRD.md`（私人本地，不进仓库） |
 | 决策来源 | 2026-04-30 的 grill-me session 拍板（见下方"锁定决策清单"） |
 | 规划版本号 | `1.2.0`（V1 全部 PR 合完后再 bump，按 [VERSIONING.md](VERSIONING.md) §"怎么改版本号"） |
-| 当前阶段 | 🚧 PR 4 开发中 |
+| 当前阶段 | ⏳ PR 5 待开工（最后一关） |
 
 ---
 
@@ -25,7 +25,7 @@
 | 1 | `chore: 清理旧版 InboxView / 旧 ReviewView 与镜像数据写入` | ✅ | [#11](https://github.com/nannan-debug/lifeos/pull/11) | 2026-04-30 |
 | 2 | `refactor: 砍随记 Tab 周视图 + 抽 TodoEditorSheet 到独立文件` | ✅ | [#12](https://github.com/nannan-debug/lifeos/pull/12) | 2026-05-01 |
 | 3 | `feat: 数据模型扩展 — derivatives / sourceNoteId / BrainCard` | ✅ | [#13](https://github.com/nannan-debug/lifeos/pull/13) | 2026-05-01 |
-| 4 | `feat: 复盘 Tab + Review 模式核心` | 🚧 in flight | — | — |
+| 4 | `feat: 复盘 Tab + Review 模式核心 + → ToDo 衍生` | ✅ | [#15](https://github.com/nannan-debug/lifeos/pull/15) | 2026-05-01 |
 | 5 | `feat: 第二大脑完整模块` | ⏳ | — | — |
 
 ---
@@ -94,6 +94,67 @@ AppStore 加 brainCards / addBrain / linkBrainCards / backlinks 等
 ```
 
 详见 [PR #13](https://github.com/nannan-debug/lifeos/pull/13)。
+
+---
+
+## PR 5 实施 breakdown
+
+> 这一节是给开 PR 5 时直接照着干的工程清单。功能层面的"做什么"看上方"锁定决策清单"，本节只回答"动哪些文件 / 验收什么样"。
+
+### 新建文件（5 个）
+
+| 文件 | 职责 |
+|---|---|
+| `Sources/Views/BrainCardWallView.swift` | 第二大脑卡片墙入口页：顶部 segment toggle "卡片墙 / 主题"；卡片墙是 List 按 `createdAt` 倒序，每行 title + content 前 60 字 + topic chip + sources count；点 row push 到 BrainCardDetailView |
+| `Sources/Views/BrainCardDetailView.swift` | 卡片详情页（PRD 5.7 wireframe）：title + topics chip 一行 + content 多行 + Section "🔗 来源 (N)" + Section "🔗 关联卡片 (N)"（底部 "+" 按钮弹 CardLinkPickerSheet） + Section "🔗 反向链接 (N)"（用 `store.backlinks(for:)` 反查）。右上角 toolbar "编辑" 弹 BrainCardEditorSheet |
+| `Sources/Views/BrainCardEditorSheet.swift` | 创建/编辑 sheet：title TextField + content multiline TextField + TopicChipInput；创建模式如有 sources（从 turn 衍生）则只读显示；编辑模式 sources 也只读；保存调 `store.addBrain` 或 `store.updateBrain` |
+| `Sources/Views/CardLinkPickerSheet.swift` | "+ 关联卡片" sheet：顶部 SearchBar filter title；List 显示所有其他卡片（排除自己 + 已链接的）；勾选自动调 `store.linkBrainCards(currentId, otherId)`；"完成"关 sheet |
+| `Sources/Views/TopicChipInput.swift` | topics 输入器（独立可复用组件）：输入框 + 已加 chip 横向显示 + 老 topic 模糊补全（输入 "命" 弹 #命名 候选），按回车添加 |
+
+### 修改文件（4 个）
+
+| 文件 | 改动 |
+|---|---|
+| `Sources/Views/ReviewSessionView.swift` | 想法卡片右滑增加 `[→ 第二大脑]` 按钮（顺序：[→ 第二大脑] [→ ToDo]）；感受卡片右滑解锁 `[→ 第二大脑]`（PRD 3.4 V1 阶段终于完整）；点击弹 `BrainCardEditorSheet`（带 sources 预填），保存后联动 `appendTurnDerivative(type: "brain")` + `updateTurnReviewStatus("archived")` |
+| `Sources/Views/ReviewHubView.swift` | 第二大脑卡片**激活**：从"即将上线"改成显示 `store.brainCards.count` 张 + 最近 2 张 title 预览；整卡 NavigationLink push 进 `BrainCardWallView` |
+| `Sources/Views/TodoEditorSheet.swift` | 可能不动。但要回顾：`.deriveFromTurn` 模式现在的 save 联动 `type: "todo"` derivative —— PR 5 加 `BrainCardEditorSheet` 时同样模式联动 `type: "brain"` derivative，可考虑 store 提个统一的 helper（按需重构，不必强求） |
+| `Sources/ViewModels/AppStore.swift` | 视情况加便利方法：`recentBrainCards(limit: Int)`（Hub 卡片预览用）；其他在 PR 3 已经齐了 |
+
+### Test plan（合 PR 前手动跑一遍）
+
+- [ ] 复盘 Tab Hub 第二大脑卡片显示张数 + 最近 2 张 title 预览
+- [ ] Hub 第二大脑卡片点击 push 进 `BrainCardWallView`
+- [ ] 卡片墙顶部"卡片墙 / 主题"toggle 切换正常
+- [ ] 主题视图顶部 topic chip 选中后下方筛选正确
+- [ ] **想法 → 第二大脑 端到端**：随记输入想法 → 复盘 → Review → 右滑 → 选 [→ 第二大脑] → 编辑器弹出 sources 预填可见 → 填 title / content / topics → 保存 → 卡片墙看到新卡 → 主题视图 topic 归类正确 → 详情页"来源"section 显示原 turn excerpt → derivatives 正确 → reviewStatus archived
+- [ ] **感受 → 第二大脑 端到端**：感受卡片右滑现在有 [→ 第二大脑] 按钮（PR 4 后这条是死的，PR 5 解锁）
+- [ ] 详情页"+ 关联卡片"：A 详情页 + 关联 B → 双向：A.links=[B.id] B.links=[A.id]，B 详情页"反向链接"显示 A
+- [ ] topics 模糊补全：输入"命"时弹出已有 #命名 候选
+- [ ] 编辑卡片：详情页右上角"编辑"弹 sheet，title/content/topics 可改，保存后详情页刷新
+- [ ] 删除卡片：编辑 sheet 内"删除"按钮 → 卡片消失 → 其他卡片 links 里该 id 自动清掉（PR 3 `removeBrain` 已实现）
+- [ ] 单测：`store.addBrain` / `linkBrainCards` / `backlinks` / `removeBrain` 已在 PR 3 测过，PR 5 不需要新增 store 测试，View 层不强测
+
+### 估算工程量
+
+**8-10 个 evening session（约 12-15 小时）** —— V1 里最大的一关。可拆分多个 commit：
+
+1. `BrainCard` 数据展示（卡片墙 + 详情页只读）
+2. 编辑器 + topics chip 输入器
+3. 关联卡片 picker + 反向链接显示
+4. Review 模式右滑加 [→ 第二大脑]
+5. Hub 第二大脑卡片激活
+
+最后一起 squash merge。
+
+### 不在 PR 5 范围（仍归 V2 / V3）
+
+- 第二大脑直接录入入口（FAB / 全局 AI 输入框联动）
+- Markdown 渲染
+- 视觉气质明显区分（衬线字体 / 加深色调）
+- 反向链接显示 context 片段（V1 反链只显示对方卡片 title）
+- 关联图谱可视化
+- 被动建链建议
+- 自我觉察档案 / DBT 行为链分析
 
 ---
 
