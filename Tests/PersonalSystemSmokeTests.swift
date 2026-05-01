@@ -162,6 +162,110 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(turn?.derivatives.first?.type, "todo")
     }
 
+    // MARK: - Review queue (PR 4 新增)
+
+    private func makeTurn(
+        type: String = "想法",
+        status: String = "pending",
+        createdAt: Date = Date()
+    ) -> ConversationTurn {
+        ConversationTurn(
+            id: UUID(),
+            createdAt: createdAt,
+            rawText: "test",
+            recognizedType: type,
+            targetBucket: "inbox",
+            confidence: 1.0,
+            status: "committed",
+            payload: [:],
+            fixHint: "",
+            moodScore: nil,
+            feelingTags: [],
+            reviewStatus: status
+        )
+    }
+
+    func testReviewQueueIncludesOnlyIdeaAndFeeling() {
+        let now = Date()
+        let turns: [ConversationTurn] = [
+            makeTurn(type: "想法", createdAt: now),
+            makeTurn(type: "感受", createdAt: now),
+            makeTurn(type: "感恩", createdAt: now),   // 不进队列
+            makeTurn(type: "做梦", createdAt: now),   // 不进队列
+        ]
+        let queue = ReviewQueue.queue(turns: turns, now: now)
+        XCTAssertEqual(queue.count, 2)
+        XCTAssertTrue(queue.allSatisfy { ["想法", "感受"].contains($0.recognizedType) })
+    }
+
+    func testReviewQueueOnlyPending() {
+        let now = Date()
+        let turns: [ConversationTurn] = [
+            makeTurn(status: "pending", createdAt: now),
+            makeTurn(status: "archived", createdAt: now),
+            makeTurn(status: "dismissed", createdAt: now),
+        ]
+        let queue = ReviewQueue.queue(turns: turns, now: now)
+        XCTAssertEqual(queue.count, 1)
+        XCTAssertEqual(queue.first?.reviewStatus, "pending")
+    }
+
+    func testReviewQueue7DayWindow() {
+        let now = Date()
+        let cal = Calendar.current
+        let twoDaysAgo = cal.date(byAdding: .day, value: -2, to: now)!
+        let eightDaysAgo = cal.date(byAdding: .day, value: -8, to: now)!
+        let turns: [ConversationTurn] = [
+            makeTurn(createdAt: now),
+            makeTurn(createdAt: twoDaysAgo),
+            makeTurn(createdAt: eightDaysAgo),  // 超出 7 日窗
+        ]
+        let queue = ReviewQueue.queue(turns: turns, now: now)
+        XCTAssertEqual(queue.count, 2)
+    }
+
+    func testReviewQueueSortedDescending() {
+        let now = Date()
+        let cal = Calendar.current
+        let dayAgo = cal.date(byAdding: .day, value: -1, to: now)!
+        let twoDaysAgo = cal.date(byAdding: .day, value: -2, to: now)!
+        let turns: [ConversationTurn] = [
+            makeTurn(createdAt: twoDaysAgo),
+            makeTurn(createdAt: now),
+            makeTurn(createdAt: dayAgo),
+        ]
+        let queue = ReviewQueue.queue(turns: turns, now: now)
+        XCTAssertEqual(queue.count, 3)
+        XCTAssertEqual(queue[0].createdAt, now)
+        XCTAssertEqual(queue[1].createdAt, dayAgo)
+        XCTAssertEqual(queue[2].createdAt, twoDaysAgo)
+    }
+
+    func testReviewQueueArchivedAndDismissedCounts() {
+        let now = Date()
+        let turns: [ConversationTurn] = [
+            makeTurn(status: "pending", createdAt: now),
+            makeTurn(status: "archived", createdAt: now),
+            makeTurn(status: "archived", createdAt: now),
+            makeTurn(status: "dismissed", createdAt: now),
+            makeTurn(type: "感恩", status: "archived", createdAt: now),  // 感恩不算进队列统计
+        ]
+        XCTAssertEqual(ReviewQueue.pendingCount(turns: turns, now: now), 1)
+        XCTAssertEqual(ReviewQueue.archivedCount(turns: turns, now: now), 2)
+        XCTAssertEqual(ReviewQueue.dismissedCount(turns: turns, now: now), 1)
+    }
+
+    func testReviewQueueExcludesOldArchivedFromCount() {
+        let now = Date()
+        let cal = Calendar.current
+        let eightDaysAgo = cal.date(byAdding: .day, value: -8, to: now)!
+        let turns: [ConversationTurn] = [
+            makeTurn(status: "archived", createdAt: now),
+            makeTurn(status: "archived", createdAt: eightDaysAgo),  // 7 日窗外
+        ]
+        XCTAssertEqual(ReviewQueue.archivedCount(turns: turns, now: now), 1)
+    }
+
     func testTurnDerivativesPersistAcrossReload() {
         let store = AppStore()
         let turnId = store.addTurnDraft(

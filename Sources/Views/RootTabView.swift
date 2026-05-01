@@ -5,7 +5,7 @@ struct RootTabView: View {
     @StateObject private var store = AppStore()
     @AppStorage("auth.userId") private var userId = ""
 
-    private enum Tab: Hashable { case today, time, capture, settings }
+    private enum Tab: Hashable { case today, time, capture, review, settings }
     @State private var selectedTab: Tab = .today
 
     var body: some View {
@@ -23,21 +23,34 @@ struct RootTabView: View {
                     .tabItem { Label("随记", systemImage: "square.and.pencil") }
                     .tag(Tab.capture)
 
+                ReviewHubView().environmentObject(store)
+                    .tabItem { Label("复盘", systemImage: "moon.stars") }
+                    .tag(Tab.review)
+
                 SettingsView().environmentObject(store)
                     .tabItem { Label("设置", systemImage: "gearshape") }
                     .tag(Tab.settings)
             }
             .tint(Color(red: 0.24, green: 0.65, blue: 0.36))
 
-            // 全局 AI 输入框 —— 在「今日·打卡」隐藏（打卡页有 inline 添加），
-            // 切换到「待办」时显示，其余 Tab 始终显示。
-            if selectedTab != .today || store.todaySegment == "todo" {
+            // 全局 AI 输入框可见性：
+            // - 「今日·打卡」隐藏（打卡页有 inline 添加）
+            // - 「今日·待办」显示
+            // - 「复盘」隐藏（仪式空间不该被记录入口干扰）
+            // - 其余 Tab 始终显示
+            if shouldShowAIInputBar {
                 GlobalAIInputBar()
                     .environmentObject(store)
                     .allowsHitTesting(true)
             }
         }
         .onAppear(perform: ensureDeviceIdentity)
+    }
+
+    private var shouldShowAIInputBar: Bool {
+        if selectedTab == .review { return false }
+        if selectedTab == .today { return store.todaySegment == "todo" }
+        return true
     }
 
     /// 首次启动给当前设备分配一个稳定 ID，后续所有本地数据都挂在它名下。
@@ -217,7 +230,7 @@ struct QuickCaptureView: View {
                         HStack(spacing: 0) {
                             // 左侧彩色竖条
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(colorForType(turn.recognizedType))
+                                .fill(TurnTypeStyle.color(for: turn.recognizedType))
                                 .frame(width: 4)
                                 .padding(.vertical, 6)
 
@@ -233,19 +246,19 @@ struct QuickCaptureView: View {
                                     reviewStatusIcon(turn.reviewStatus)
                                     // 类型标签：浅底+主色
                                     HStack(spacing: 4) {
-                                        Image(systemName: iconForType(turn.recognizedType))
+                                        Image(systemName: TurnTypeStyle.icon(for: turn.recognizedType))
                                             .font(.caption2)
                                         Text(turn.recognizedType)
                                             .font(.caption.weight(.semibold))
                                     }
-                                    .foregroundStyle(colorForType(turn.recognizedType))
+                                    .foregroundStyle(TurnTypeStyle.color(for: turn.recognizedType))
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(bgColorForType(turn.recognizedType))
+                                    .background(TurnTypeStyle.bgColor(for: turn.recognizedType))
                                     .clipShape(Capsule())
                                 }
 
-                                Text(displayText(for: turn))
+                                Text(TurnTypeStyle.displayText(for: turn))
                                     .font(.subheadline)
 
                                 // 心情 + 感受词
@@ -259,10 +272,10 @@ struct QuickCaptureView: View {
                                             ForEach(turn.feelingTags, id: \.self) { tag in
                                                 Text(tag)
                                                     .font(.caption2.weight(.medium))
-                                                    .foregroundStyle(colorForType(turn.recognizedType).opacity(0.8))
+                                                    .foregroundStyle(TurnTypeStyle.color(for: turn.recognizedType).opacity(0.8))
                                                     .padding(.horizontal, 6)
                                                     .padding(.vertical, 2)
-                                                    .background(bgColorForType(turn.recognizedType))
+                                                    .background(TurnTypeStyle.bgColor(for: turn.recognizedType))
                                                     .clipShape(Capsule())
                                             }
                                         }
@@ -286,7 +299,7 @@ struct QuickCaptureView: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(colorForType(turn.recognizedType).opacity(0.12), lineWidth: 1)
+                                .stroke(TurnTypeStyle.color(for: turn.recognizedType).opacity(0.12), lineWidth: 1)
                         )
                         .shadow(color: Color.black.opacity(0.035), radius: 8, x: 0, y: 2)
                         .listRowInsets(EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8))
@@ -352,8 +365,8 @@ struct QuickCaptureView: View {
                 Section("标签") {
                     Picker("识别标签", selection: $editingType) {
                         ForEach(intentOptions, id: \.self) { type in
-                            Label(type, systemImage: iconForType(type))
-                                .foregroundStyle(colorForType(type))
+                            Label(type, systemImage: TurnTypeStyle.icon(for: type))
+                                .foregroundStyle(TurnTypeStyle.color(for: type))
                                 .tag(type)
                         }
                     }
@@ -428,7 +441,7 @@ struct QuickCaptureView: View {
                 HStack(spacing: 8) {
                     filterChip("全部", icon: "line.3.horizontal.decrease.circle", color: CreamTheme.green, bg: Color(red: 0.95, green: 0.97, blue: 0.95))
                     ForEach(intentOptions, id: \.self) { type in
-                        filterChip(type, icon: iconForType(type), color: colorForType(type), bg: bgColorForType(type))
+                        filterChip(type, icon: TurnTypeStyle.icon(for: type), color: TurnTypeStyle.color(for: type), bg: TurnTypeStyle.bgColor(for: type))
                     }
                 }
             }
@@ -661,52 +674,7 @@ struct QuickCaptureView: View {
     private func beginEdit(_ turn: ConversationTurn) {
         editingTurnID = turn.id
         editingType = intentOptions.contains(turn.recognizedType) ? turn.recognizedType : "想法"
-        editingText = displayText(for: turn)
-    }
-
-    private func iconForType(_ type: String) -> String {
-        switch type {
-        case "想法": return "lightbulb.fill"
-        case "todo": return "checkmark.circle.fill"
-        case "感受": return "heart.fill"
-        case "感恩": return "hands.sparkles.fill"
-        case "做梦": return "moon.stars.fill"
-        case "时间记录": return "clock.fill"
-        default: return "tag.fill"
-        }
-    }
-
-    // ── 方案 B「绿主暖辅」── 绿色主导 + 低饱和大地色辅助
-    private func colorForType(_ type: String) -> Color {
-        switch type {
-        case "想法": return Color(red: 0.24, green: 0.65, blue: 0.36)   // #3DA55C 品牌绿
-        case "todo": return Color(red: 0.353, green: 0.498, blue: 0.608) // #5A7F9B 雾蓝
-        case "感受": return Color(red: 0.627, green: 0.502, blue: 0.361) // #A0805C 暖棕
-        case "感恩": return Color(red: 0.490, green: 0.541, blue: 0.290) // #7D8A4A 橄榄
-        case "做梦": return Color(red: 0.482, green: 0.451, blue: 0.580) // #7B7394 薰灰
-        case "时间记录": return Color(red: 0.353, green: 0.498, blue: 0.608) // #5A7F9B 雾蓝
-        default: return .secondary
-        }
-    }
-
-    private func bgColorForType(_ type: String) -> Color {
-        switch type {
-        case "想法": return Color(red: 0.918, green: 0.961, blue: 0.929) // #EAF5ED
-        case "todo": return Color(red: 0.910, green: 0.937, blue: 0.961) // #E8EFF5
-        case "感受": return Color(red: 0.961, green: 0.937, blue: 0.914) // #F5EFE9
-        case "感恩": return Color(red: 0.949, green: 0.953, blue: 0.910) // #F2F3E8
-        case "做梦": return Color(red: 0.933, green: 0.929, blue: 0.953) // #EEEDF3
-        case "时间记录": return Color(red: 0.910, green: 0.937, blue: 0.961) // #E8EFF5
-        default: return Color(red: 0.96, green: 0.96, blue: 0.96)
-        }
-    }
-
-    private func displayText(for turn: ConversationTurn) -> String {
-        if turn.targetBucket == "time" {
-            if let note = turn.payload["note"], !note.isEmpty { return note }
-            return turn.payload["name"] ?? turn.rawText
-        }
-        return turn.payload["detail"] ?? turn.rawText
+        editingText = TurnTypeStyle.displayText(for: turn)
     }
 
 }

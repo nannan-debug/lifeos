@@ -14,7 +14,7 @@
 | PRD 来源 | `~/Desktop/灵感与反思模块_PRD.md`（私人本地，不进仓库） |
 | 决策来源 | 2026-04-30 的 grill-me session 拍板（见下方"锁定决策清单"） |
 | 规划版本号 | `1.2.0`（V1 全部 PR 合完后再 bump，按 [VERSIONING.md](VERSIONING.md) §"怎么改版本号"） |
-| 当前阶段 | 🚧 PR 4 准备中 |
+| 当前阶段 | 🚧 PR 4 开发中 |
 
 ---
 
@@ -25,7 +25,7 @@
 | 1 | `chore: 清理旧版 InboxView / 旧 ReviewView 与镜像数据写入` | ✅ | [#11](https://github.com/nannan-debug/lifeos/pull/11) | 2026-04-30 |
 | 2 | `refactor: 砍随记 Tab 周视图 + 抽 TodoEditorSheet 到独立文件` | ✅ | [#12](https://github.com/nannan-debug/lifeos/pull/12) | 2026-05-01 |
 | 3 | `feat: 数据模型扩展 — derivatives / sourceNoteId / BrainCard` | ✅ | [#13](https://github.com/nannan-debug/lifeos/pull/13) | 2026-05-01 |
-| 4 | `feat: 复盘 Tab + Review 模式核心` | ⏳ 待开工 | — | — |
+| 4 | `feat: 复盘 Tab + Review 模式核心` | 🚧 in flight | — | — |
 | 5 | `feat: 第二大脑完整模块` | ⏳ | — | — |
 
 ---

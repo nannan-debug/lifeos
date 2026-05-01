@@ -5,6 +5,9 @@ import SwiftUI
 enum TodoEditorMode {
     case create(defaultDate: Date)
     case edit(task: TaskEntry)
+    /// 从 Review 模式右滑「→ ToDo」衍生：标题 / 备注由 turn.rawText 预填，
+    /// 保存时自动联动 derivative + reviewStatus = "archived"
+    case deriveFromTurn(turn: ConversationTurn)
 }
 
 struct TodoEditorSheet: View {
@@ -117,6 +120,25 @@ struct TodoEditorSheet: View {
             endDate = s.addingTimeInterval(3600)
             isAllDay = true
             priority = "无"
+        case .deriveFromTurn(let turn):
+            // 前 20 字进 title，剩下塞 notes（grill-me Q5a=B）
+            let raw = turn.rawText
+            if raw.count <= 20 {
+                title = raw
+                notes = ""
+            } else {
+                title = String(raw.prefix(20))
+                notes = String(raw.dropFirst(20))
+            }
+            // 默认时间逻辑跟 .create 一样（当前日期 09:00–10:00）
+            let cal = Calendar.current
+            var comps = cal.dateComponents([.year, .month, .day], from: Date())
+            comps.hour = 9; comps.minute = 0
+            let s = cal.date(from: comps) ?? Date()
+            startDate = s
+            endDate = s.addingTimeInterval(3600)
+            isAllDay = true
+            priority = "无"
         case .edit(let t):
             title = t.title
             notes = t.detail
@@ -158,9 +180,10 @@ struct TodoEditorSheet: View {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return }
 
-        if let id = editingID {
+        switch mode {
+        case .edit(let t):
             store.updateTask(
-                id: id,
+                id: t.id,
                 title: cleanTitle,
                 detail: notes,
                 priority: prio,
@@ -170,7 +193,7 @@ struct TodoEditorSheet: View {
                 endTime: endStr,
                 location: location
             )
-        } else {
+        case .create:
             _ = store.addTask(
                 title: cleanTitle,
                 detail: notes,
@@ -181,6 +204,30 @@ struct TodoEditorSheet: View {
                 endTime: endStr,
                 location: location
             )
+        case .deriveFromTurn(let turn):
+            // 来源 excerpt 取 turn 原文前 30 字（plan §3 PR 4 + Q5a）
+            let excerpt = turn.rawText.count > 30
+                ? String(turn.rawText.prefix(30)) + "…"
+                : turn.rawText
+            let taskID = store.addTask(
+                title: cleanTitle,
+                detail: notes,
+                priority: prio,
+                dueDate: dayKey,
+                isAllDay: isAllDay,
+                startTime: startStr,
+                endTime: endStr,
+                location: location,
+                sourceNoteId: turn.id,
+                sourceExcerpt: excerpt
+            )
+            if let taskID {
+                store.appendTurnDerivative(
+                    turnId: turn.id,
+                    derivative: TurnDerivative(type: "todo", targetId: taskID, createdAt: Date())
+                )
+                store.updateTurnReviewStatus(id: turn.id, reviewStatus: "archived")
+            }
         }
         dismiss()
     }

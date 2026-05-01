@@ -155,7 +155,9 @@ final class AppStore: ObservableObject {
         isAllDay: Bool = true,
         startTime: String = "",
         endTime: String = "",
-        location: String = ""
+        location: String = "",
+        sourceNoteId: UUID? = nil,
+        sourceExcerpt: String = ""
     ) -> UUID? {
         let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return nil }
@@ -169,7 +171,9 @@ final class AppStore: ObservableObject {
             isAllDay: isAllDay,
             startTime: startTime,
             endTime: endTime,
-            location: location
+            location: location,
+            sourceNoteId: sourceNoteId,
+            sourceExcerpt: sourceExcerpt
         )
         tasks.insert(task, at: 0)
         saveTasks()
