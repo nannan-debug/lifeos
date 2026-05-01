@@ -291,13 +291,11 @@ struct TimeView: View {
                 timeTopDateBar
             }
             .overlay(alignment: .top) {
-                timeCalendarOverlay
-                    .compositingGroup()
-                    .opacity(showCalendarOverlay ? 1 : 0)
-                    .offset(y: showCalendarOverlay ? 0 : -16)
-                    .allowsHitTesting(showCalendarOverlay)
-                    .animation(.easeOut(duration: 0.22), value: showCalendarOverlay)
-                    .zIndex(20)
+                if showCalendarOverlay {
+                    timeCalendarOverlay
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .zIndex(20)
+                }
             }
             .sheet(isPresented: $showAdd) {
                 NavigationStack {
@@ -399,7 +397,9 @@ struct TimeView: View {
 
             Button {
                 displayMonth = startOfMonth(for: store.selectedDate)
-                showCalendarOverlay.toggle()
+                withAnimation(.easeOut(duration: 0.18)) {
+                    showCalendarOverlay.toggle()
+                }
             } label: {
                 HStack(spacing: 6) {
                     Text(dateTitle(store.selectedDate))
@@ -435,12 +435,14 @@ struct TimeView: View {
     }
 
     private var timeCalendarOverlay: some View {
-        CreamCalendarOverlay(
+        let categoriesByDateKey = store.timeCategoriesByDateKey(inMonth: displayMonth)
+
+        return CreamCalendarOverlay(
             selectedDate: $store.selectedDate,
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                let cats = store.timeCategories(on: day)
+                let cats = categoriesByDateKey[store.calendarDateKey(for: day)] ?? []
                 if cats.isEmpty { return .none }
                 let colors = cats.map(colorForCategory)
                 return .ring(colors)

@@ -72,13 +72,11 @@ struct TodayView: View {
                     }
                 }
 
-                calendarOverlay
-                    .compositingGroup()
-                    .opacity(showCalendarOverlay ? 1 : 0)
-                    .offset(y: showCalendarOverlay ? 0 : -16)
-                    .allowsHitTesting(showCalendarOverlay)
-                    .animation(.easeOut(duration: 0.22), value: showCalendarOverlay)
-                    .zIndex(20)
+                if showCalendarOverlay {
+                    calendarOverlay
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .zIndex(20)
+                }
             }
             .onAppear {
                 displayMonth = startOfMonth(for: store.selectedDate)
@@ -939,7 +937,9 @@ struct TodayView: View {
 
             Button {
                 displayMonth = startOfMonth(for: store.selectedDate)
-                showCalendarOverlay.toggle()
+                withAnimation(.easeOut(duration: 0.18)) {
+                    showCalendarOverlay.toggle()
+                }
             } label: {
                 HStack(spacing: 6) {
                     Text(dateTitle(store.selectedDate))
@@ -975,12 +975,14 @@ struct TodayView: View {
     }
 
     private var calendarOverlay: some View {
-        CreamCalendarOverlay(
+        let traceKeys = store.recordTraceDateKeys(inMonth: displayMonth)
+
+        return CreamCalendarOverlay(
             selectedDate: $store.selectedDate,
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                store.hasRecordTrace(on: day) ? .dot(CreamTheme.green) : .none
+                traceKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
             }
         )
     }
@@ -1083,4 +1085,3 @@ struct MascotCatAssetView: View {
         }
     }
 }
-

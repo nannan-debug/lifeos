@@ -17,7 +17,9 @@ struct CreamCalendarOverlay: View {
             Color.black.opacity(0.18)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    isPresented = false
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        isPresented = false
+                    }
                 }
 
             // 日历卡片
@@ -101,7 +103,9 @@ struct CreamCalendarOverlay: View {
 
         Button {
             selectedDate = day
-            isPresented = false
+            withAnimation(.easeOut(duration: 0.16)) {
+                isPresented = false
+            }
         } label: {
             VStack(spacing: 3) {
                 Text("\(calendar.component(.day, from: day))")
