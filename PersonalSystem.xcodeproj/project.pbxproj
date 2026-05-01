@@ -31,6 +31,7 @@
 		872CB671FC91EAC997FFBCAB /* cat-lying.png in Resources */ = {isa = PBXBuildFile; fileRef = D3B2AC351391A95EB5626845 /* cat-lying.png */; };
 		8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */; };
 		A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E49D2D37FD2539D75275B /* Secrets.swift */; };
+		AB10048BAE298715FF075CE4 /* PlantGrowthLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174F364326890E7FF01D7C0F /* PlantGrowthLaunchView.swift */; };
 		ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36385E1762B561F298163F27 /* TodayView.swift */; };
 		C19ACFF8ABFFB35B452B3C49 /* PersonalSystemSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */; };
 		C2010821D5C31C01EB300652 /* mascot-cat.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A74F453355CC52805ED86CD /* mascot-cat.png */; };
@@ -54,6 +55,7 @@
 		062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainCardWallView.swift; sourceTree = "<group>"; };
 		0C3838D574A4224A4001BCEB /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		0D1FC9E60D5319B974898F99 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		174F364326890E7FF01D7C0F /* PlantGrowthLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlantGrowthLaunchView.swift; sourceTree = "<group>"; };
 		1A74F453355CC52805ED86CD /* mascot-cat.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mascot-cat.png"; sourceTree = "<group>"; };
 		1BED040E4ACD1E520E36FFC0 /* TurnTypeStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnTypeStyle.swift; sourceTree = "<group>"; };
 		229491345B70D21BB0902CB5 /* AIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIParser.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */,
 				499F1731265F2DDA1F0395B4 /* CreamTheme.swift */,
 				E43793AFBE40A0207A015C59 /* GlobalAIInputBar.swift */,
+				174F364326890E7FF01D7C0F /* PlantGrowthLaunchView.swift */,
 				8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */,
 				8A1C212C5B39C02449173866 /* ReviewSessionView.swift */,
 				0C3838D574A4224A4001BCEB /* RootTabView.swift */,
@@ -297,6 +300,7 @@
 				0BE52857AA88AC63F2AD3350 /* GlobalAIInputBar.swift in Sources */,
 				804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */,
 				1282ACB00F9A6EEB2F100955 /* PersonalSystemApp.swift in Sources */,
+				AB10048BAE298715FF075CE4 /* PlantGrowthLaunchView.swift in Sources */,
 				F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */,
 				5D44142D106F280B67EE7F4E /* ReviewSessionView.swift in Sources */,
 				F6896693D277FD78E861D75F /* RootTabView.swift in Sources */,

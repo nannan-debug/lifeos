@@ -4,7 +4,9 @@ import SwiftUI
 struct PersonalSystemApp: App {
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            FirstRunLaunchGate {
+                RootTabView()
+            }
         }
     }
 }
