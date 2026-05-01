@@ -52,6 +52,7 @@ struct ReviewSessionView: View {
     @EnvironmentObject var store: AppStore
 
     @State private var deriveTodoFromTurn: DerivePayload?
+    @State private var deriveBrainFromTurn: DerivePayload?
 
     private var queue: [ConversationTurn] {
         ReviewQueue.queue(turns: store.turns)
@@ -92,6 +93,10 @@ struct ReviewSessionView: View {
         .creamBackground()
         .sheet(item: $deriveTodoFromTurn) { payload in
             TodoEditorSheet(mode: .deriveFromTurn(turn: payload.turn))
+                .environmentObject(store)
+        }
+        .sheet(item: $deriveBrainFromTurn) { payload in
+            BrainCardEditorSheet(mode: .deriveFromTurn(turn: payload.turn))
                 .environmentObject(store)
         }
     }
@@ -180,8 +185,15 @@ struct ReviewSessionView: View {
             .tint(.gray)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            // 想法卡片：[→ ToDo]
-            // 感受卡片：PRD 3.4 不能直接转 ToDo；PR 4 阶段右滑无动作（PR 5 接 → 第二大脑）
+            // 想法卡片：[→ 第二大脑] [→ ToDo]
+            // 感受卡片：[→ 第二大脑]（PRD 3.4：感受不能直接转 ToDo）
+            Button {
+                deriveBrainFromTurn = DerivePayload(turn: turn)
+            } label: {
+                Label("→ 第二大脑", systemImage: "brain.head.profile")
+            }
+            .tint(CreamTheme.green.opacity(0.85))
+
             if turn.recognizedType == "想法" {
                 Button {
                     deriveTodoFromTurn = DerivePayload(turn: turn)
