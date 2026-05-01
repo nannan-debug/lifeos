@@ -6,6 +6,13 @@ struct PendingClarification {
 }
 
 final class AppStore: ObservableObject {
+    private enum ICloudSyncReason {
+        case startup
+        case userEnabled
+        case localChange
+        case remoteChange
+    }
+
     private static let dateKeyFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -25,17 +32,33 @@ final class AppStore: ObservableObject {
 
     // TodayView 当前 segment（"check" / "todo"），供 RootTabView 控制 AI 输入框可见性
     @Published var todaySegment: String = "check"
+    @Published var isICloudSyncEnabled: Bool
+    @Published var iCloudSyncStatusText: String
 
     /// 上一轮 AI 追问的上下文：当 AI 返回 needsClarification 时，暂存原文与 hint。
     /// 用户下次提交时自动把两段拼起来发给 AI，避免"9 点到 10 点"这种裸时间丢失上下文。
     @Published var pendingClarification: PendingClarification? = nil
 
     private let defaults = UserDefaults.standard
+    private let authUserIdKey = "auth.userId"
+    private let iCloudSyncEnabledKey = "icloud.sync.enabled"
+    private let iCloudSnapshotKey = "lifeos.snapshot.v1"
 
-    /// 当前登录用户的稳定 ID（Apple ID 的 `credential.user`）。
-    /// 未登录时为 nil，此时读写落在全局 key（向后兼容老版本本地数据）。
+    private let scopedDataKeyBases = [
+        "ps.checks.byDate",
+        "ps.time.byDate",
+        "ps.tasks",
+        "ps.turns",
+        "ps.brain",
+        "fields.daily",
+        "fields.daily.initialized",
+        "fields.daily.groups",
+        "ps.inbox"
+    ]
+
+    /// 当前设备的本地稳定 ID。对用户不可见，仅用于继续兼容既有本机分库。
     private var currentUserId: String? {
-        let raw = defaults.string(forKey: "auth.userId") ?? ""
+        let raw = defaults.string(forKey: authUserIdKey) ?? ""
         return raw.isEmpty ? nil : raw
     }
 
@@ -70,6 +93,13 @@ final class AppStore: ObservableObject {
     ]
 
     init() {
+        let syncEnabled = defaults.bool(forKey: iCloudSyncEnabledKey)
+        isICloudSyncEnabled = syncEnabled
+        iCloudSyncStatusText = Self.defaultICloudSyncStatus(isEnabled: syncEnabled)
+        observeICloudChanges()
+        if isICloudSyncEnabled {
+            applyICloudSnapshotIfNeeded(reason: .startup)
+        }
         cleanupLegacyInboxIfNeeded()
         loadTasks()
         loadTurns()
@@ -77,7 +107,33 @@ final class AppStore: ObservableObject {
         loadForSelectedDate()
     }
 
-    /// 登录 / 切换账号后调用，按当前 userId 重新装载所有数据
+    var currentAuthUserId: String {
+        defaults.string(forKey: authUserIdKey) ?? ""
+    }
+
+    func ensureLocalIdentity() {
+        guard currentAuthUserId.isEmpty else { return }
+        let uid = makeAnonymousUserId()
+        defaults.set(uid, forKey: authUserIdKey)
+        migrateLegacyGlobalData(to: uid)
+        reloadForCurrentUser()
+    }
+
+    func setICloudSyncEnabled(_ enabled: Bool) {
+        isICloudSyncEnabled = enabled
+        defaults.set(enabled, forKey: iCloudSyncEnabledKey)
+        guard enabled else {
+            iCloudSyncStatusText = "已关闭。数据只保存在本机。"
+            return
+        }
+
+        let pulled = applyICloudSnapshotIfNeeded(reason: .userEnabled)
+        if !pulled {
+            pushICloudSnapshot(reason: .userEnabled)
+        }
+    }
+
+    /// 切换本地数据空间后调用，按当前 userId 重新装载所有数据。
     func reloadForCurrentUser() {
         cleanupLegacyInboxIfNeeded()
         loadTasks()
@@ -96,6 +152,122 @@ final class AppStore: ObservableObject {
         tasks = []
         turns = []
         brainCards = []
+        syncICloudAfterLocalChange()
+    }
+
+    private func makeAnonymousUserId() -> String {
+        "dev-" + UUID().uuidString
+    }
+
+    private func scopedKey(_ base: String, userId: String) -> String {
+        "\(base).\(userId)"
+    }
+
+    private func migrateLegacyGlobalData(to userId: String) {
+        for base in scopedDataKeyBases {
+            let targetKey = scopedKey(base, userId: userId)
+            guard defaults.object(forKey: targetKey) == nil, let value = defaults.object(forKey: base) else { continue }
+            defaults.set(value, forKey: targetKey)
+        }
+    }
+
+    private static func defaultICloudSyncStatus(isEnabled: Bool) -> String {
+        isEnabled ? "开启中。会在同一 Apple ID 的设备间同步。" : "关闭。数据只保存在本机。"
+    }
+
+    private var iCloudStore: NSUbiquitousKeyValueStore {
+        .default
+    }
+
+    private var isICloudAccountAvailable: Bool {
+        FileManager.default.ubiquityIdentityToken != nil
+    }
+
+    private func observeICloudChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleICloudStoreChange(_:)),
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: iCloudStore
+        )
+        iCloudStore.synchronize()
+    }
+
+    @objc private func handleICloudStoreChange(_ notification: Notification) {
+        guard isICloudSyncEnabled else { return }
+        let changedKeys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String]
+        guard changedKeys?.contains(iCloudSnapshotKey) ?? true else { return }
+        DispatchQueue.main.async { [weak self] in
+            _ = self?.applyICloudSnapshotIfNeeded(reason: .remoteChange)
+        }
+    }
+
+    @discardableResult
+    private func applyICloudSnapshotIfNeeded(reason: ICloudSyncReason) -> Bool {
+        guard isICloudSyncEnabled else { return false }
+        guard let snapshot = iCloudStore.dictionary(forKey: iCloudSnapshotKey),
+              let values = snapshot["values"] as? [String: Any] else {
+            iCloudSyncStatusText = isICloudAccountAvailable ? "等待第一次同步。" : "请先在系统里登录 iCloud。"
+            return false
+        }
+
+        let remoteUpdatedAt = snapshot["updatedAt"] as? Double ?? 0
+        let shouldPull: Bool
+        switch reason {
+        case .startup, .remoteChange:
+            shouldPull = true
+        case .userEnabled:
+            shouldPull = !hasMeaningfulLocalData()
+        case .localChange:
+            shouldPull = false
+        }
+
+        guard shouldPull else {
+            iCloudSyncStatusText = "已开启。本机数据优先。"
+            return false
+        }
+
+        for base in scopedDataKeyBases {
+            let key = scopedKey(base)
+            if let value = values[base] {
+                defaults.set(value, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        reloadForCurrentUser()
+        iCloudSyncStatusText = remoteUpdatedAt > 0 ? "已从 iCloud 同步。" : "已开启 iCloud 同步。"
+        return true
+    }
+
+    private func pushICloudSnapshot(reason: ICloudSyncReason) {
+        guard isICloudSyncEnabled else { return }
+        var values: [String: Any] = [:]
+        for base in scopedDataKeyBases {
+            if let value = defaults.object(forKey: scopedKey(base)) {
+                values[base] = value
+            }
+        }
+        iCloudStore.set([
+            "version": 1,
+            "updatedAt": Date().timeIntervalSince1970,
+            "values": values
+        ], forKey: iCloudSnapshotKey)
+        let ok = iCloudStore.synchronize()
+        iCloudSyncStatusText = ok ? "已同步到 iCloud。" : "等待 iCloud 可用。"
+    }
+
+    private func syncICloudAfterLocalChange() {
+        pushICloudSnapshot(reason: .localChange)
+    }
+
+    private func hasMeaningfulLocalData() -> Bool {
+        if let checks = defaults.dictionary(forKey: keyChecks), !checks.isEmpty { return true }
+        if let time = defaults.dictionary(forKey: keyTime), !time.isEmpty { return true }
+        if let tasks = defaults.array(forKey: keyTasks), !tasks.isEmpty { return true }
+        if let turns = defaults.array(forKey: keyTurns), !turns.isEmpty { return true }
+        if let brain = defaults.data(forKey: keyBrain), !brain.isEmpty { return true }
+        return false
     }
 
     /// 把旧版本镜像写入 `ps.inbox.<userId>` 的 InboxNote 数据一次性清掉。
@@ -247,6 +419,7 @@ final class AppStore: ObservableObject {
             }
         }
         reloadFieldConfig()
+        syncICloudAfterLocalChange()
         return true
     }
 
@@ -257,6 +430,7 @@ final class AppStore: ObservableObject {
         defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
         defaults.set(true, forKey: keyDailyInitialized)
         reloadFieldConfig()
+        syncICloudAfterLocalChange()
     }
 
     /// 重命名打卡项。会同步迁移历史所有日期的勾选状态（按 title 落库），
@@ -291,6 +465,7 @@ final class AppStore: ObservableObject {
         }
 
         reloadFieldConfig()
+        syncICloudAfterLocalChange()
         return true
     }
 
@@ -322,6 +497,7 @@ final class AppStore: ObservableObject {
 
     private func saveGroups(_ groups: [String]) {
         defaults.set(groups.joined(separator: ","), forKey: keyDailyGroups)
+        syncICloudAfterLocalChange()
     }
 
     /// 全部分组（手动建的 + 项目里出现过的，去重保序）。空字符串不算分组。
@@ -353,6 +529,7 @@ final class AppStore: ObservableObject {
         groups.append(clean)
         saveGroups(groups)
         reloadFieldConfig()
+        syncICloudAfterLocalChange()
         return true
     }
 
@@ -401,6 +578,7 @@ final class AppStore: ObservableObject {
         defaults.set(true, forKey: keyDailyInitialized)
 
         reloadFieldConfig()
+        syncICloudAfterLocalChange()
     }
 
     // MARK: - Conversation turns (voice timeline)
@@ -613,6 +791,7 @@ final class AppStore: ObservableObject {
                 day.removeAll { ($0["id"] ?? "") == id.uuidString }
                 map[key] = day
                 defaults.set(map, forKey: keyTime)
+                syncICloudAfterLocalChange()
             }
         } else {
             for key in map.keys {
@@ -624,6 +803,7 @@ final class AppStore: ObservableObject {
                 }
             }
             defaults.set(map, forKey: keyTime)
+            syncICloudAfterLocalChange()
         }
 
         if selectedDateKey == (dateKey ?? selectedDateKey) {
@@ -648,6 +828,7 @@ final class AppStore: ObservableObject {
         let day = Dictionary(uniqueKeysWithValues: checkItems.map { ($0.title, $0.done) })
         map[selectedDateKey] = day
         defaults.set(map, forKey: keyChecks)
+        syncICloudAfterLocalChange()
     }
 
     private func loadTimeForDate() {
@@ -668,6 +849,7 @@ final class AppStore: ObservableObject {
         var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
         map[selectedDateKey] = timeEntries.map { ["id": $0.id.uuidString, "name": $0.name, "start": $0.start, "end": $0.end, "category": $0.category, "extra": encodeExtra($0.extra)] }
         defaults.set(map, forKey: keyTime)
+        syncICloudAfterLocalChange()
     }
 
     private func loadTasks() {
@@ -717,6 +899,7 @@ final class AppStore: ObservableObject {
             ]
         }
         defaults.set(arr, forKey: keyTasks)
+        syncICloudAfterLocalChange()
     }
 
     private func loadTurns() {
@@ -764,6 +947,7 @@ final class AppStore: ObservableObject {
             ]
         }
         defaults.set(arr, forKey: keyTurns)
+        syncICloudAfterLocalChange()
     }
 
     // MARK: - Brain cards (第二大脑)
@@ -854,6 +1038,7 @@ final class AppStore: ObservableObject {
         encoder.dateEncodingStrategy = .secondsSince1970
         guard let data = try? encoder.encode(brainCards) else { return }
         defaults.set(data, forKey: keyBrain)
+        syncICloudAfterLocalChange()
     }
 
     private func encodeDerivatives(_ arr: [TurnDerivative]) -> String {
@@ -968,6 +1153,7 @@ final class AppStore: ObservableObject {
 
         defaults.set(timeMap, forKey: keyTime)
         defaults.set(taskArr, forKey: keyTasks)
+        syncICloudAfterLocalChange()
 
         loadForSelectedDate()
         loadTasks()

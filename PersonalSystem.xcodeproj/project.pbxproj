@@ -60,6 +60,7 @@
 		36385E1762B561F298163F27 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		4590EECCF8FD6F4EC701C99B /* PersonalSystemTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PersonalSystemTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4740978737F177B45D684422 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		48EFF892D5B0946268586336 /* PersonalSystem.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PersonalSystem.entitlements; sourceTree = "<group>"; };
 		499F1731265F2DDA1F0395B4 /* CreamTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreamTheme.swift; sourceTree = "<group>"; };
 		4EBB766411716643B833DBA1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5531CC646BE0A251938268A8 /* CardLinkPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardLinkPickerSheet.swift; sourceTree = "<group>"; };
@@ -114,6 +115,7 @@
 				4EBB766411716643B833DBA1 /* Info.plist */,
 				BCD658611087149BE9126035 /* mascot-cat.pdf */,
 				1A74F453355CC52805ED86CD /* mascot-cat.png */,
+				48EFF892D5B0946268586336 /* PersonalSystem.entitlements */,
 				DC3E4506D76484EEB429054A /* PersonalSystemApp.swift */,
 				70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */,
 			);
@@ -350,6 +352,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
@@ -444,6 +447,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
