@@ -166,13 +166,11 @@ struct QuickCaptureView: View {
                 }
             }
             .overlay(alignment: .top) {
-                quickCaptureCalendarOverlay
-                    .compositingGroup()
-                    .opacity(showCalendarOverlay ? 1 : 0)
-                    .offset(y: showCalendarOverlay ? 0 : -16)
-                    .allowsHitTesting(showCalendarOverlay)
-                    .animation(.easeOut(duration: 0.22), value: showCalendarOverlay)
-                    .zIndex(20)
+                if showCalendarOverlay {
+                    quickCaptureCalendarOverlay
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .zIndex(20)
+                }
             }
             // Animation driven by withAnimation() in calendar toggle button
             .alert("处理失败", isPresented: $showError) {
@@ -415,7 +413,9 @@ struct QuickCaptureView: View {
 
                 Button {
                     displayMonth = startOfMonth(for: previewDate)
-                    showCalendarOverlay.toggle()
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        showCalendarOverlay.toggle()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Text(dateTitle(previewDate))
@@ -488,13 +488,14 @@ struct QuickCaptureView: View {
     }
 
     private var quickCaptureCalendarOverlay: some View {
-        CreamCalendarOverlay(
+        let turnDateKeys = Set(store.turns.map { store.calendarDateKey(for: $0.createdAt) })
+
+        return CreamCalendarOverlay(
             selectedDate: $previewDate,
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                let hasTurns = store.turns.contains { Calendar.current.isDate($0.createdAt, inSameDayAs: day) }
-                return hasTurns ? .dot(CreamTheme.green) : .none
+                turnDateKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
             }
         )
     }

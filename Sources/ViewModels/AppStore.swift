@@ -6,6 +6,12 @@ struct PendingClarification {
 }
 
 final class AppStore: ObservableObject {
+    private static let dateKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     @Published var selectedDate = Date() { didSet { loadForSelectedDate() } }
     @Published var checkItems: [DailyCheckItem] = []
     @Published var timeEntries: [TimeEntry] = []
@@ -1153,10 +1159,67 @@ final class AppStore: ObservableObject {
         checkDoneCount(on: date) > 0 || timeEntryCount(on: date) > 0
     }
 
+    func calendarDateKey(for date: Date) -> String {
+        dateKey(for: date)
+    }
+
+    func recordTraceDateKeys(inMonth month: Date) -> Set<String> {
+        let keys = Set(monthDateKeys(for: month))
+        let checkMap = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        let timeMap = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+
+        var result = Set<String>()
+        for key in keys {
+            if let day = checkMap[key], day.values.contains(true) {
+                result.insert(key)
+                continue
+            }
+            if let rows = timeMap[key], !rows.isEmpty {
+                result.insert(key)
+            }
+        }
+        return result
+    }
+
+    func timeCategoriesByDateKey(inMonth month: Date) -> [String: [String]] {
+        let keys = Set(monthDateKeys(for: month))
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+
+        var result: [String: [String]] = [:]
+        for key in keys {
+            guard let rows = map[key], !rows.isEmpty else { continue }
+            var seen = Set<String>()
+            var ordered: [String] = []
+            for row in rows {
+                let category = (row["category"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !category.isEmpty, !seen.contains(category) else { continue }
+                seen.insert(category)
+                ordered.append(category)
+                if ordered.count >= 4 { break }
+            }
+            if !ordered.isEmpty {
+                result[key] = ordered
+            }
+        }
+        return result
+    }
+
     private func dateKey(for date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: date)
+        Self.dateKeyFormatter.string(from: date)
+    }
+
+    private func monthDateKeys(for month: Date) -> [String] {
+        let calendar = Calendar.current
+        let comps = calendar.dateComponents([.year, .month], from: month)
+        guard
+            let start = calendar.date(from: comps),
+            let range = calendar.range(of: .day, in: .month, for: start)
+        else { return [] }
+
+        return range.compactMap { day -> String? in
+            guard let date = calendar.date(byAdding: .day, value: day - 1, to: start) else { return nil }
+            return dateKey(for: date)
+        }
     }
 
     private func normalizeLegacyTimeCategory(_ raw: String) -> String {

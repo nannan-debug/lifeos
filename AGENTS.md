@@ -14,3 +14,18 @@
 - [`VERSIONING.md`](./VERSIONING.md) — 版本号约定（注意：`project.yml` 是 source of truth，不是 `Info.plist`）
 - [`LAUNCH_CHECKLIST.md`](./LAUNCH_CHECKLIST.md) — 当前上架状态 + 发版 SOP（重点看 §4.8 审核期间开发策略）
 - [`PRODUCT_BRIEF.md`](./PRODUCT_BRIEF.md) — 产品背景与 ADHD 友好设计原则
+
+## Codex 协作口径
+
+用户主要使用 Codex 参与本项目开发。除非用户明确要求只回答问题，否则 Codex 在完成一次代码或文档改动后，最终回复应使用中文，并主动交代：
+
+1. 已经完成了什么，必要时列出关键文件或 commit。
+2. 用户接下来需要如何验收或配合，例如看截图、跑 App、确认文案、决定是否 push / 开 PR。
+3. 如果验收通过，Codex 下一步打算做什么。
+4. 最后用一句明确问题询问用户是否同意继续。
+
+示例口径：
+
+> 这次我完成了 X，并已通过 Y 验证。你接下来需要检查 A / B；如果你确认没问题，我下一步会 push 分支并开 PR。你同意我继续吗？
+
+内部整理类改动（CI、重构、纯文档等）不必强行写入 changelog；commit 历史和 PR 描述能说明即可。
