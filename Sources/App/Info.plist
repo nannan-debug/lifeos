@@ -32,9 +32,9 @@
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 		<key>UIImageName</key>
-		<string>PlantStaticV3</string>
+		<string>LaunchStaticV1</string>
 		<key>UIImageRespectsSafeAreaInsets</key>
-		<true/>
+		<false/>
 	</dict>
 	<key>UIRequiresFullScreen</key>
 	<true/>

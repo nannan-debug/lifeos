@@ -1,5 +1,7 @@
 # 开屏动效优化设计记录
 
+> 2026-05-01 晚间更新：本设计中的 App 内 L2 动画已被纯静态开屏方案替代。最新接手记录见 `docs/superpowers/plans/2026-05-01-launch-screen-static-replacement.md`。
+
 ## 目标
 
 在不影响当前 App Store 审核中 build 的前提下，为 LifeOS 增加一个温柔的首次启动植物生长动效，并让系统原生 Launch Screen 与 App 内动效在视觉上衔接。
@@ -85,4 +87,3 @@ iOS / 模拟器会缓存原生 Launch Screen。之前复用 `PlantStatic` / `Pla
 - 已逐像素 hash 校验：
   - 当前 Desktop `flower.svg` 现场渲染结果 = 仓库 `flower-v2.png`
   - 当前 Desktop `plant_growth_layers.svg` 现场渲染结果 = 仓库 `plant-static-v3.png`
-
