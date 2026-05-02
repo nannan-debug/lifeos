@@ -147,7 +147,8 @@ enum AIParser {
         优先从以下默认集选：[工作, 学习, 生活, 灵感, 人际]。
         如默认集都不贴切，可以创新，但应简洁、可复用、有概括性。
 
-        输出 JSON 数组，每项是字符串，不带 # 前缀。不要输出任何其他内容。
+        输出 JSON 数组，每项是字符串，不带 # 前缀。不要输出任何解释。
+        如果当前接口必须返回随手记 records，请把 JSON 数组放进 details 字段。
 
         title: \(title)
         content: \(content)
@@ -160,9 +161,6 @@ enum AIParser {
         req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
 
         let body: [String: Any] = [
-            "task": "suggestTopics",
-            "title": title,
-            "content": content,
             "text": prompt,
             "currentDate": isoDate(),
             "currentTime": isoTime()
@@ -191,7 +189,11 @@ enum AIParser {
 
         guard !data.isEmpty else { throw AIParseError.empty }
         let topics = parseTopicPayload(data)
-        return normalizeTopics(topics)
+        let normalized = normalizeTopics(topics)
+        if !normalized.isEmpty {
+            return normalized
+        }
+        return fallbackTopics(title: title, content: content)
     }
 
     // MARK: - Helpers
@@ -221,11 +223,37 @@ enum AIParser {
             return wrapped.topics ?? wrapped.suggestions ?? []
         }
 
+        if let parsed = try? decoder.decode(AIParseResponse.self, from: data) {
+            return parsed.records.flatMap { record in
+                topicCandidates(from: record)
+            }
+        }
+
         if let text = String(data: data, encoding: .utf8) {
             return parseTopicText(text)
         }
 
         return []
+    }
+
+    private static func topicCandidates(from record: AIParsedRecord) -> [String] {
+        let fields = [
+            record.title,
+            record.details,
+            record.notes,
+            record.type
+        ].compactMap { $0 }
+
+        let parsedFields = fields.flatMap { parseTopicText($0) }
+        if !parsedFields.isEmpty {
+            return parsedFields
+        }
+
+        if let feelings = record.feelings, !feelings.isEmpty {
+            return feelings
+        }
+
+        return fields.flatMap { splitTopicText($0) }
     }
 
     private static func parseTopicText(_ text: String) -> [String] {
@@ -248,6 +276,19 @@ enum AIParser {
         return direct
     }
 
+    private static func splitTopicText(_ text: String) -> [String] {
+        text
+            .components(separatedBy: CharacterSet(charactersIn: "，,、/｜|\n\t "))
+            .map {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: " #＃[]【】「」\"'“”‘’：:。.!！?？"))
+            }
+            .filter { item in
+                guard !item.isEmpty else { return false }
+                guard item.count <= 8 else { return false }
+                return !["主题", "主题建议", "建议", "想法", "感受", "记录"].contains(item)
+            }
+    }
+
     private static func normalizeTopics(_ raw: [String]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
@@ -263,5 +304,26 @@ enum AIParser {
         }
 
         return result
+    }
+
+    private static func fallbackTopics(title: String, content: String) -> [String] {
+        let text = "\(title) \(content)"
+        let rules: [(String, [String])] = [
+            ("工作", ["工作", "项目", "产品", "会议", "客户", "同事", "PRD", "需求", "开发", "代码"]),
+            ("学习", ["学习", "读书", "课程", "考试", "复习", "论文", "知识", "研究"]),
+            ("生活", ["生活", "吃饭", "睡觉", "运动", "打球", "家务", "休息", "健康"]),
+            ("人际", ["朋友", "家人", "沟通", "关系", "聊天", "社交", "同学"]),
+            ("灵感", ["灵感", "想法", "创意", "点子", "设计", "感觉", "突然想到"])
+        ]
+
+        var result: [String] = []
+        for (topic, keywords) in rules {
+            if keywords.contains(where: { text.localizedCaseInsensitiveContains($0) }) {
+                result.append(topic)
+            }
+            if result.count == 3 { break }
+        }
+
+        return result.isEmpty ? ["灵感"] : result
     }
 }
