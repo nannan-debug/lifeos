@@ -132,7 +132,8 @@ final class PersonalSystemSmokeTests: XCTestCase {
     private func makeTurn(
         type: String = "想法",
         status: String = "pending",
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        moodScore: Int? = nil
     ) -> ConversationTurn {
         ConversationTurn(
             id: UUID(),
@@ -144,7 +145,7 @@ final class PersonalSystemSmokeTests: XCTestCase {
             status: "committed",
             payload: [:],
             fixHint: "",
-            moodScore: nil,
+            moodScore: moodScore,
             feelingTags: [],
             reviewStatus: status
         )
@@ -257,6 +258,130 @@ final class PersonalSystemSmokeTests: XCTestCase {
             makeTurn(status: "archived", createdAt: eightDaysAgo),  // 7 日窗外
         ]
         XCTAssertEqual(ReviewQueue.archivedCount(turns: turns, now: now), 1)
+    }
+
+    // MARK: - Weekly review summaries
+
+    func testReviewCheckHabitSummariesCountsCompletedAndBlankDays() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27, hour: 12))!
+        let end = cal.date(byAdding: .day, value: 7, to: start)!
+
+        for offset in [0, 1, 3] {
+            store.selectedDate = cal.date(byAdding: .day, value: offset, to: start)!
+            guard let item = store.checkItems.first(where: { $0.title == "吃维生素" }) else {
+                return XCTFail("missing fallback check item")
+            }
+            store.toggle(item)
+        }
+
+        let summaries = store.reviewCheckHabitSummaries(start: start, end: end)
+        let vitamin = summaries.first { $0.title == "吃维生素" }
+        XCTAssertEqual(vitamin?.completedDays, 3)
+        XCTAssertEqual(vitamin?.blankDays, 4)
+    }
+
+    func testReviewCheckDaySummariesCountCompletedItemsByDay() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27, hour: 12))!
+        let end = cal.date(byAdding: .day, value: 7, to: start)!
+
+        store.selectedDate = start
+        for title in ["吃维生素", "回忆梦境"] {
+            guard let item = store.checkItems.first(where: { $0.title == title }) else {
+                return XCTFail("missing fallback check item \(title)")
+            }
+            store.toggle(item)
+        }
+
+        store.selectedDate = cal.date(byAdding: .day, value: 2, to: start)!
+        guard let journal = store.checkItems.first(where: { $0.title == "写日记" }) else {
+            return XCTFail("missing fallback check item 写日记")
+        }
+        store.toggle(journal)
+
+        let days = store.reviewCheckDaySummaries(start: start, end: end)
+        XCTAssertEqual(days.count, 7)
+        XCTAssertEqual(days[0].completedCount, 2)
+        XCTAssertEqual(days[0].totalCount, 7)
+        XCTAssertEqual(days[1].completedCount, 0)
+        XCTAssertEqual(days[2].completedCount, 1)
+    }
+
+    func testReviewCheckGroupSummariesRequireWholeGroupChecked() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27, hour: 12))!
+        let end = cal.date(byAdding: .day, value: 7, to: start)!
+
+        store.selectedDate = start
+        for title in ["吃维生素", "回忆梦境", "洗漱", "出门"] {
+            guard let item = store.checkItems.first(where: { $0.title == title }) else {
+                return XCTFail("missing fallback check item \(title)")
+            }
+            store.toggle(item)
+        }
+
+        store.selectedDate = cal.date(byAdding: .day, value: 1, to: start)!
+        guard let partialItem = store.checkItems.first(where: { $0.title == "吃维生素" }) else {
+            return XCTFail("missing fallback check item 吃维生素")
+        }
+        store.toggle(partialItem)
+
+        let groups = store.reviewCheckGroupSummaries(start: start, end: end)
+        let morning = groups.first { $0.title == "早上" }
+        XCTAssertEqual(morning?.days.count, 7)
+        XCTAssertEqual(morning?.days[0].completedCount, 4)
+        XCTAssertEqual(morning?.days[0].totalCount, 4)
+        XCTAssertEqual(morning?.days[0].isFullyChecked, true)
+        XCTAssertEqual(morning?.days[1].completedCount, 1)
+        XCTAssertEqual(morning?.days[1].totalCount, 4)
+        XCTAssertEqual(morning?.days[1].isFullyChecked, false)
+    }
+
+    func testReviewTimeCategorySummariesAccumulateRecordedMinutesOnly() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27, hour: 12))!
+        let end = cal.date(byAdding: .day, value: 7, to: start)!
+
+        store.selectedDate = start
+        XCTAssertNil(store.addTimeEntry(name: "写代码", start: "09:00", end: "10:30", category: "工作"))
+        XCTAssertNil(store.addTimeEntry(name: "读书", start: "11:00", end: "11:45", category: "学习"))
+        XCTAssertNil(store.addTimeEntry(name: "散步", start: "12:00", end: "12:20", category: "运动"))
+
+        store.selectedDate = cal.date(byAdding: .day, value: 1, to: start)!
+        XCTAssertNil(store.addTimeEntry(name: "复盘", start: "20:00", end: "20:30", category: "学习"))
+        XCTAssertNil(store.addTimeEntry(name: "看电影", start: "21:00", end: "22:00", category: "娱乐"))
+
+        let summaries = store.reviewTimeCategorySummaries(start: start, end: end)
+        XCTAssertEqual(summaries.map(\.category), ["学习", "工作", "运动", "娱乐"])
+        XCTAssertEqual(summaries.first(where: { $0.category == "工作" })?.minutes, 90)
+        XCTAssertEqual(summaries.first(where: { $0.category == "学习" })?.minutes, 75)
+        XCTAssertEqual(summaries.first(where: { $0.category == "运动" })?.minutes, 20)
+        XCTAssertEqual(summaries.first(where: { $0.category == "娱乐" })?.minutes, 60)
+        XCTAssertFalse(summaries.contains { $0.minutes == 0 })
+    }
+
+    func testReviewPendingCountUsesSelectedWeekWindow() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27))!
+        let end = cal.date(byAdding: .day, value: 7, to: start)!
+        let turns: [ConversationTurn] = [
+            makeTurn(type: "想法", status: "pending", createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 27, hour: 9))!),
+            makeTurn(type: "感受", status: "pending", createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 3, hour: 22))!),
+            makeTurn(type: "想法", status: "pending", createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 4, hour: 0))!),
+            makeTurn(type: "感恩", status: "pending", createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 28, hour: 10))!),
+        ]
+
+        XCTAssertEqual(ReviewQueue.pendingCount(turns: turns, start: start, end: end), 2)
     }
 
     func testTurnDerivativesPersistAcrossReload() {

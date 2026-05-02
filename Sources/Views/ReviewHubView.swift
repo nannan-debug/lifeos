@@ -43,18 +43,56 @@ struct ReviewHubView: View {
     }
 
     private var pending: Int { ReviewQueue.pendingCount(turns: store.turns, start: period.start, end: period.end) }
-    private var archived: Int { ReviewQueue.archivedCount(turns: store.turns, start: period.start, end: period.end) }
-    private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns, start: period.start, end: period.end) }
+    private var checkGroupSummaries: [ReviewCheckGroupSummary] {
+        store.reviewCheckGroupSummaries(start: period.start, end: period.end)
+    }
+    private var timeSummaries: [ReviewTimeCategorySummary] {
+        store.reviewTimeCategorySummaries(start: period.start, end: period.end)
+    }
+    private var recordedTimeMinutes: Int {
+        timeSummaries.reduce(0) { $0 + $1.minutes }
+    }
+    private var periodMinutes: Int {
+        let dayCount = calendar.dateComponents([.day], from: calendar.startOfDay(for: period.start), to: calendar.startOfDay(for: period.end)).day ?? 0
+        return max(dayCount, 0) * 24 * 60
+    }
+    private var unrecordedTimeMinutes: Int {
+        max(periodMinutes - recordedTimeMinutes, 0)
+    }
+    private var maxTimeMinutes: Int {
+        max(timeSummaries.map(\.minutes).max() ?? 1, 1)
+    }
+    private var checkWeekDates: [Date?] {
+        dates(from: period.start, to: period.end).map(Optional.some)
+    }
+    private var checkMonthWeeks: [[Date?]] {
+        let monthDays = dates(from: period.start, to: period.end)
+        let leading = leadingBlankDaysBeforeMonday(for: period.start)
+        let trailing = (7 - ((leading + monthDays.count) % 7)) % 7
+        let cells = Array(repeating: nil as Date?, count: leading) + monthDays.map(Optional.some) + Array(repeating: nil as Date?, count: trailing)
+        return stride(from: 0, to: cells.count, by: 7).map { start in
+            Array(cells[start..<min(start + 7, cells.count)])
+        }
+    }
+    private var recentPendingIdeas: [ConversationTurn] {
+        Array(ReviewQueue.queue(turns: store.turns, start: period.start, end: period.end).prefix(2))
+    }
+    private var periodLabel: String {
+        window == .week ? "这周" : "这个月"
+    }
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
                 ScrollView {
                     VStack(spacing: 12) {
+                        checkHabitCard
+                        timeDistributionCard
+
                         NavigationLink {
                             ReviewSessionView().environmentObject(store)
                         } label: {
-                            reviewCard
+                            pendingIdeasCard
                         }
                         .buttonStyle(.plain)
 
@@ -166,39 +204,272 @@ struct ReviewHubView: View {
         )
     }
 
-    // MARK: - Review 卡片
+    // MARK: - Weekly review cards
 
-    private var reviewCard: some View {
+    private var checkHabitCard: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            cardHeader(icon: "checkmark.circle", title: "打卡", trailing: nil)
+
+            if checkGroupSummaries.isEmpty {
+                emptyLine("还没有固定打卡项，留白也可以被好好放着。")
+            } else {
+                checkCalendarPanel
+            }
+        }
+        .reviewCardStyle()
+    }
+
+    private var checkCalendarPanel: some View {
+        VStack(spacing: window == .week ? 0 : 10) {
+            switch window {
+            case .week:
+                checkMatrixBlock(dates: checkWeekDates, isMonth: false)
+            case .month:
+                ForEach(Array(checkMonthWeeks.enumerated()), id: \.offset) { _, week in
+                    checkMatrixBlock(dates: week, isMonth: true)
+                }
+            }
+        }
+    }
+
+    private func checkMatrixBlock(dates: [Date?], isMonth: Bool) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            VStack(alignment: .leading, spacing: isMonth ? 7 : 8) {
+                Text("")
+                    .frame(height: isMonth ? 17 : 18)
+                ForEach(checkGroupSummaries, id: \.title) { group in
+                    Text(group.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(width: 42, height: isMonth ? 31 : 36, alignment: .leading)
+                }
+            }
+
+            VStack(spacing: isMonth ? 7 : 8) {
+                HStack(spacing: 5) {
+                    ForEach(Array(dates.enumerated()), id: \.offset) { _, date in
+                        VStack(spacing: 1) {
+                            if let date {
+                                Text(weekdaySingleTitle(date))
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.secondary.opacity(0.66))
+                                Text(dayNumberTitle(date))
+                                    .font(.caption2.weight(calendar.isDateInToday(date) ? .bold : .medium))
+                                    .foregroundStyle(calendar.isDateInToday(date) ? CreamTheme.green : .secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: isMonth ? 17 : 18)
+                    }
+                }
+
+                ForEach(checkGroupSummaries, id: \.title) { group in
+                    HStack(spacing: 5) {
+                        ForEach(Array(dates.enumerated()), id: \.offset) { _, date in
+                            CheckMatrixCell(
+                                status: date.map { checkStatus(for: group, on: $0) },
+                                isToday: date.map { calendar.isDateInToday($0) } ?? false
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: isMonth ? 31 : 36)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var timeDistributionCard: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            cardHeader(icon: "clock", title: "时间分配", trailing: nil)
+
+            VStack(spacing: 11) {
+                if timeSummaries.isEmpty {
+                    emptyLine("有记录时，这里会按分类汇总已经写下的时间。")
+                } else {
+                    ForEach(timeSummaries, id: \.category) { item in
+                        TimeDistributionRow(
+                            title: item.category,
+                            duration: durationText(minutes: item.minutes),
+                            ratio: CGFloat(item.minutes) / CGFloat(maxTimeMinutes),
+                            color: timeColor(for: item.category)
+                        )
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.black.opacity(0.14))
+                        .frame(width: 4, height: 4)
+                    Text("未记录时间 \(durationText(minutes: unrecordedTimeMinutes))")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Spacer()
+                }
+                .padding(.top, 1)
+            }
+        }
+        .reviewCardStyle()
+    }
+
+    private func checkStatus(for group: ReviewCheckGroupSummary, on date: Date) -> CheckGroupStatus {
+        let day = group.days.first { calendar.isDate($0.date, inSameDayAs: date) }
+        return CheckGroupStatus(
+            completedCount: day?.completedCount ?? 0,
+            totalCount: day?.totalCount ?? 0
+        )
+    }
+
+    private func dates(from start: Date, to end: Date) -> [Date] {
+        var result: [Date] = []
+        var cursor = calendar.startOfDay(for: start)
+        let exclusiveEnd = calendar.startOfDay(for: end)
+        while cursor < exclusiveEnd {
+            result.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return result
+    }
+
+    private func leadingBlankDaysBeforeMonday(for date: Date) -> Int {
+        let weekday = calendar.component(.weekday, from: date)
+        return (weekday + 5) % 7
+    }
+
+    private var pendingIdeasCard: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Review")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                HStack(spacing: 8) {
+                    Image(systemName: "tray")
+                        .foregroundStyle(CreamTheme.green)
+                    Text("待处理想法")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
                 Spacer()
+                Text("\(pending) 条")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary.opacity(0.45))
             }
 
-            HStack(spacing: 0) {
-                statBlock(label: "待处理", value: pending, color: .primary)
-                Divider().frame(height: 28)
-                statBlock(label: "已处理", value: archived, color: CreamTheme.green)
-                Divider().frame(height: 28)
-                statBlock(label: "搁置", value: dismissed, color: .secondary)
+            if recentPendingIdeas.isEmpty {
+                emptyLine("\(periodLabel)没有等你处理的想法。")
+            } else {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(recentPendingIdeas) { turn in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(CreamTheme.green.opacity(0.5))
+                                .frame(width: 4, height: 4)
+                            Text(TurnTypeStyle.displayText(for: turn))
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+
+            Text("去接住几条")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CreamTheme.green)
+        }
+        .reviewCardStyle()
+    }
+
+    private func cardHeader(icon: String, title: String, trailing: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(CreamTheme.green)
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer()
+            if let trailing {
+                Text(trailing)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 15)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.95))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
+    }
+
+    private func emptyLine(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary.opacity(0.85))
+    }
+
+    private func durationText(minutes: Int) -> String {
+        let hours = minutes / 60
+        let mins = minutes % 60
+        if hours > 0 && mins > 0 { return "\(hours)h \(mins)m" }
+        if hours > 0 { return "\(hours)h" }
+        return "\(mins)m"
+    }
+
+    private func timeColor(for category: String) -> Color {
+        // Keep in sync with TimeView's Notion Inked category palette.
+        switch category {
+        case "睡觉": return Color(red: 0.608, green: 0.494, blue: 0.647)
+        case "工作": return Color(red: 0.357, green: 0.549, blue: 0.710)
+        case "运动": return Color(red: 0.353, green: 0.620, blue: 0.435)
+        case "学习": return Color(red: 0.749, green: 0.635, blue: 0.204)
+        case "社交": return Color(red: 0.408, green: 0.447, blue: 0.671)
+        case "娱乐": return Color(red: 0.753, green: 0.529, blue: 0.369)
+        case "其他": return Color(red: 0.420, green: 0.659, blue: 0.627)
+        default: return CreamTheme.green
+        }
+    }
+
+    private var brainCount: Int { store.brainCards.count }
+    private var brainPreview: [BrainCard] {
+        Array(store.brainCards.sorted { $0.createdAt > $1.createdAt }.prefix(2))
+    }
+
+    private var secondBrainCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "brain.head.profile")
+                    .foregroundStyle(CreamTheme.green)
+                Text("第二大脑")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("\(brainCount) 张")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary.opacity(0.45))
+            }
+
+            if brainPreview.isEmpty {
+                emptyLine("处理过的想法可以沉淀成卡片，之后再回来慢慢读。")
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(brainPreview) { card in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(CreamTheme.green.opacity(0.5))
+                                .frame(width: 4, height: 4)
+                            Text(card.title)
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+        .reviewCardStyle()
     }
 
     private var periodTitle: String {
@@ -248,72 +519,114 @@ struct ReviewHubView: View {
         return formatter.string(from: date)
     }
 
-    private func statBlock(label: String, value: Int, color: Color) -> some View {
-        VStack(spacing: 3) {
-            Text("\(value)")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(color)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
+    private func dayNumberTitle(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "d"
+        return formatter.string(from: date)
     }
 
-    // MARK: - 第二大脑 卡片（PR 5 激活）
-
-    private var brainCount: Int { store.brainCards.count }
-    private var brainPreview: [BrainCard] {
-        Array(store.brainCards.sorted { $0.createdAt > $1.createdAt }.prefix(2))
+    private func weekdaySingleTitle(_ date: Date) -> String {
+        let symbols = ["日", "一", "二", "三", "四", "五", "六"]
+        let weekday = calendar.component(.weekday, from: date)
+        return symbols[min(max(weekday - 1, 0), symbols.count - 1)]
     }
 
-    private var secondBrainCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "brain.head.profile")
+}
+
+private struct CheckGroupStatus: Equatable {
+    let completedCount: Int
+    let totalCount: Int
+
+    var isFull: Bool { totalCount > 0 && completedCount == totalCount }
+    var hasAny: Bool { completedCount > 0 }
+}
+
+private struct CheckMatrixCell: View {
+    let status: CheckGroupStatus?
+    let isToday: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 11)
+                .fill(fillColor)
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(isToday ? CreamTheme.green.opacity(0.28) : strokeColor, lineWidth: isToday ? 1.4 : 1)
+
+            if status?.isFull == true {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(CreamTheme.green)
-                Text("第二大脑")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text("\(brainCount) 张")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary.opacity(0.45))
+            } else if status?.hasAny == true {
+                Circle()
+                    .fill(CreamTheme.green.opacity(0.58))
+                    .frame(width: 5, height: 5)
             }
+        }
+    }
 
-            if brainPreview.isEmpty {
-                Text("处理过的「想法 / 感受」可以沉淀成卡片，按主题聚合。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary.opacity(0.85))
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(brainPreview) { card in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(CreamTheme.green.opacity(0.5))
-                                .frame(width: 4, height: 4)
-                            Text(card.title)
-                                .font(.caption)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                        }
-                    }
+    private var fillColor: Color {
+        guard let status else { return Color.clear }
+        if status.isFull { return CreamTheme.green.opacity(0.045) }
+        if status.hasAny { return CreamTheme.green.opacity(0.025) }
+        return Color(red: 0.992, green: 0.992, blue: 0.970)
+    }
+
+    private var strokeColor: Color {
+        guard let status else { return Color.clear }
+        if status.isFull { return CreamTheme.green.opacity(0.28) }
+        if status.hasAny { return CreamTheme.green.opacity(0.16) }
+        return Color.black.opacity(0.055)
+    }
+}
+
+private struct TimeDistributionRow: View {
+    let title: String
+    let duration: String
+    let ratio: CGFloat
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(width: 42, alignment: .leading)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.black.opacity(0.045))
+                    Capsule()
+                        .fill(color.opacity(0.55))
+                        .frame(width: max(proxy.size.width * min(max(ratio, 0), 1), 8))
                 }
             }
+            .frame(height: 12)
+
+            Text(duration)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 42, alignment: .trailing)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 15)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.95))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
+    }
+}
+
+private extension View {
+    func reviewCardStyle() -> some View {
+        self
+            .padding(.horizontal, 16)
+            .padding(.vertical, 15)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.95))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
     }
 }

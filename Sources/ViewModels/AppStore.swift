@@ -5,6 +5,35 @@ struct PendingClarification {
     let hint: String
 }
 
+struct ReviewCheckHabitSummary: Equatable {
+    let title: String
+    let completedDays: Int
+    let blankDays: Int
+}
+
+struct ReviewCheckDaySummary: Equatable {
+    let date: Date
+    let completedCount: Int
+    let totalCount: Int
+}
+
+struct ReviewCheckGroupSummary: Equatable {
+    struct Day: Equatable {
+        let date: Date
+        let completedCount: Int
+        let totalCount: Int
+        var isFullyChecked: Bool { totalCount > 0 && completedCount == totalCount }
+    }
+
+    let title: String
+    let days: [Day]
+}
+
+struct ReviewTimeCategorySummary: Equatable {
+    let category: String
+    let minutes: Int
+}
+
 final class AppStore: ObservableObject {
     private enum ICloudSyncReason {
         case startup
@@ -1314,6 +1343,94 @@ final class AppStore: ObservableObject {
         return ordered
     }
 
+    func reviewCheckHabitSummaries(start: Date, end: Date) -> [ReviewCheckHabitSummary] {
+        let keys = dateKeys(start: start, end: end)
+        let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+
+        return currentCheckEntries().map { entry in
+            let completed = keys.reduce(0) { total, key in
+                total + ((map[key]?[entry.title] == true) ? 1 : 0)
+            }
+            return ReviewCheckHabitSummary(
+                title: entry.title,
+                completedDays: completed,
+                blankDays: max(keys.count - completed, 0)
+            )
+        }
+    }
+
+    func reviewCheckDaySummaries(start: Date, end: Date) -> [ReviewCheckDaySummary] {
+        let days = dates(start: start, end: end)
+        let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        let titles = currentCheckEntries().map(\.title)
+
+        return days.map { date in
+            let key = dateKey(for: date)
+            let day = map[key] ?? [:]
+            let completed = titles.reduce(0) { total, title in
+                total + ((day[title] == true) ? 1 : 0)
+            }
+            return ReviewCheckDaySummary(date: date, completedCount: completed, totalCount: titles.count)
+        }
+    }
+
+    func reviewCheckGroupSummaries(start: Date, end: Date) -> [ReviewCheckGroupSummary] {
+        let days = dates(start: start, end: end)
+        let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        let entries = currentCheckEntries()
+        let grouped = Dictionary(grouping: entries, by: { $0.tag.isEmpty ? "未分组" : $0.tag })
+        let orderedGroups = entries.reduce(into: [String]()) { result, entry in
+            let title = entry.tag.isEmpty ? "未分组" : entry.tag
+            if !result.contains(title) { result.append(title) }
+        }
+
+        return orderedGroups.compactMap { groupTitle in
+            guard let groupEntries = grouped[groupTitle], !groupEntries.isEmpty else { return nil }
+            let groupDays = days.map { date in
+                let key = dateKey(for: date)
+                let day = map[key] ?? [:]
+                let completed = groupEntries.reduce(0) { total, entry in
+                    total + ((day[entry.title] == true) ? 1 : 0)
+                }
+                return ReviewCheckGroupSummary.Day(
+                    date: date,
+                    completedCount: completed,
+                    totalCount: groupEntries.count
+                )
+            }
+            return ReviewCheckGroupSummary(title: groupTitle, days: groupDays)
+        }
+    }
+
+    func reviewTimeCategorySummaries(start: Date, end: Date) -> [ReviewTimeCategorySummary] {
+        let keys = Set(dateKeys(start: start, end: end))
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        var minutesByCategory: [String: Int] = [:]
+
+        for key in keys.sorted() {
+            for row in map[key] ?? [] {
+                let category = normalizeLegacyTimeCategory(row["category"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let startMinutes = parseClockMinutes(row["start"] ?? ""),
+                      let endMinutes = parseClockMinutes(row["end"] ?? ""),
+                      endMinutes > startMinutes else { continue }
+                let cleanCategory = category.isEmpty ? "其他" : category
+                minutesByCategory[cleanCategory, default: 0] += endMinutes - startMinutes
+            }
+        }
+
+        let categoryOrder = ["学习", "工作", "运动", "娱乐", "社交", "睡觉", "其他"]
+        let known = categoryOrder
+            .map { ReviewTimeCategorySummary(category: $0, minutes: minutesByCategory[$0] ?? 0) }
+            .filter { $0.minutes > 0 }
+        let otherKnown = Set(categoryOrder)
+        let custom = minutesByCategory.keys
+            .filter { !otherKnown.contains($0) }
+            .sorted()
+            .map { ReviewTimeCategorySummary(category: $0, minutes: minutesByCategory[$0] ?? 0) }
+            .filter { $0.minutes > 0 }
+        return known + custom
+    }
+
     func hasRecordTrace(on date: Date) -> Bool {
         checkDoneCount(on: date) > 0 || timeEntryCount(on: date) > 0
     }
@@ -1365,6 +1482,33 @@ final class AppStore: ObservableObject {
 
     private func dateKey(for date: Date) -> String {
         Self.dateKeyFormatter.string(from: date)
+    }
+
+    private func dateKeys(start: Date, end: Date) -> [String] {
+        dates(start: start, end: end).map { dateKey(for: $0) }
+    }
+
+    private func dates(start: Date, end: Date) -> [Date] {
+        let calendar = Calendar.current
+        var result: [Date] = []
+        var cursor = calendar.startOfDay(for: start)
+        let exclusiveEnd = calendar.startOfDay(for: end)
+        while cursor < exclusiveEnd {
+            result.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return result
+    }
+
+    private func parseClockMinutes(_ value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0...23).contains(hour),
+              (0...59).contains(minute) else { return nil }
+        return hour * 60 + minute
     }
 
     private func monthDateKeys(for month: Date) -> [String] {

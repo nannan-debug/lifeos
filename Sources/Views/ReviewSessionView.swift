@@ -12,6 +12,11 @@ enum ReviewQueue {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    static func queue(turns: [ConversationTurn], start: Date, end: Date) -> [ConversationTurn] {
+        filtered(turns: turns, start: start, end: end, statuses: ["pending"])
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     /// windowDays 日窗内 reviewStatus == archived 的想法/感受条数
     static func archivedCount(turns: [ConversationTurn], now: Date = Date(), windowDays: Int = 7) -> Int {
         filtered(turns: turns, now: now, statuses: ["archived"], windowDays: windowDays).count
