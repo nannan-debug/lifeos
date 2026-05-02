@@ -7,6 +7,7 @@ struct TimeView: View {
     @State private var editTarget: TimeEntry?
     @State private var showCalendarOverlay = false
     @State private var displayMonth = Date()
+    @State private var calendarCategoriesByDateKey: [String: [String]] = [:]
 
     private let calendar = Calendar.current
     private let weekSymbols = ["日", "一", "二", "三", "四", "五", "六"]
@@ -358,6 +359,7 @@ struct TimeView: View {
             }
             .onAppear {
                 displayMonth = startOfMonth(for: store.selectedDate)
+                refreshCalendarMarkers()
             }
             .onChange(of: store.selectedDate) { newDate in
                 let m = startOfMonth(for: newDate)
@@ -365,6 +367,8 @@ struct TimeView: View {
                     displayMonth = m
                 }
             }
+            .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.timeEntries.count) { _ in refreshCalendarMarkers() }
             .onChange(of: timeFields) { _ in
                 store.reloadFieldConfig()
                 if dialCategory.isEmpty || !categoryOptions.contains(dialCategory) { dialCategory = categoryOptions.first ?? "工作" }
@@ -435,19 +439,21 @@ struct TimeView: View {
     }
 
     private var timeCalendarOverlay: some View {
-        let categoriesByDateKey = store.timeCategoriesByDateKey(inMonth: displayMonth)
-
-        return CreamCalendarOverlay(
+        CreamCalendarOverlay(
             selectedDate: $store.selectedDate,
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                let cats = categoriesByDateKey[store.calendarDateKey(for: day)] ?? []
+                let cats = calendarCategoriesByDateKey[store.calendarDateKey(for: day)] ?? []
                 if cats.isEmpty { return .none }
                 let colors = cats.map(colorForCategory)
                 return .ring(colors)
             }
         )
+    }
+
+    private func refreshCalendarMarkers() {
+        calendarCategoriesByDateKey = store.timeCategoriesByDateKey(inMonth: displayMonth)
     }
 
     private func startOfMonth(for date: Date) -> Date {

@@ -9,6 +9,7 @@ struct ReviewHubView: View {
     @AppStorage("review.hub.selectedDate") private var selectedDateRaw: String = ""
     @State private var displayMonth = Date()
     @State private var showCalendarOverlay = false
+    @State private var reviewCalendarDateKeys: Set<String> = []
 
     private let calendar = Calendar.current
 
@@ -83,7 +84,10 @@ struct ReviewHubView: View {
             }
             .onAppear {
                 displayMonth = startOfMonth(for: selectedReviewDate)
+                refreshCalendarMarkers()
             }
+            .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.turns.count) { _ in refreshCalendarMarkers() }
         }
         .creamBackground()
     }
@@ -144,19 +148,21 @@ struct ReviewHubView: View {
     }
 
     private var calendarOverlay: some View {
-        let reviewDateKeys = Set(
-            store.turns
-                .filter { ["想法", "感受"].contains($0.recognizedType) }
-                .map { store.calendarDateKey(for: $0.createdAt) }
-        )
-
-        return CreamCalendarOverlay(
+        CreamCalendarOverlay(
             selectedDate: Binding(get: { selectedReviewDate }, set: { selectedReviewDate = $0 }),
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                reviewDateKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
+                reviewCalendarDateKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
             }
+        )
+    }
+
+    private func refreshCalendarMarkers() {
+        reviewCalendarDateKeys = Set(
+            store.turns
+                .filter { ["想法", "感受"].contains($0.recognizedType) }
+                .map { store.calendarDateKey(for: $0.createdAt) }
         )
     }
 

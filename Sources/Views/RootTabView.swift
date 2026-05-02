@@ -68,6 +68,7 @@ struct QuickCaptureView: View {
     @State private var errorMessage = ""
     @State private var displayMonth = Date()
     @State private var showCalendarOverlay = false
+    @State private var calendarTurnDateKeys: Set<String> = []
     @State private var moodEditTurnID: UUID?
     @State private var moodPickerScore: Int = 0
     @State private var moodPickerFeelings: Set<String> = []
@@ -131,6 +132,7 @@ struct QuickCaptureView: View {
             // 底部输入框已全局化：RootTabView 的 GlobalAIInputBar 负责所有 Tab
             .onAppear {
                 displayMonth = startOfMonth(for: previewDate)
+                refreshCalendarMarkers()
                 // 轻唤醒 Worker，减少首次真发送时的冷启动等待
                 AIParser.warmUp()
             }
@@ -140,6 +142,8 @@ struct QuickCaptureView: View {
                     displayMonth = m
                 }
             }
+            .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.turns.count) { _ in refreshCalendarMarkers() }
             .overlay(alignment: .top) {
                 if showCalendarOverlay {
                     quickCaptureCalendarOverlay
@@ -463,16 +467,18 @@ struct QuickCaptureView: View {
     }
 
     private var quickCaptureCalendarOverlay: some View {
-        let turnDateKeys = Set(store.turns.map { store.calendarDateKey(for: $0.createdAt) })
-
-        return CreamCalendarOverlay(
+        CreamCalendarOverlay(
             selectedDate: $previewDate,
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                turnDateKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
+                calendarTurnDateKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
             }
         )
+    }
+
+    private func refreshCalendarMarkers() {
+        calendarTurnDateKeys = Set(store.turns.map { store.calendarDateKey(for: $0.createdAt) })
     }
 
     private func startOfMonth(for date: Date) -> Date {
