@@ -35,3 +35,19 @@ Codex 还应主动识别需要沉淀的关键点，不等用户提醒：
 > 这次我完成了 X，并已通过 Y 验证。你接下来需要检查 A / B；如果你确认没问题，我下一步会 push 分支并开 PR。现在要我继续做这一步吗？
 
 内部整理类改动（CI、重构、纯文档等）不必强行写入 changelog；commit 历史和 PR 描述能说明即可。
+
+## 发版 / PR 协作补充
+
+当 Codex 帮用户准备发版 PR 或跨多项改动的 PR 时，除了正常代码与测试，还必须主动给出三份可直接使用的文本：
+
+1. **PR description**：说明改了什么、为什么、影响范围、验证方式、仍需用户手动处理的事项。
+2. **Squash merge title/body**：供 GitHub 合并页使用；body 至少写 1-3 句，不要只剩 `Co-authored-by`。
+3. **App Store What's New**：如果本次 PR 对应上架版本，给一版用户可读的更新说明。
+
+发版沟通里必须明确区分三个状态：
+
+- **代码已合并**：PR 已进 `main`，但还没提交 Apple 审核。
+- **已提交审核**：App Store Connect 已 Submit to App Review，等待 Apple 结果。
+- **已上架**：ASC 显示 Ready for Distribution / 已 release，此时才打 tag 和 GitHub Release。
+
+除非用户明确要求，Codex 不应直接 push `main`。即使是纯文档状态更新，也优先走小 PR；如果确实需要直推，最终回复必须点明这次绕过了 PR 规则。
