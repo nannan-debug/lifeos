@@ -14,7 +14,7 @@
 | 触发来源 | V1（1.2.0）dogfood 后用户真实反馈 |
 | 决策来源 | 2026-05-01 的 grill-me session 拍板 |
 | 规划版本号 | `1.3.0`（V2 PR 全部合完后再 bump；同一版本会一起带上已合入 `[Unreleased]` 的 iCloud 同步等改动） |
-| 当前阶段 | ⏳ PR 5 待开工：bump `1.3.0 / build 5` |
+| 当前阶段 | 🚧 PR 5 进行中：bump `1.3.0 / build 5` |
 | 上一版本状态 | `1.2.0 (build 4)` 已 App Store 上架（2026-05-02 过审）。Anna 后续单独做：打 `v1.2.0` tag / 发 GitHub Release / 更新 `LAUNCH_CHECKLIST.md` 状态。 |
 | 版本 bump 时机 | 等 V2 PR 1-4 全合完后再开 PR 5 bump 1.3.0（不要中途 bump）|
 
@@ -34,7 +34,7 @@
 | 2 | `refactor: 砍第二大脑关联卡片 + 反向链接` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
 | 3 | `feat: 第二大脑 topic AI 自动推荐` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
 | 4 | `feat: 复盘 Hub 本周/本月 toggle + 周复盘轻卡片流` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27), [#28](https://github.com/nannan-debug/lifeos/pull/28) | 2026-05-02 |
-| 5 | `chore: bump 1.3.0 / build 5` | ⏳ | — | — |
+| 5 | `chore: bump 1.3.0 / build 5` | 🚧 | — | — |
 
 总工程量估算：**6-9 个 evening session**（V1 是 17-22 个，V2 比 V1 小很多）
 
@@ -328,13 +328,13 @@ System / 任务描述：
 5. 读 [`LAUNCH_CHECKLIST.md`](LAUNCH_CHECKLIST.md) §4.8（**审核期间**开发策略 — 我们当前就在审核期内）
 6. 看上方 PR 进度表 → 找下一个 ⏳ 的 PR
 7. 看上方 "PR 1-4 实施 breakdown" 对应该 PR 那一节
-8. 当前 PR 1-4 已合并，下一步从最新 `main` 拉 PR 5 分支
+8. 当前 PR 1-4 已合并，下一步完成 PR 5 分支
 9. 做 `chore: bump 1.3.0 / build 5`，只处理版本号与 changelog 归档
 10. 写代码 → 测试 → 提醒 Anna review → squash merge
 
 **关键提醒**：
 
-- 🟡 `1.2.0 (build 4)` 已上架（2026-05-02），版本 bump 通畅；PR 1-4 已合并，下一步才进入 PR 5 bump
+- 🟡 `1.2.0 (build 4)` 已上架（2026-05-02），版本 bump 通畅；PR 1-4 已合并，当前进入 PR 5 bump
 - 🔴 改完代码必须**提醒 Anna commit**，不要自己 commit
 - 🔴 任何"是否扩大本 PR 范围"的犹豫 → 停下来问 Anna
 - 🔴 想动"锁定决策清单"任何一条 → 停下来问 Anna

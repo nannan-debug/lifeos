@@ -17,11 +17,12 @@ struct TodayView: View {
 
     // ── inline 编辑状态（B 方案：管理面板已下线，所有 CRUD 在打卡页就地完成）
 
-    // 当前正在哪一组的"添加打卡项"行里输入；nil = 还没开始
-    // 特殊值 ""（空字符串）表示未分组区域的 inline 添加
+    // 当前正在哪一组的"添加打卡项"行里输入；nil = 外层不展示新增入口
     @State private var addingItemForGroup: String? = nil
     @State private var addingItemText: String = ""
     @FocusState private var addItemFocused: Bool
+
+    @State private var celebratingGroup: String? = nil
 
     // 底部"新建分组"行
     @State private var addingNewGroup: Bool = false
@@ -218,8 +219,12 @@ struct TodayView: View {
                     ForEach(store.checkItems.filter { $0.tag == tag }) { item in
                         checkRow(item)
                     }
-                    // 每个分组末尾的 inline 添加行
-                    inlineAddItemRow(forGroup: tag)
+                    if addingItemForGroup == tag {
+                        inlineAddItemRow(forGroup: tag)
+                    }
+                    if celebratingGroup == tag {
+                        groupCompletionCelebration(for: tag)
+                    }
                 }
             }
 
@@ -230,7 +235,6 @@ struct TodayView: View {
                 ForEach(untaggedCheckItems) { item in
                     checkRow(item)
                 }
-                inlineAddItemRow(forGroup: "")
             }
 
             inlineAddGroupRow
@@ -296,7 +300,7 @@ struct TodayView: View {
         .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 2, trailing: 6))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        // 左滑分组头：重命名 / 删除（删除带级联确认弹窗）
+        // 左滑分组头：新增 / 重命名 / 删除（删除带级联确认弹窗）
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 groupToDelete = tag
@@ -310,6 +314,12 @@ struct TodayView: View {
                 Label("重命名", systemImage: "pencil")
             }
             .tint(CreamTheme.green)
+            Button {
+                startAddingItem(forGroup: tag)
+            } label: {
+                Label("新增", systemImage: "plus")
+            }
+            .tint(CreamTheme.green.opacity(0.88))
         }
     }
 
@@ -317,8 +327,12 @@ struct TodayView: View {
     @ViewBuilder
     private func checkRow(_ item: DailyCheckItem) -> some View {
         Button {
+            let wasComplete = isGroupComplete(item.tag)
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 store.toggle(item)
+            }
+            if !wasComplete && isGroupComplete(item.tag) {
+                showGroupCompletion(for: item.tag)
             }
         } label: {
             HStack(spacing: 14) {
@@ -361,33 +375,20 @@ struct TodayView: View {
         }
     }
 
-    /// 分组末尾的 inline 添加行（tag == "" 表示未分组区域）
-    /// D 方案弱化：14pt 小圈 + 小字号；激活/未激活尺寸保持一致，只换颜色，
-    /// 避免点开输入时整行突然弹大跳动。
+    /// 分组内临时新增行：只在分组头左滑点"新增"后出现。
     @ViewBuilder
     private func inlineAddItemRow(forGroup tag: String) -> some View {
-        let isActive = (addingItemForGroup == tag)
         HStack(spacing: 10) {
             Image(systemName: "plus.circle")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(
-                    isActive
-                        ? CreamTheme.green.opacity(0.85)
-                        : Color(.tertiaryLabel)
-                )
+                .foregroundStyle(CreamTheme.green.opacity(0.85))
 
-            if isActive {
-                TextField("新打卡项…", text: $addingItemText)
-                    .textFieldStyle(.plain)
-                    .font(.callout)            // 跟未激活的 footnote 接近，肉眼几乎不跳
-                    .submitLabel(.done)
-                    .focused($addItemFocused)
-                    .onSubmit { commitInlineAddItem(forGroup: tag) }
-            } else {
-                Text(tag.isEmpty ? "添加未分组打卡项…" : "添加到「\(tag)」…")
-                    .font(.footnote)
-                    .foregroundStyle(Color(.tertiaryLabel))
-            }
+            TextField("新打卡项…", text: $addingItemText)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .submitLabel(.done)
+                .focused($addItemFocused)
+                .onSubmit { commitInlineAddItem(forGroup: tag) }
 
             Spacer()
         }
@@ -396,16 +397,21 @@ struct TodayView: View {
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture {
-            if !isActive {
-                addingItemForGroup = tag
-                addingItemText = ""
-                addItemFocused = true
-            }
-        }
         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private func groupCompletionCelebration(for tag: String) -> some View {
+        GroupCompletionCelebrationView(text: "\(tag)的小节完成了")
+            .padding(.leading, 28)
+            .padding(.trailing, 14)
+            .padding(.vertical, 6)
+            .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 4, trailing: 6))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     /// 底部新建分组行
@@ -459,9 +465,41 @@ struct TodayView: View {
         let ok = store.addDailyCheckItem(clean, tag: tag)
         if ok {
             addingItemText = ""
-            // 保持 focus，方便连续添加
+            addingItemForGroup = nil
+            addItemFocused = false
         } else {
             inlineErrorMsg = "已存在同名打卡项"
+        }
+    }
+
+    private func startAddingItem(forGroup tag: String) {
+        if isTagCollapsed(tag) {
+            toggleCollapse(tag)
+        }
+        addingItemForGroup = tag
+        addingItemText = ""
+        DispatchQueue.main.async {
+            addItemFocused = true
+        }
+    }
+
+    private func isGroupComplete(_ tag: String) -> Bool {
+        guard !tag.isEmpty else { return false }
+        let items = store.checkItems.filter { $0.tag == tag }
+        return !items.isEmpty && items.allSatisfy(\.done)
+    }
+
+    private func showGroupCompletion(for tag: String) {
+        guard !tag.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            celebratingGroup = tag
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            guard celebratingGroup == tag else { return }
+            withAnimation(.easeOut(duration: 0.25)) {
+                celebratingGroup = nil
+            }
         }
     }
 
@@ -1004,6 +1042,68 @@ struct TodayView: View {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "MMM d, yyyy"
         return f.string(from: date)
+    }
+}
+
+private struct GroupCompletionCelebrationView: View {
+    let text: String
+
+    @State private var sparkle = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(CreamTheme.green)
+                    .scaleEffect(sparkle ? 1.12 : 0.9)
+
+                ForEach(0..<5, id: \.self) { index in
+                    Circle()
+                        .fill(sparkColor(index))
+                        .frame(width: 4, height: 4)
+                        .offset(sparkle ? sparkOffset(index) : .zero)
+                        .opacity(sparkle ? 0 : 0.9)
+                }
+            }
+            .frame(width: 28, height: 28)
+
+            Text(text)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(CreamTheme.text.opacity(0.78))
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 13)
+                .fill(CreamTheme.green.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
+        )
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.8)) {
+                sparkle = true
+            }
+        }
+    }
+
+    private func sparkOffset(_ index: Int) -> CGSize {
+        let offsets = [
+            CGSize(width: -13, height: -10),
+            CGSize(width: 12, height: -11),
+            CGSize(width: -16, height: 6),
+            CGSize(width: 15, height: 7),
+            CGSize(width: 0, height: -17)
+        ]
+        return offsets[index % offsets.count]
+    }
+
+    private func sparkColor(_ index: Int) -> Color {
+        [CreamTheme.green, Color(red: 0.94, green: 0.70, blue: 0.28), Color(red: 0.55, green: 0.72, blue: 0.45)][index % 3]
     }
 }
 
