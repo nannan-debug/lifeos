@@ -17,7 +17,7 @@ struct ReviewHubView: View {
         case month
 
         var id: String { rawValue }
-        var title: String { self == .week ? "本周" : "本月" }
+        var title: String { self == .week ? "周" : "月" }
     }
 
     private var window: HubWindow {
@@ -45,38 +45,29 @@ struct ReviewHubView: View {
     private var archived: Int { ReviewQueue.archivedCount(turns: store.turns, start: period.start, end: period.end) }
     private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns, start: period.start, end: period.end) }
 
-    private var shouldShowQueueScopeNote: Bool {
-        window == .month || !calendar.isDate(startOfWeek(for: selectedReviewDate), inSameDayAs: startOfWeek(for: Date()))
-    }
-
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
-                List {
-                    Section {
+                ScrollView {
+                    VStack(spacing: 12) {
                         NavigationLink {
                             ReviewSessionView().environmentObject(store)
                         } label: {
                             reviewCard
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
-                        .listRowSeparator(.hidden)
-                    }
+                        .buttonStyle(.plain)
 
-                    Section {
                         NavigationLink {
                             BrainCardWallView().environmentObject(store)
                         } label: {
                             secondBrainCard
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
-                        .listRowSeparator(.hidden)
+                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 18)
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
                 .background(CreamTheme.glassStrong)
                 .navigationTitle("复盘")
                 .toolbar(.hidden, for: .navigationBar)
@@ -108,7 +99,7 @@ struct ReviewHubView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 116)
+            .frame(width: 88)
 
             Spacer(minLength: 6)
 
@@ -172,29 +163,27 @@ struct ReviewHubView: View {
     // MARK: - Review 卡片
 
     private var reviewCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .firstTextBaseline) {
                 Text("Review")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary.opacity(0.45))
             }
 
             HStack(spacing: 0) {
                 statBlock(label: "待处理", value: pending, color: .primary)
-                Divider().frame(height: 32)
+                Divider().frame(height: 28)
                 statBlock(label: "已处理", value: archived, color: CreamTheme.green)
-                Divider().frame(height: 32)
+                Divider().frame(height: 28)
                 statBlock(label: "搁置", value: dismissed, color: .secondary)
             }
-
-            if shouldShowQueueScopeNote {
-                Text("队列仍为最近 7 天")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 15)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white.opacity(0.95))
@@ -254,9 +243,9 @@ struct ReviewHubView: View {
     }
 
     private func statBlock(label: String, value: Int, color: Color) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             Text("\(value)")
-                .font(.title2.weight(.bold))
+                .font(.title3.weight(.bold))
                 .foregroundStyle(color)
             Text(label)
                 .font(.caption2)
@@ -274,7 +263,7 @@ struct ReviewHubView: View {
 
     private var secondBrainCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "brain.head.profile")
                     .foregroundStyle(CreamTheme.green)
                 Text("第二大脑")
@@ -284,6 +273,9 @@ struct ReviewHubView: View {
                 Text("\(brainCount) 张")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary.opacity(0.45))
             }
 
             if brainPreview.isEmpty {
@@ -306,7 +298,8 @@ struct ReviewHubView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 15)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white.opacity(0.95))
