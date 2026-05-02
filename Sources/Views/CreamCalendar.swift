@@ -17,7 +17,7 @@ struct CreamCalendarOverlay: View {
             Color.black.opacity(0.18)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.16)) {
+                    withAnimation(.easeOut(duration: 0.10)) {
                         isPresented = false
                     }
                 }
@@ -69,14 +69,18 @@ struct CreamCalendarOverlay: View {
             }
             .padding(.bottom, 6)
 
-            // 日期网格
             let cells = monthCells(for: displayMonth)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                ForEach(Array(cells.enumerated()), id: \.offset) { _, date in
-                    if let day = date {
-                        dayCellView(day)
-                    } else {
-                        Color.clear.frame(height: 44)
+            VStack(spacing: 4) {
+                ForEach(0..<calendarRowCount(for: cells), id: \.self) { row in
+                    HStack(spacing: 4) {
+                        ForEach(0..<7, id: \.self) { col in
+                            let index = row * 7 + col
+                            if index < cells.count, let day = cells[index] {
+                                dayCellView(day)
+                            } else {
+                                Color.clear.frame(maxWidth: .infinity).frame(height: 44)
+                            }
+                        }
                     }
                 }
             }
@@ -91,8 +95,7 @@ struct CreamCalendarOverlay: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.12), radius: 24, x: 0, y: 10)
-        .compositingGroup() // 让整个卡片作为单层合成，动画只需 blend 一次
+        .shadow(color: .black.opacity(0.09), radius: 14, x: 0, y: 6)
     }
 
     @ViewBuilder
@@ -103,7 +106,7 @@ struct CreamCalendarOverlay: View {
 
         Button {
             selectedDate = day
-            withAnimation(.easeOut(duration: 0.16)) {
+            withAnimation(.easeOut(duration: 0.10)) {
                 isPresented = false
             }
         } label: {
@@ -210,6 +213,10 @@ struct CreamCalendarOverlay: View {
             cells.append(nil)
         }
         return cells
+    }
+
+    private func calendarRowCount(for cells: [Date?]) -> Int {
+        max(1, Int(ceil(Double(cells.count) / 7.0)))
     }
 }
 

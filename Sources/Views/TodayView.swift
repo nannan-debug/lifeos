@@ -74,7 +74,7 @@ struct TodayView: View {
 
                 if showCalendarOverlay {
                     calendarOverlay
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(.opacity)
                         .zIndex(20)
                 }
             }
@@ -937,7 +937,7 @@ struct TodayView: View {
 
             Button {
                 displayMonth = startOfMonth(for: store.selectedDate)
-                withAnimation(.easeOut(duration: 0.18)) {
+                withAnimation(.easeOut(duration: 0.10)) {
                     showCalendarOverlay.toggle()
                 }
             } label: {
