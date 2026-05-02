@@ -6,6 +6,11 @@ import SwiftUI
 struct ReviewHubView: View {
     @EnvironmentObject var store: AppStore
     @AppStorage("review.hub.window") private var windowRaw: String = HubWindow.week.rawValue
+    @AppStorage("review.hub.selectedDate") private var selectedDateRaw: String = ""
+    @State private var displayMonth = Date()
+    @State private var showCalendarOverlay = false
+
+    private let calendar = Calendar.current
 
     private enum HubWindow: String, CaseIterable, Identifiable {
         case week
@@ -13,7 +18,6 @@ struct ReviewHubView: View {
 
         var id: String { rawValue }
         var title: String { self == .week ? "本周" : "本月" }
-        var days: Int { self == .week ? 7 : 30 }
     }
 
     private var window: HubWindow {
@@ -21,57 +25,148 @@ struct ReviewHubView: View {
         nonmutating set { windowRaw = newValue.rawValue }
     }
 
-    private var pending: Int { ReviewQueue.pendingCount(turns: store.turns, windowDays: window.days) }
-    private var archived: Int { ReviewQueue.archivedCount(turns: store.turns, windowDays: window.days) }
-    private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns, windowDays: window.days) }
+    private var selectedReviewDate: Date {
+        get { parseStoredDate(selectedDateRaw) ?? Date() }
+        nonmutating set { selectedDateRaw = storageDateFormatter.string(from: newValue) }
+    }
+
+    private var period: (start: Date, end: Date) {
+        switch window {
+        case .week:
+            let start = startOfWeek(for: selectedReviewDate)
+            return (start, calendar.date(byAdding: .day, value: 7, to: start) ?? start)
+        case .month:
+            let start = startOfMonth(for: selectedReviewDate)
+            return (start, calendar.date(byAdding: .month, value: 1, to: start) ?? start)
+        }
+    }
+
+    private var pending: Int { ReviewQueue.pendingCount(turns: store.turns, start: period.start, end: period.end) }
+    private var archived: Int { ReviewQueue.archivedCount(turns: store.turns, start: period.start, end: period.end) }
+    private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns, start: period.start, end: period.end) }
+
+    private var shouldShowQueueScopeNote: Bool {
+        window == .month || !calendar.isDate(startOfWeek(for: selectedReviewDate), inSameDayAs: startOfWeek(for: Date()))
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    NavigationLink {
-                        ReviewSessionView().environmentObject(store)
-                    } label: {
-                        reviewCard
+            ZStack(alignment: .top) {
+                List {
+                    Section {
+                        NavigationLink {
+                            ReviewSessionView().environmentObject(store)
+                        } label: {
+                            reviewCard
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
+                        .listRowSeparator(.hidden)
                     }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
-                    .listRowSeparator(.hidden)
+
+                    Section {
+                        NavigationLink {
+                            BrainCardWallView().environmentObject(store)
+                        } label: {
+                            secondBrainCard
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
+                        .listRowSeparator(.hidden)
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .background(CreamTheme.glassStrong)
+                .navigationTitle("复盘")
+                .toolbar(.hidden, for: .navigationBar)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    topPeriodBar
                 }
 
-                Section {
-                    NavigationLink {
-                        BrainCardWallView().environmentObject(store)
-                    } label: {
-                        secondBrainCard
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
-                    .listRowSeparator(.hidden)
+                if showCalendarOverlay {
+                    calendarOverlay
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .zIndex(20)
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(CreamTheme.glassStrong)
-            .navigationTitle("复盘")
-            .safeAreaInset(edge: .top) {
-                windowPicker
+            .onAppear {
+                displayMonth = startOfMonth(for: selectedReviewDate)
             }
         }
         .creamBackground()
     }
 
-    private var windowPicker: some View {
-        Picker("复盘窗口", selection: Binding(get: { window }, set: { window = $0 })) {
-            ForEach(HubWindow.allCases) { value in
-                Text(value.title).tag(value)
+    private var topPeriodBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Text("复盘")
+                    .font(.headline.weight(.semibold))
+
+                Spacer(minLength: 6)
+
+                Button {
+                    displayMonth = startOfMonth(for: selectedReviewDate)
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        showCalendarOverlay.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(periodTitle)
+                            .font(.subheadline.weight(.semibold))
+                        Image(systemName: showCalendarOverlay ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(CreamTheme.green)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(Color(red: 0.95, green: 0.97, blue: 0.95))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11)
+                            .stroke(CreamTheme.green.opacity(0.20), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                }
+                .buttonStyle(.plain)
             }
+
+            Picker("", selection: Binding(get: { window }, set: { window = $0 })) {
+                ForEach(HubWindow.allCases) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+            .pickerStyle(.segmented)
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-        .background(CreamTheme.glassStrong)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(CreamTheme.green.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.045), radius: 10, x: 0, y: 3)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+    }
+
+    private var calendarOverlay: some View {
+        let reviewDateKeys = Set(
+            store.turns
+                .filter { ["想法", "感受"].contains($0.recognizedType) }
+                .map { store.calendarDateKey(for: $0.createdAt) }
+        )
+
+        return CreamCalendarOverlay(
+            selectedDate: Binding(get: { selectedReviewDate }, set: { selectedReviewDate = $0 }),
+            displayMonth: $displayMonth,
+            isPresented: $showCalendarOverlay,
+            markerForDate: { day in
+                reviewDateKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
+            }
+        )
     }
 
     // MARK: - Review 卡片
@@ -93,7 +188,7 @@ struct ReviewHubView: View {
                 statBlock(label: "搁置", value: dismissed, color: .secondary)
             }
 
-            if window == .month {
+            if shouldShowQueueScopeNote {
                 Text("队列仍为最近 7 天")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -109,6 +204,53 @@ struct ReviewHubView: View {
                 .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
+    }
+
+    private var periodTitle: String {
+        switch window {
+        case .week:
+            return "\(shortDateTitle(period.start))-\(shortDateTitle(calendar.date(byAdding: .day, value: -1, to: period.end) ?? period.start))"
+        case .month:
+            return monthTitle(period.start)
+        }
+    }
+
+    private var storageDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+
+    private func parseStoredDate(_ raw: String) -> Date? {
+        guard !raw.isEmpty else { return nil }
+        return storageDateFormatter.date(from: raw)
+    }
+
+    private func startOfWeek(for date: Date) -> Date {
+        var weekCalendar = Calendar.current
+        weekCalendar.firstWeekday = 2
+        let comps = weekCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return weekCalendar.date(from: comps) ?? weekCalendar.startOfDay(for: date)
+    }
+
+    private func startOfMonth(for date: Date) -> Date {
+        let comps = calendar.dateComponents([.year, .month], from: date)
+        return calendar.date(from: comps) ?? calendar.startOfDay(for: date)
+    }
+
+    private func shortDateTitle(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M/d"
+        return formatter.string(from: date)
+    }
+
+    private func monthTitle(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月"
+        return formatter.string(from: date)
     }
 
     private func statBlock(label: String, value: Int, color: Color) -> some View {

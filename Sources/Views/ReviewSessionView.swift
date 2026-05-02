@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Queue logic (抽出来便于单测)
 
 /// Review 模式队列 + 统计的纯函数。
-/// 输入 turns，输出过滤排序后的队列、各状态计数。所有时间窗口都是当下往前滚 7 天。
+/// 输入 turns，输出过滤排序后的队列、各状态计数。
 enum ReviewQueue {
 
     /// Review 模式队列：想法/感受 + reviewStatus pending + 最近 windowDays 天 + 倒序
@@ -27,12 +27,33 @@ enum ReviewQueue {
         filtered(turns: turns, now: now, statuses: ["pending"], windowDays: windowDays).count
     }
 
+    static func pendingCount(turns: [ConversationTurn], start: Date, end: Date) -> Int {
+        filtered(turns: turns, start: start, end: end, statuses: ["pending"]).count
+    }
+
+    static func archivedCount(turns: [ConversationTurn], start: Date, end: Date) -> Int {
+        filtered(turns: turns, start: start, end: end, statuses: ["archived"]).count
+    }
+
+    static func dismissedCount(turns: [ConversationTurn], start: Date, end: Date) -> Int {
+        filtered(turns: turns, start: start, end: end, statuses: ["dismissed"]).count
+    }
+
     private static let queueableTypes: Set<String> = ["想法", "感受"]
 
     private static func filtered(turns: [ConversationTurn], now: Date, statuses: Set<String>, windowDays: Int) -> [ConversationTurn] {
         let cutoff = Calendar.current.date(byAdding: .day, value: -windowDays, to: now) ?? now
         return turns.filter { turn in
             turn.createdAt >= cutoff
+                && queueableTypes.contains(turn.recognizedType)
+                && statuses.contains(turn.reviewStatus)
+        }
+    }
+
+    private static func filtered(turns: [ConversationTurn], start: Date, end: Date, statuses: Set<String>) -> [ConversationTurn] {
+        turns.filter { turn in
+            turn.createdAt >= start
+                && turn.createdAt < end
                 && queueableTypes.contains(turn.recognizedType)
                 && statuses.contains(turn.reviewStatus)
         }

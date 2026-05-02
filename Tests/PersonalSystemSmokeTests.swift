@@ -189,19 +189,32 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(queue.count, 2)
     }
 
-    func testReviewQueue30DayWindow() {
-        let now = Date()
-        let cal = Calendar.current
-        let fourteenDaysAgo = cal.date(byAdding: .day, value: -14, to: now)!
-        let twentyNineDaysAgo = cal.date(byAdding: .day, value: -29, to: now)!
-        let thirtyOneDaysAgo = cal.date(byAdding: .day, value: -31, to: now)!
+    func testReviewQueueNaturalWeekWindowIncludesMondayThroughSunday() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27))!
+        let end = cal.date(from: DateComponents(year: 2026, month: 5, day: 4))!
         let turns: [ConversationTurn] = [
-            makeTurn(createdAt: fourteenDaysAgo),
-            makeTurn(createdAt: twentyNineDaysAgo),
-            makeTurn(createdAt: thirtyOneDaysAgo),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 26, hour: 23, minute: 59))!),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 27))!),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 3, hour: 23, minute: 59))!),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 4))!),
         ]
-        let queue = ReviewQueue.queue(turns: turns, now: now, windowDays: 30)
-        XCTAssertEqual(queue.count, 2)
+        XCTAssertEqual(ReviewQueue.pendingCount(turns: turns, start: start, end: end), 2)
+    }
+
+    func testReviewQueueNaturalMonthWindowUsesStartInclusiveEndExclusive() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 5, day: 1))!
+        let end = cal.date(from: DateComponents(year: 2026, month: 6, day: 1))!
+        let turns: [ConversationTurn] = [
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 30, hour: 23, minute: 59))!),
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 1))!),
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 31, hour: 23, minute: 59))!),
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 6, day: 1))!),
+        ]
+        XCTAssertEqual(ReviewQueue.archivedCount(turns: turns, start: start, end: end), 2)
     }
 
     func testReviewQueueSortedDescending() {
