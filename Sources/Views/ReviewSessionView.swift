@@ -3,36 +3,57 @@ import SwiftUI
 // MARK: - Queue logic (抽出来便于单测)
 
 /// Review 模式队列 + 统计的纯函数。
-/// 输入 turns，输出过滤排序后的队列、各状态计数。所有时间窗口都是当下往前滚 7 天。
+/// 输入 turns，输出过滤排序后的队列、各状态计数。
 enum ReviewQueue {
 
-    /// Review 模式队列：想法/感受 + reviewStatus pending + 最近 7 天 + 倒序
-    static func queue(turns: [ConversationTurn], now: Date = Date()) -> [ConversationTurn] {
-        filtered(turns: turns, now: now, statuses: ["pending"])
+    /// Review 模式队列：想法/感受 + reviewStatus pending + 最近 windowDays 天 + 倒序
+    static func queue(turns: [ConversationTurn], now: Date = Date(), windowDays: Int = 7) -> [ConversationTurn] {
+        filtered(turns: turns, now: now, statuses: ["pending"], windowDays: windowDays)
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    /// 7 日窗内 reviewStatus == archived 的想法/感受条数
-    static func archivedCount(turns: [ConversationTurn], now: Date = Date()) -> Int {
-        filtered(turns: turns, now: now, statuses: ["archived"]).count
+    /// windowDays 日窗内 reviewStatus == archived 的想法/感受条数
+    static func archivedCount(turns: [ConversationTurn], now: Date = Date(), windowDays: Int = 7) -> Int {
+        filtered(turns: turns, now: now, statuses: ["archived"], windowDays: windowDays).count
     }
 
-    /// 7 日窗内 reviewStatus == dismissed 的想法/感受条数
-    static func dismissedCount(turns: [ConversationTurn], now: Date = Date()) -> Int {
-        filtered(turns: turns, now: now, statuses: ["dismissed"]).count
+    /// windowDays 日窗内 reviewStatus == dismissed 的想法/感受条数
+    static func dismissedCount(turns: [ConversationTurn], now: Date = Date(), windowDays: Int = 7) -> Int {
+        filtered(turns: turns, now: now, statuses: ["dismissed"], windowDays: windowDays).count
     }
 
-    /// 7 日窗内 reviewStatus == pending 的想法/感受条数（即 queue.count）
-    static func pendingCount(turns: [ConversationTurn], now: Date = Date()) -> Int {
-        filtered(turns: turns, now: now, statuses: ["pending"]).count
+    /// windowDays 日窗内 reviewStatus == pending 的想法/感受条数（默认即 queue.count）
+    static func pendingCount(turns: [ConversationTurn], now: Date = Date(), windowDays: Int = 7) -> Int {
+        filtered(turns: turns, now: now, statuses: ["pending"], windowDays: windowDays).count
+    }
+
+    static func pendingCount(turns: [ConversationTurn], start: Date, end: Date) -> Int {
+        filtered(turns: turns, start: start, end: end, statuses: ["pending"]).count
+    }
+
+    static func archivedCount(turns: [ConversationTurn], start: Date, end: Date) -> Int {
+        filtered(turns: turns, start: start, end: end, statuses: ["archived"]).count
+    }
+
+    static func dismissedCount(turns: [ConversationTurn], start: Date, end: Date) -> Int {
+        filtered(turns: turns, start: start, end: end, statuses: ["dismissed"]).count
     }
 
     private static let queueableTypes: Set<String> = ["想法", "感受"]
 
-    private static func filtered(turns: [ConversationTurn], now: Date, statuses: Set<String>) -> [ConversationTurn] {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
+    private static func filtered(turns: [ConversationTurn], now: Date, statuses: Set<String>, windowDays: Int) -> [ConversationTurn] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -windowDays, to: now) ?? now
         return turns.filter { turn in
             turn.createdAt >= cutoff
+                && queueableTypes.contains(turn.recognizedType)
+                && statuses.contains(turn.reviewStatus)
+        }
+    }
+
+    private static func filtered(turns: [ConversationTurn], start: Date, end: Date, statuses: Set<String>) -> [ConversationTurn] {
+        turns.filter { turn in
+            turn.createdAt >= start
+                && turn.createdAt < end
                 && queueableTypes.contains(turn.recognizedType)
                 && statuses.contains(turn.reviewStatus)
         }

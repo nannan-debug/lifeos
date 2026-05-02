@@ -40,6 +40,16 @@ struct AIParseResponse: Decodable {
     }
 }
 
+private struct AITopicResponse: Decodable {
+    let topics: [String]?
+    let suggestions: [String]?
+}
+
+private struct AITitleResponse: Decodable {
+    let title: String?
+    let suggestion: String?
+}
+
 enum AIParseError: Error, LocalizedError {
     case badURL
     case network(String)
@@ -135,6 +145,119 @@ enum AIParser {
         }
     }
 
+    static func suggestTopics(title: String, content: String) async throws -> [String] {
+        let prompt = """
+        你是一个第二大脑卡片分类助手。给定一张卡片的 title 和 content，输出 1-3 个最贴切的主题标签。
+
+        优先从以下默认集选：[工作, 学习, 生活, 灵感, 人际]。
+        如默认集都不贴切，可以创新，但应简洁、可复用、有概括性。
+
+        输出 JSON 数组，每项是字符串，不带 # 前缀。不要输出任何解释。
+        如果当前接口必须返回随手记 records，请把 JSON 数组放进 details 字段。
+
+        title: \(title)
+        content: \(content)
+        """
+
+        var req = URLRequest(url: workerURL)
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
+
+        let body: [String: Any] = [
+            "text": prompt,
+            "currentDate": isoDate(),
+            "currentTime": isoTime()
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw AIParseError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIParseError.network("no http response")
+        }
+
+        if http.statusCode == 401 {
+            throw AIParseError.unauthorized
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIParseError.serverError(http.statusCode, body)
+        }
+
+        guard !data.isEmpty else { throw AIParseError.empty }
+        let topics = parseTopicPayload(data)
+        let normalized = normalizeTopics(topics)
+        if !normalized.isEmpty {
+            return normalized
+        }
+        return fallbackTopics(title: title, content: content)
+    }
+
+    static func suggestBrainTitle(content: String) async throws -> String {
+        let prompt = """
+        请从下面这段正文里提取一个简单中文短标题，概括"这件事是什么"。
+
+        要求：
+        - 像日记小标题，不要抽象分类。
+        - 优先保留具体动作、对象、地点或人。
+        - 8 个字以内，最多不超过 10 个字。
+        - 只输出标题本身，不要解释。
+        - 不要加引号、编号、标点。
+        - 不要输出"想法"、"感受"、"记录"、"生活"这种泛泛分类。
+        - 如果正文是"看了《认知觉醒》"，输出：看认知觉醒
+        - 如果正文是"今天去了球馆打羽毛球"，输出：球馆打球
+        - 如果正文是"和朋友聊创业方向"，输出：聊创业方向
+        - 如果当前接口必须返回随手记 records，请把标题放进 title 字段。
+
+        content: \(content)
+        """
+
+        var req = URLRequest(url: workerURL)
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
+
+        let body: [String: Any] = [
+            "text": prompt,
+            "currentDate": isoDate(),
+            "currentTime": isoTime()
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw AIParseError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIParseError.network("no http response")
+        }
+
+        if http.statusCode == 401 {
+            throw AIParseError.unauthorized
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIParseError.serverError(http.statusCode, body)
+        }
+
+        guard !data.isEmpty else { throw AIParseError.empty }
+        let title = normalizeShortTitle(parseTitlePayload(data))
+        return isUsefulTitle(title) ? title : fallbackTitle(from: content)
+    }
+
     // MARK: - Helpers
 
     static func isoDate(_ d: Date = Date()) -> String {
@@ -149,5 +272,256 @@ enum AIParser {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "HH:mm"
         return f.string(from: d)
+    }
+
+    private static func parseTopicPayload(_ data: Data) -> [String] {
+        let decoder = JSONDecoder()
+
+        if let direct = try? decoder.decode([String].self, from: data) {
+            return direct
+        }
+
+        if let wrapped = try? decoder.decode(AITopicResponse.self, from: data) {
+            return wrapped.topics ?? wrapped.suggestions ?? []
+        }
+
+        if let parsed = try? decoder.decode(AIParseResponse.self, from: data) {
+            return parsed.records.flatMap { record in
+                topicCandidates(from: record)
+            }
+        }
+
+        if let text = String(data: data, encoding: .utf8) {
+            return parseTopicText(text)
+        }
+
+        return []
+    }
+
+    private static func parseTitlePayload(_ data: Data) -> String {
+        let decoder = JSONDecoder()
+
+        if let direct = try? decoder.decode(String.self, from: data) {
+            return direct
+        }
+
+        if let wrapped = try? decoder.decode(AITitleResponse.self, from: data) {
+            return wrapped.title ?? wrapped.suggestion ?? ""
+        }
+
+        if let parsed = try? decoder.decode(AIParseResponse.self, from: data) {
+            return parsed.records.compactMap { record in
+                [record.title, record.details, record.notes, record.eventName]
+                    .compactMap { $0 }
+                    .first { !normalizeShortTitle($0).isEmpty }
+            }.first ?? ""
+        }
+
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private static func topicCandidates(from record: AIParsedRecord) -> [String] {
+        let fields = [
+            record.title,
+            record.details,
+            record.notes,
+            record.type
+        ].compactMap { $0 }
+
+        let parsedFields = fields.flatMap { parseTopicText($0) }
+        if !parsedFields.isEmpty {
+            return parsedFields
+        }
+
+        if let feelings = record.feelings, !feelings.isEmpty {
+            return feelings
+        }
+
+        return fields.flatMap { splitTopicText($0) }
+    }
+
+    private static func parseTopicText(_ text: String) -> [String] {
+        if let data = text.data(using: .utf8),
+           let direct = try? JSONDecoder().decode([String].self, from: data) {
+            return direct
+        }
+
+        guard let start = text.firstIndex(of: "["),
+              let end = text.lastIndex(of: "]"),
+              start <= end else {
+            return []
+        }
+
+        let json = String(text[start...end])
+        guard let data = json.data(using: .utf8),
+              let direct = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return direct
+    }
+
+    private static func splitTopicText(_ text: String) -> [String] {
+        text
+            .components(separatedBy: CharacterSet(charactersIn: "，,、/｜|\n\t "))
+            .map {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: " #＃[]【】「」\"'“”‘’：:。.!！?？"))
+            }
+            .filter { item in
+                guard !item.isEmpty else { return false }
+                guard item.count <= 8 else { return false }
+                return !["主题", "主题建议", "建议", "想法", "感受", "记录"].contains(item)
+            }
+    }
+
+    private static func normalizeTopics(_ raw: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+
+        for item in raw {
+            let clean = item
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "#＃"))
+            guard !clean.isEmpty, !seen.contains(clean) else { continue }
+            seen.insert(clean)
+            result.append(clean)
+            if result.count == 3 { break }
+        }
+
+        return result
+    }
+
+    private static func fallbackTopics(title: String, content: String) -> [String] {
+        let text = "\(title) \(content)"
+        let rules: [(String, [String])] = [
+            ("工作", ["工作", "项目", "产品", "会议", "客户", "同事", "PRD", "需求", "开发", "代码"]),
+            ("学习", ["学习", "读书", "课程", "考试", "复习", "论文", "知识", "研究"]),
+            ("生活", ["生活", "吃饭", "睡觉", "运动", "打球", "家务", "休息", "健康"]),
+            ("人际", ["朋友", "家人", "沟通", "关系", "聊天", "社交", "同学"]),
+            ("灵感", ["灵感", "想法", "创意", "点子", "设计", "感觉", "突然想到"])
+        ]
+
+        var result: [String] = []
+        for (topic, keywords) in rules {
+            if keywords.contains(where: { text.localizedCaseInsensitiveContains($0) }) {
+                result.append(topic)
+            }
+            if result.count == 3 { break }
+        }
+
+        return result.isEmpty ? ["灵感"] : result
+    }
+
+    private static func normalizeShortTitle(_ raw: String) -> String {
+        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        clean = clean.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’「」『』[]【】（）()。.!！?？：:，,、"))
+
+        if clean.hasPrefix("{"), let data = clean.data(using: .utf8) {
+            if let wrapped = try? JSONDecoder().decode(AITitleResponse.self, from: data) {
+                clean = wrapped.title ?? wrapped.suggestion ?? ""
+            }
+        }
+
+        clean = clean
+            .replacingOccurrences(of: "标题", with: "")
+            .replacingOccurrences(of: "短标题", with: "")
+            .replacingOccurrences(of: "：", with: "")
+            .replacingOccurrences(of: ":", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let genericTitles = ["想法", "感受", "记录", "生活", "灵感", "随手记", "日常", "主题"]
+        guard !clean.isEmpty, !genericTitles.contains(clean) else { return "" }
+        return String(clean.prefix(10))
+    }
+
+    private static func isUsefulTitle(_ title: String) -> Bool {
+        guard !title.isEmpty else { return false }
+
+        let badFragments = [
+            "正文", "要求", "输出", "字段", "records", "content", "标题助手", "第二大脑",
+            "概括", "无法总结", "如果", "请从", "提取", "简单中文", "短标题"
+        ]
+        if badFragments.contains(where: { title.localizedCaseInsensitiveContains($0) }) {
+            return false
+        }
+
+        let genericTitles = ["想法", "感受", "记录", "生活", "灵感", "随手记", "日常", "主题"]
+        return !genericTitles.contains(title)
+    }
+
+    private static func fallbackTitle(from content: String) -> String {
+        let clean = content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’「」『』[]【】（）()。.!！?？：:，,、"))
+        guard !clean.isEmpty else { return "" }
+
+        if let specific = specificFallbackTitle(from: clean) {
+            return specific
+        }
+
+        let separators = CharacterSet(charactersIn: "。.!！?？\n")
+        let firstSentence = clean
+            .components(separatedBy: separators)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? clean
+
+        let prefixes = ["今天", "我", "感觉", "觉得", "突然想到", "记录一下", "就是", "然后"]
+        var title = firstSentence
+        for prefix in prefixes where title.hasPrefix(prefix) {
+            title.removeFirst(prefix.count)
+            title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            break
+        }
+
+        let filler = ["还是", "挺", "比较", "有点", "真的"]
+        for word in filler {
+            title = title.replacingOccurrences(of: word, with: "")
+        }
+
+        return String(title.prefix(10))
+    }
+
+    private static func specificFallbackTitle(from text: String) -> String? {
+        if let bookStart = text.firstIndex(of: "《"),
+           let bookEnd = text[bookStart...].firstIndex(of: "》"),
+           bookStart < bookEnd {
+            let nameStart = text.index(after: bookStart)
+            let book = String(text[nameStart..<bookEnd])
+            if !book.isEmpty, text.localizedCaseInsensitiveContains("看") || text.localizedCaseInsensitiveContains("读") {
+                return String("看\(book)".prefix(10))
+            }
+        }
+
+        if text.localizedCaseInsensitiveContains("球馆"),
+           text.localizedCaseInsensitiveContains("打") {
+            return "球馆打球"
+        }
+
+        if text.localizedCaseInsensitiveContains("羽毛球") {
+            return "打羽毛球"
+        }
+
+        if text.localizedCaseInsensitiveContains("篮球") {
+            return "打篮球"
+        }
+
+        if text.localizedCaseInsensitiveContains("打球") {
+            return "打球"
+        }
+
+        if text.localizedCaseInsensitiveContains("聊") {
+            if text.localizedCaseInsensitiveContains("创业") {
+                return "聊创业方向"
+            }
+            if text.localizedCaseInsensitiveContains("朋友") {
+                return "和朋友聊天"
+            }
+            return "聊天"
+        }
+
+        if text.localizedCaseInsensitiveContains("学习") {
+            return "学习"
+        }
+
+        return nil
     }
 }

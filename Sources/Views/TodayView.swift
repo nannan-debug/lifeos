@@ -6,6 +6,7 @@ struct TodayView: View {
 
     @State private var displayMonth = Date()
     @State private var showCalendarOverlay = false
+    @State private var calendarTraceKeys: Set<String> = []
     @State private var quoteOffset: Int = 0
 
     // A 方案：顶部分段 "check" | "todo"
@@ -74,12 +75,13 @@ struct TodayView: View {
 
                 if showCalendarOverlay {
                     calendarOverlay
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(.opacity)
                         .zIndex(20)
                 }
             }
             .onAppear {
                 displayMonth = startOfMonth(for: store.selectedDate)
+                refreshCalendarMarkers()
                 store.todaySegment = segment
             }
             .onChange(of: segment) { store.todaySegment = $0 }
@@ -89,6 +91,9 @@ struct TodayView: View {
                     displayMonth = m
                 }
             }
+            .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.checkItems.count) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.timeEntries.count) { _ in refreshCalendarMarkers() }
             .sheet(isPresented: $showNewTodoSheet) {
                 TodoEditorSheet(mode: .create(defaultDate: store.selectedDate))
                     .environmentObject(store)
@@ -937,7 +942,7 @@ struct TodayView: View {
 
             Button {
                 displayMonth = startOfMonth(for: store.selectedDate)
-                withAnimation(.easeOut(duration: 0.18)) {
+                withAnimation(.easeOut(duration: 0.10)) {
                     showCalendarOverlay.toggle()
                 }
             } label: {
@@ -975,16 +980,18 @@ struct TodayView: View {
     }
 
     private var calendarOverlay: some View {
-        let traceKeys = store.recordTraceDateKeys(inMonth: displayMonth)
-
-        return CreamCalendarOverlay(
+        CreamCalendarOverlay(
             selectedDate: $store.selectedDate,
             displayMonth: $displayMonth,
             isPresented: $showCalendarOverlay,
             markerForDate: { day in
-                traceKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
+                calendarTraceKeys.contains(store.calendarDateKey(for: day)) ? .dot(CreamTheme.green) : .none
             }
         )
+    }
+
+    private func refreshCalendarMarkers() {
+        calendarTraceKeys = store.recordTraceDateKeys(inMonth: displayMonth)
     }
 
     private func startOfMonth(for date: Date) -> Date {

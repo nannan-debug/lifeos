@@ -991,33 +991,6 @@ final class AppStore: ObservableObject {
         saveBrain()
     }
 
-    /// 在 a / b 之间建立双向 link（idempotent，重复调用不会重复加）。自我链接（a==b）忽略。
-    func linkBrainCards(_ a: UUID, _ b: UUID) {
-        guard a != b else { return }
-        guard let ai = brainCards.firstIndex(where: { $0.id == a }),
-              let bi = brainCards.firstIndex(where: { $0.id == b }) else { return }
-        if !brainCards[ai].links.contains(b) {
-            brainCards[ai].links.append(b)
-        }
-        if !brainCards[bi].links.contains(a) {
-            brainCards[bi].links.append(a)
-        }
-        saveBrain()
-    }
-
-    func unlinkBrainCards(_ a: UUID, _ b: UUID) {
-        guard let ai = brainCards.firstIndex(where: { $0.id == a }),
-              let bi = brainCards.firstIndex(where: { $0.id == b }) else { return }
-        brainCards[ai].links.removeAll { $0 == b }
-        brainCards[bi].links.removeAll { $0 == a }
-        saveBrain()
-    }
-
-    /// 反查："谁在 links 里引用了 cardId"。详情页"反向链接"section 用。
-    func backlinks(for cardId: UUID) -> [BrainCard] {
-        brainCards.filter { $0.id != cardId && $0.links.contains(cardId) }
-    }
-
     /// 给某条 turn append 一条衍生链接（Review 模式下"→ ToDo / → 第二大脑"会调）。
     /// derivatives 是 append-only，不去重——同一个 turn 对同一个目标建多次链接是合法的（虽不该发生）。
     func appendTurnDerivative(turnId: UUID, derivative: TurnDerivative) {

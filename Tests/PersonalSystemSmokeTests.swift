@@ -95,50 +95,15 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(store.brainCards.count, 0)
     }
 
-    func testLinkBrainCardsBidirectionalAndIdempotent() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [bId])
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [aId])
-        // 二次调应为 idempotent
-        store.linkBrainCards(aId, bId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links.count, 1)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links.count, 1)
-    }
-
-    func testLinkBrainCardsRejectsSelfLink() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, aId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [])
-    }
-
-    func testUnlinkBrainCardsBidirectional() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
-        store.unlinkBrainCards(aId, bId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [])
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
-    }
-
-    func testBacklinksLookup() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
-        XCTAssertEqual(store.backlinks(for: bId).map { $0.id }, [aId])
-        XCTAssertEqual(store.backlinks(for: aId).map { $0.id }, [bId])
-    }
-
     func testRemoveBrainCleansBacklinks() {
         let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
+        let aId = UUID()
+        let bId = UUID()
+        let now = Date()
+        store.brainCards = [
+            BrainCard(id: aId, title: "A", content: "", topics: [], sources: [], links: [bId], createdAt: now, updatedAt: now),
+            BrainCard(id: bId, title: "B", content: "", topics: [], sources: [], links: [aId], createdAt: now, updatedAt: now),
+        ]
         store.removeBrain(id: aId)
         XCTAssertFalse(store.brainCards.contains { $0.id == aId })
         XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
@@ -222,6 +187,34 @@ final class PersonalSystemSmokeTests: XCTestCase {
         ]
         let queue = ReviewQueue.queue(turns: turns, now: now)
         XCTAssertEqual(queue.count, 2)
+    }
+
+    func testReviewQueueNaturalWeekWindowIncludesMondayThroughSunday() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27))!
+        let end = cal.date(from: DateComponents(year: 2026, month: 5, day: 4))!
+        let turns: [ConversationTurn] = [
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 26, hour: 23, minute: 59))!),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 27))!),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 3, hour: 23, minute: 59))!),
+            makeTurn(createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 4))!),
+        ]
+        XCTAssertEqual(ReviewQueue.pendingCount(turns: turns, start: start, end: end), 2)
+    }
+
+    func testReviewQueueNaturalMonthWindowUsesStartInclusiveEndExclusive() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 5, day: 1))!
+        let end = cal.date(from: DateComponents(year: 2026, month: 6, day: 1))!
+        let turns: [ConversationTurn] = [
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 4, day: 30, hour: 23, minute: 59))!),
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 1))!),
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 5, day: 31, hour: 23, minute: 59))!),
+            makeTurn(status: "archived", createdAt: cal.date(from: DateComponents(year: 2026, month: 6, day: 1))!),
+        ]
+        XCTAssertEqual(ReviewQueue.archivedCount(turns: turns, start: start, end: end), 2)
     }
 
     func testReviewQueueSortedDescending() {

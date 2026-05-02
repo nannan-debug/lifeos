@@ -4,8 +4,10 @@ import SwiftUI
 /// 输入"命"时弹出 #命名 候选；按回车或点候选 chip 添加。
 struct TopicChipInput: View {
     @Binding var topics: [String]
+    @Binding var aiSuggestions: [String]?
     /// 既有 topic 池：用来做模糊补全。一般传 store 里所有 BrainCard 已用过的 topic 去重列表。
     let availableTopics: [String]
+    let aiLoading: Bool
 
     @State private var draft: String = ""
     @FocusState private var focused: Bool
@@ -22,6 +24,13 @@ struct TopicChipInput: View {
             .filter { !topics.contains($0) && $0.lowercased().contains(lower) && $0.lowercased() != lower }
             .prefix(5)
             .map { $0 }
+    }
+
+    private var visibleAISuggestions: [String] {
+        (aiSuggestions ?? [])
+            .filter { suggestion in
+                !topics.contains(normalized(suggestion))
+            }
     }
 
     var body: some View {
@@ -41,6 +50,22 @@ struct TopicChipInput: View {
                 .focused($focused)
                 .submitLabel(.done)
                 .onSubmit { addDraft() }
+
+            if aiLoading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                    Text("AI 正在看主题")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !visibleAISuggestions.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(visibleAISuggestions, id: \.self) { suggestion in
+                        aiChip(suggestion)
+                    }
+                }
+            }
 
             if !suggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -85,6 +110,37 @@ struct TopicChipInput: View {
         .clipShape(Capsule())
     }
 
+    private func aiChip(_ topic: String) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                add(topic)
+                aiSuggestions?.removeAll { normalized($0) == normalized(topic) }
+            } label: {
+                Text(formatted(topic))
+                    .font(.caption.weight(.medium))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                aiSuggestions?.removeAll { normalized($0) == normalized(topic) }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption2)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .foregroundStyle(CreamTheme.green)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(CreamTheme.green.opacity(0.08))
+        .overlay(
+            Capsule()
+                .stroke(CreamTheme.green.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(Capsule())
+    }
+
     /// 显示用：保证以 "#" 开头
     private func formatted(_ raw: String) -> String {
         raw.hasPrefix("#") ? raw : "#\(raw)"
@@ -98,11 +154,15 @@ struct TopicChipInput: View {
 
     private func add(_ raw: String) {
         // 归一存储：保证以 # 开头
-        let normalized = raw.hasPrefix("#") ? raw : "#\(raw)"
-        if !topics.contains(normalized) {
-            topics.append(normalized)
+        let value = normalized(raw)
+        if !topics.contains(value) {
+            topics.append(value)
         }
         draft = ""
+    }
+
+    private func normalized(_ raw: String) -> String {
+        raw.hasPrefix("#") ? raw : "#\(raw)"
     }
 }
 
