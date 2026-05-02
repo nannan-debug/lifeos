@@ -255,7 +255,7 @@ enum AIParser {
 
         guard !data.isEmpty else { throw AIParseError.empty }
         let title = normalizeShortTitle(parseTitlePayload(data))
-        return title.isEmpty ? fallbackTitle(from: content) : title
+        return isUsefulTitle(title) ? title : fallbackTitle(from: content)
     }
 
     // MARK: - Helpers
@@ -433,11 +433,30 @@ enum AIParser {
         return String(clean.prefix(10))
     }
 
+    private static func isUsefulTitle(_ title: String) -> Bool {
+        guard !title.isEmpty else { return false }
+
+        let badFragments = [
+            "正文", "要求", "输出", "字段", "records", "content", "标题助手", "第二大脑",
+            "概括", "无法总结", "如果", "请从", "提取", "简单中文", "短标题"
+        ]
+        if badFragments.contains(where: { title.localizedCaseInsensitiveContains($0) }) {
+            return false
+        }
+
+        let genericTitles = ["想法", "感受", "记录", "生活", "灵感", "随手记", "日常", "主题"]
+        return !genericTitles.contains(title)
+    }
+
     private static func fallbackTitle(from content: String) -> String {
         let clean = content
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’「」『』[]【】（）()。.!！?？：:，,、"))
         guard !clean.isEmpty else { return "" }
+
+        if let specific = specificFallbackTitle(from: clean) {
+            return specific
+        }
 
         let separators = CharacterSet(charactersIn: "。.!！?？\n")
         let firstSentence = clean
@@ -459,5 +478,50 @@ enum AIParser {
         }
 
         return String(title.prefix(10))
+    }
+
+    private static func specificFallbackTitle(from text: String) -> String? {
+        if let bookStart = text.firstIndex(of: "《"),
+           let bookEnd = text[bookStart...].firstIndex(of: "》"),
+           bookStart < bookEnd {
+            let nameStart = text.index(after: bookStart)
+            let book = String(text[nameStart..<bookEnd])
+            if !book.isEmpty, text.localizedCaseInsensitiveContains("看") || text.localizedCaseInsensitiveContains("读") {
+                return String("看\(book)".prefix(10))
+            }
+        }
+
+        if text.localizedCaseInsensitiveContains("球馆"),
+           text.localizedCaseInsensitiveContains("打") {
+            return "球馆打球"
+        }
+
+        if text.localizedCaseInsensitiveContains("羽毛球") {
+            return "打羽毛球"
+        }
+
+        if text.localizedCaseInsensitiveContains("篮球") {
+            return "打篮球"
+        }
+
+        if text.localizedCaseInsensitiveContains("打球") {
+            return "打球"
+        }
+
+        if text.localizedCaseInsensitiveContains("聊") {
+            if text.localizedCaseInsensitiveContains("创业") {
+                return "聊创业方向"
+            }
+            if text.localizedCaseInsensitiveContains("朋友") {
+                return "和朋友聊天"
+            }
+            return "聊天"
+        }
+
+        if text.localizedCaseInsensitiveContains("学习") {
+            return "学习"
+        }
+
+        return nil
     }
 }
