@@ -60,14 +60,9 @@ struct TopicChipInput: View {
                         .foregroundStyle(.secondary)
                 }
             } else if !visibleAISuggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("AI 觉得是")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    FlowLayout(spacing: 6) {
-                        ForEach(visibleAISuggestions, id: \.self) { suggestion in
-                            aiChip(suggestion)
-                        }
+                FlowLayout(spacing: 6) {
+                    ForEach(visibleAISuggestions, id: \.self) { suggestion in
+                        aiChip(suggestion)
                     }
                 }
             }

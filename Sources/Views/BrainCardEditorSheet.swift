@@ -22,6 +22,7 @@ struct BrainCardEditorSheet: View {
     @State private var aiLoading: Bool = false
     @State private var didRequestAISuggestions: Bool = false
     @State private var aiSuggestionTask: Task<Void, Never>? = nil
+    @State private var aiTitleTask: Task<Void, Never>? = nil
 
     private static let defaultTopics = ["#工作", "#学习", "#生活", "#灵感", "#人际"]
 
@@ -109,10 +110,12 @@ struct BrainCardEditorSheet: View {
             .tint(CreamTheme.green)
             .onAppear {
                 hydrate()
+                requestAITitleIfNeeded()
                 requestAISuggestions()
             }
             .onDisappear {
                 aiSuggestionTask?.cancel()
+                aiTitleTask?.cancel()
             }
         }
     }
@@ -120,15 +123,9 @@ struct BrainCardEditorSheet: View {
     private func hydrate() {
         switch mode {
         case .deriveFromTurn(let turn):
-            // 标题预填 = turn 原文前 20 字（与 → ToDo 同款），剩下进 content
             let raw = turn.rawText
-            if raw.count <= 20 {
-                title = raw
-                content = ""
-            } else {
-                title = String(raw.prefix(20))
-                content = String(raw.dropFirst(20))
-            }
+            title = ""
+            content = raw
             // 来源 excerpt 取 turn 原文前 30 字（与 → ToDo 同款）
             let excerpt = raw.count > 30 ? String(raw.prefix(30)) + "…" : raw
             sources = [BrainCardSource(noteId: turn.id, excerpt: excerpt)]
@@ -138,6 +135,33 @@ struct BrainCardEditorSheet: View {
             content = c.content
             topics = c.topics
             sources = c.sources
+        }
+    }
+
+    private func requestAITitleIfNeeded() {
+        guard editingID == nil else { return }
+        guard case .deriveFromTurn = mode else { return }
+
+        let cleanContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanContent.isEmpty else { return }
+
+        aiTitleTask = Task {
+            do {
+                let suggestion = try await AIParser.suggestBrainTitle(content: cleanContent)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        title = suggestion
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        title = ""
+                    }
+                }
+            }
         }
     }
 

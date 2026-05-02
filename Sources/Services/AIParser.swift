@@ -45,6 +45,11 @@ private struct AITopicResponse: Decodable {
     let suggestions: [String]?
 }
 
+private struct AITitleResponse: Decodable {
+    let title: String?
+    let suggestion: String?
+}
+
 enum AIParseError: Error, LocalizedError {
     case badURL
     case network(String)
@@ -196,6 +201,57 @@ enum AIParser {
         return fallbackTopics(title: title, content: content)
     }
 
+    static func suggestBrainTitle(content: String) async throws -> String {
+        let prompt = """
+        你是一个第二大脑卡片标题助手。请把下面这段内容总结成一个中文短标题。
+
+        要求：
+        - 8 个字以内，最多不超过 10 个字。
+        - 只输出标题本身，不要解释。
+        - 不要加引号、编号、标点。
+        - 如果无法总结，输出空字符串。
+        - 如果当前接口必须返回随手记 records，请把标题放进 title 字段。
+
+        content: \(content)
+        """
+
+        var req = URLRequest(url: workerURL)
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
+
+        let body: [String: Any] = [
+            "text": prompt,
+            "currentDate": isoDate(),
+            "currentTime": isoTime()
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw AIParseError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIParseError.network("no http response")
+        }
+
+        if http.statusCode == 401 {
+            throw AIParseError.unauthorized
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIParseError.serverError(http.statusCode, body)
+        }
+
+        guard !data.isEmpty else { throw AIParseError.empty }
+        return normalizeShortTitle(parseTitlePayload(data))
+    }
+
     // MARK: - Helpers
 
     static func isoDate(_ d: Date = Date()) -> String {
@@ -234,6 +290,28 @@ enum AIParser {
         }
 
         return []
+    }
+
+    private static func parseTitlePayload(_ data: Data) -> String {
+        let decoder = JSONDecoder()
+
+        if let direct = try? decoder.decode(String.self, from: data) {
+            return direct
+        }
+
+        if let wrapped = try? decoder.decode(AITitleResponse.self, from: data) {
+            return wrapped.title ?? wrapped.suggestion ?? ""
+        }
+
+        if let parsed = try? decoder.decode(AIParseResponse.self, from: data) {
+            return parsed.records.compactMap { record in
+                [record.title, record.details, record.notes]
+                    .compactMap { $0 }
+                    .first { !normalizeShortTitle($0).isEmpty }
+            }.first ?? ""
+        }
+
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private static func topicCandidates(from record: AIParsedRecord) -> [String] {
@@ -325,5 +403,19 @@ enum AIParser {
         }
 
         return result.isEmpty ? ["灵感"] : result
+    }
+
+    private static func normalizeShortTitle(_ raw: String) -> String {
+        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        clean = clean.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’「」『』[]【】（）()。.!！?？：:，,、"))
+
+        if clean.hasPrefix("{"), let data = clean.data(using: .utf8) {
+            if let wrapped = try? JSONDecoder().decode(AITitleResponse.self, from: data) {
+                clean = wrapped.title ?? wrapped.suggestion ?? ""
+            }
+        }
+
+        guard !clean.isEmpty else { return "" }
+        return String(clean.prefix(10))
     }
 }
