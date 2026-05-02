@@ -54,6 +54,12 @@ struct ReviewSessionView: View {
     @State private var deriveTodoFromTurn: DerivePayload?
     @State private var deriveBrainFromTurn: DerivePayload?
 
+    private static let timeStampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter
+    }()
+
     private var queue: [ConversationTurn] {
         ReviewQueue.queue(turns: store.turns)
     }
@@ -146,7 +152,7 @@ struct ReviewSessionView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(turn.createdAt, style: .relative)
+                    Text(turn.createdAt, formatter: Self.timeStampFormatter)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
