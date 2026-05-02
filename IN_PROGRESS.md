@@ -14,7 +14,7 @@
 | 触发来源 | V1（1.2.0）dogfood 后用户真实反馈 |
 | 决策来源 | 2026-05-01 的 grill-me session 拍板 |
 | 规划版本号 | `1.3.0`（V2 PR 全部合完后再 bump；同一版本会一起带上已合入 `[Unreleased]` 的 iCloud 同步等改动） |
-| 当前阶段 | 🚧 PR 5 进行中：bump `1.3.0 / build 5` |
+| 当前阶段 | ⏳ `1.3.0 (build 5)` 已提交 App Review，等待审核结果 |
 | 上一版本状态 | `1.2.0 (build 4)` 已 App Store 上架（2026-05-02 过审）。Anna 后续单独做：打 `v1.2.0` tag / 发 GitHub Release / 更新 `LAUNCH_CHECKLIST.md` 状态。 |
 | 版本 bump 时机 | 等 V2 PR 1-4 全合完后再开 PR 5 bump 1.3.0（不要中途 bump）|
 
@@ -34,7 +34,7 @@
 | 2 | `refactor: 砍第二大脑关联卡片 + 反向链接` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
 | 3 | `feat: 第二大脑 topic AI 自动推荐` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
 | 4 | `feat: 复盘 Hub 本周/本月 toggle + 周复盘轻卡片流` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27), [#28](https://github.com/nannan-debug/lifeos/pull/28) | 2026-05-02 |
-| 5 | `chore: bump 1.3.0 / build 5` | 🚧 | — | — |
+| 5 | `chore: bump 1.3.0 / build 5` | ✅ | [#30](https://github.com/nannan-debug/lifeos/pull/30) | 2026-05-02 |
 
 总工程量估算：**6-9 个 evening session**（V1 是 17-22 个，V2 比 V1 小很多）
 

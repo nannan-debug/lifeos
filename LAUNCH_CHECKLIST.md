@@ -7,19 +7,20 @@
 
 ## 0. 当前结论
 
-**LifeOS 1.2.0 (build 4) 已上架 App Store。** 🎉
+**LifeOS 1.3.0 (build 5) 已提交 App Review。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
 - ✅ `1.2.0 (build 4)` — 2026-05-02 上架（灵感与反思模块 V1 + 静态开屏 + 日历体验优化）
+- ⏳ `1.3.0 (build 5)` — 2026-05-02 已提交 App Review（iCloud 同步开关 + 灵感与反思模块 V2 + 周复盘轻卡片流 + 打卡页交互优化）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 均 Ready for Distribution
+- ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 均 Ready for Distribution；1.3.0 等待审核
 
-当前阶段重心是"**持续迭代 + 下一个版本（1.3.0）准备**"：
+当前阶段重心是"**等待 1.3.0 审核结果 + 不打扰当前审核**"：
 
-1. 灵感与反思模块 V2 已规划，详见 [`IN_PROGRESS.md`](IN_PROGRESS.md)。
-2. iCloud 同步开关（[#22](https://github.com/nannan-debug/lifeos/pull/22)）已合入 main，与 V2 一并打包到 1.3.0。
-3. V2 全部 PR 合完后再开 `chore: bump 1.3.0 / build 5`，按 §4 SOP 发新版。
+1. `1.3.0 (build 5)` 已提交 App Review，等待 Apple 审核。
+2. 审核通过并 Ready for Distribution 后，再打 `v1.3.0` tag / 发 GitHub Release。
+3. 审核期间如继续开发新功能，按 §4.8 正常开分支和 PR，但不要再改 main 上的版本号、不要重新 Archive。
 
 **审核期间想做新功能怎么办？** 见 §4.8（下次进审核时仍生效）。
 
@@ -39,7 +40,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.2.0` (build 4) |
-| 当前 main 状态 | 仍是 `1.2.0` (build 4)；下个版本改动累积在 `CHANGELOG.md` `[Unreleased]`，等 V2 全部合完后开 PR 5 bump 1.3.0 |
+| 当前 main 状态 | `1.3.0` (build 5) 已合入并提交 App Review；等待审核结果，审核通过后再打 tag / Release |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -303,12 +304,12 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ GitHub Release `v1.2.0` 已发布
 - ✅ 本文件已更新为 1.2.0 上架状态
 
-### 6.2 1.3.0 准备工作
+### 6.2 1.3.0 审核中
 
-- 灵感与反思模块 V2 已规划：见 [`IN_PROGRESS.md`](IN_PROGRESS.md)，含 5 个 PR 的 breakdown
-- iCloud 同步开关（[#22](https://github.com/nannan-debug/lifeos/pull/22)）已合入 main，会一起带上 1.3.0
-- V2 PR 1-4 合完后开 `chore: bump 1.3.0 / build 5`（按 §4.2 流程），整理 `CHANGELOG.md [Unreleased]` → `[1.3.0]` 段落
-- 持续合入 main 的用户可见改动，必须同步写入 `CHANGELOG.md` `[Unreleased]`
+- ✅ `chore: bump 1.3.0 / build 5`（[#30](https://github.com/nannan-debug/lifeos/pull/30)）已合入 main
+- ✅ `1.3.0 (build 5)` 已 Archive / Upload / Submit to App Review（2026-05-02）
+- ⏳ 等 Apple 审核结果；审核通过并 Ready for Distribution 后，再打 `v1.3.0` tag / 发 GitHub Release
+- 审核期间继续开发新功能时，必须按 §4.8：正常开分支和 PR，但不要改 main 上的版本号、不要重新 Archive
 
 ---
 
@@ -330,4 +331,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) 均已在 App Store 在线。1.2.0 是灵感与反思模块 V1 + 静态开屏。`main` 上有出口合规永久豁免（PR #4）。当前在飞功能：灵感与反思模块 V2（详见 `IN_PROGRESS.md`），目标版本 1.3.0，build 从 5 起。下次发版按 §4 SOP 走，关键：改 `project.yml` 不是 `Info.plist`。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) 均已在 App Store 在线。`1.3.0 (build 5)` 已于 2026-05-02 提交 App Review，等待审核结果。`main` 当前已是 1.3.0 / build 5；不要再改版本号或重新 Archive，除非本次审核被拒或 Anna 明确要求。审核通过后再打 `v1.3.0` tag / 发 GitHub Release。**
