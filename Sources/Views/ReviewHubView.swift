@@ -98,37 +98,9 @@ struct ReviewHubView: View {
     }
 
     private var topPeriodBar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                Text("复盘")
-                    .font(.headline.weight(.semibold))
-
-                Spacer(minLength: 6)
-
-                Button {
-                    displayMonth = startOfMonth(for: selectedReviewDate)
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        showCalendarOverlay.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(periodTitle)
-                            .font(.subheadline.weight(.semibold))
-                        Image(systemName: showCalendarOverlay ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(CreamTheme.green)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
-                    .background(Color(red: 0.95, green: 0.97, blue: 0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 11)
-                            .stroke(CreamTheme.green.opacity(0.20), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 11))
-                }
-                .buttonStyle(.plain)
-            }
+        HStack(spacing: 10) {
+            Text("复盘")
+                .font(.headline.weight(.semibold))
 
             Picker("", selection: Binding(get: { window }, set: { window = $0 })) {
                 ForEach(HubWindow.allCases) { value in
@@ -136,6 +108,34 @@ struct ReviewHubView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .frame(width: 116)
+
+            Spacer(minLength: 6)
+
+            Button {
+                displayMonth = startOfMonth(for: selectedReviewDate)
+                withAnimation(.easeOut(duration: 0.18)) {
+                    showCalendarOverlay.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(periodTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Image(systemName: showCalendarOverlay ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(CreamTheme.green)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(Color(red: 0.95, green: 0.97, blue: 0.95))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(CreamTheme.green.opacity(0.20), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 11)
