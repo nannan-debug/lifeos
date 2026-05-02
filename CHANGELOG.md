@@ -13,12 +13,14 @@
 
 ### 新增
 - 设置页新增 iCloud 同步开关：使用 Apple iCloud Key-Value Storage 在同 Apple ID 设备间同步本地数据，默认关闭，用户手动开启（[#22](https://github.com/nannan-debug/lifeos/pull/22)）
-- 第二大脑卡片创建/编辑时，AI 自动推荐 1-3 个主题标签——一键接受或忽略，不强制
-- 默认主题集：工作 / 学习 / 生活 / 灵感 / 人际（也能继续手动添加任意主题）
-- 复盘 Tab Hub 顶部加「本周 / 本月」切换与日历选择：可查看指定自然周 / 自然月的处理统计。Review 队列保持最近 7 天不变，避免 P 人面对一座积压山
+- 第二大脑卡片创建/编辑时，AI 自动推荐 1-3 个主题标签——一键接受或忽略，不强制（[#27](https://github.com/nannan-debug/lifeos/pull/27)）
+- 默认主题集：工作 / 学习 / 生活 / 灵感 / 人际（也能继续手动添加任意主题）（[#27](https://github.com/nannan-debug/lifeos/pull/27)）
+- 从 Review 沉淀第二大脑卡片时，正文保留完整原文，AI 尝试生成短标题并提供轻量兜底（[#27](https://github.com/nannan-debug/lifeos/pull/27)）
+- 复盘 Tab Hub 顶部加「周 / 月」切换与日历选择：可查看指定自然周 / 自然月的处理统计。Review 队列保持最近 7 天不变，避免 P 人面对一座积压山（[#27](https://github.com/nannan-debug/lifeos/pull/27)）
 
 ### 改进
-- 第二大脑卡片详情简化：移除"关联卡片 / 反向链接"section，腾出正文空间。手动建链使用率太低，让位给后续的自动化方案
+- 第二大脑卡片详情简化：移除"关联卡片 / 反向链接"section，腾出正文空间。手动建链使用率太低，让位给后续的自动化方案（[#27](https://github.com/nannan-debug/lifeos/pull/27)）
+- 优化共用日历弹层：保留原 overlay 交互，同时缓存当月 marker 数据，减少记录较多时打开日历的卡顿感（[#27](https://github.com/nannan-debug/lifeos/pull/27)）
 
 ### 待发版注意
 - 发下个版本前，需要先在 Apple Developer 后台为 App ID 开启 iCloud Key-Value Storage capability。

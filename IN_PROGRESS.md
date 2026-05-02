@@ -14,7 +14,7 @@
 | 触发来源 | V1（1.2.0）dogfood 后用户真实反馈 |
 | 决策来源 | 2026-05-01 的 grill-me session 拍板 |
 | 规划版本号 | `1.3.0`（V2 PR 全部合完后再 bump；同一版本会一起带上已合入 `[Unreleased]` 的 iCloud 同步等改动） |
-| 当前阶段 | ⏳ PR 1 待开工 |
+| 当前阶段 | ⏳ PR 5 待开工（V2 PR 2-4 已集中进 #27，下一步进入版本 bump / 发版准备） |
 | 上一版本状态 | `1.2.0 (build 4)` 已 App Store 上架（2026-05-02 过审）。Anna 后续单独做：打 `v1.2.0` tag / 发 GitHub Release / 更新 `LAUNCH_CHECKLIST.md` 状态。 |
 | 版本 bump 时机 | 等 V2 PR 1-4 全合完后再开 PR 5 bump 1.3.0（不要中途 bump）|
 
@@ -31,12 +31,21 @@
 | # | 标题 | 状态 | PR | 合并日期 |
 |---|---|---|---|---|
 | 1 | `fix: Review 卡片时间显示去秒级` | ✅ | [#26](https://github.com/nannan-debug/lifeos/pull/26) | 2026-05-02 |
-| 2 | `refactor: 砍第二大脑关联卡片 + 反向链接` | 🚧 | [#27](https://github.com/nannan-debug/lifeos/pull/27) | — |
-| 3 | `feat: 第二大脑 topic AI 自动推荐` | 🚧 | [#27](https://github.com/nannan-debug/lifeos/pull/27) | — |
-| 4 | `feat: 复盘 Hub 本周/本月 toggle` | 🚧 | [#27](https://github.com/nannan-debug/lifeos/pull/27) | — |
+| 2 | `refactor: 砍第二大脑关联卡片 + 反向链接` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
+| 3 | `feat: 第二大脑 topic AI 自动推荐` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
+| 4 | `feat: 复盘 Hub 本周/本月 toggle` | ✅ | [#27](https://github.com/nannan-debug/lifeos/pull/27) | 2026-05-02 |
 | 5 | `chore: bump 1.3.0 / build 5` | ⏳ | — | — |
 
 总工程量估算：**6-9 个 evening session**（V1 是 17-22 个，V2 比 V1 小很多）
+
+### PR #27 实施备注（2026-05-02）
+
+- PR 2-4 合并在同一个 PR #27 里完成：第二大脑详情瘦身、topic AI 推荐、复盘 Hub 时间维度增强。
+- 实际实现比原计划多做了几项体验修正：
+  - 复盘 Hub 的时间维度从固定「本周 / 本月」调整为「周 / 月 + 可选具体日期」，周按自然周、月按自然月统计。
+  - 第二大脑从 Review 沉淀卡片时，正文保留完整原文；标题由 AI 尝试生成短标题，并带本地兜底。
+  - 日历弹层保留上一版 overlay 样式，但缓存 marker 数据，避免每次打开日历都全量扫描记录。
+- 下一步 PR 5 只做版本 bump / 发版准备：不要顺手继续加功能；版本号仍以 `project.yml` 为 source of truth。
 
 ---
 
