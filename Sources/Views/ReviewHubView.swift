@@ -72,13 +72,13 @@ struct ReviewHubView: View {
                 .navigationTitle("复盘")
                 .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    topPeriodBar
-                }
-
-                if showCalendarOverlay {
-                    calendarOverlay
-                        .transition(.opacity)
-                        .zIndex(20)
+                    VStack(spacing: 8) {
+                        topPeriodBar
+                        if showCalendarOverlay {
+                            calendarOverlay
+                                .transition(.opacity)
+                        }
+                    }
                 }
             }
             .onAppear {

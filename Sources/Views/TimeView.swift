@@ -287,14 +287,13 @@ struct TimeView: View {
             .tint(CreamTheme.green)
             .scrollContentBackground(.hidden)
             .background(CreamTheme.glassStrong)
-            .safeAreaInset(edge: .top) {
-                timeTopDateBar
-            }
-            .overlay(alignment: .top) {
-                if showCalendarOverlay {
-                    timeCalendarOverlay
-                        .transition(.opacity)
-                        .zIndex(20)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 8) {
+                    timeTopDateBar
+                    if showCalendarOverlay {
+                        timeCalendarOverlay
+                            .transition(.opacity)
+                    }
                 }
             }
             .sheet(isPresented: $showAdd) {

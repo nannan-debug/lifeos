@@ -69,13 +69,11 @@ struct TodayView: View {
                     VStack(spacing: 8) {
                         todayTopDateBar
                         segmentPicker
+                        if showCalendarOverlay {
+                            calendarOverlay
+                                .transition(.opacity)
+                        }
                     }
-                }
-
-                if showCalendarOverlay {
-                    calendarOverlay
-                        .transition(.opacity)
-                        .zIndex(20)
                 }
             }
             .onAppear {

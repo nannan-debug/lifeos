@@ -12,21 +12,10 @@ struct CreamCalendarOverlay: View {
     private let weekSymbols = ["日", "一", "二", "三", "四", "五", "六"]
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // 遮罩
-            Color.black.opacity(0.18)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.10)) {
-                        isPresented = false
-                    }
-                }
-
-            // 日历卡片
-            calendarCard
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-        }
+        calendarCard
+            .padding(.horizontal, 16)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
     }
 
     private var calendarCard: some View {
