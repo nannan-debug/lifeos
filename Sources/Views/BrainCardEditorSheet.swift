@@ -23,6 +23,8 @@ struct BrainCardEditorSheet: View {
     @State private var didRequestAISuggestions: Bool = false
     @State private var aiSuggestionTask: Task<Void, Never>? = nil
     @State private var aiTitleTask: Task<Void, Never>? = nil
+    @State private var aiTitleLoading: Bool = false
+    @State private var aiTitleSuggestion: String? = nil
 
     private static let defaultTopics = ["#工作", "#学习", "#生活", "#灵感", "#人际"]
 
@@ -53,6 +55,43 @@ struct BrainCardEditorSheet: View {
                 Section {
                     TextField("标题", text: $title)
                         .font(.title3.weight(.semibold))
+
+                    if aiTitleLoading {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.75)
+                            Text("AI 正在想标题")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let aiTitleSuggestion, !aiTitleSuggestion.isEmpty {
+                        Button {
+                            title = aiTitleSuggestion
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("AI")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(CreamTheme.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(CreamTheme.green.opacity(0.10))
+                                    .clipShape(Capsule())
+                                Text(aiTitleSuggestion)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(CreamTheme.green)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(CreamTheme.green.opacity(0.08))
+                            .overlay(
+                                Capsule()
+                                    .stroke(CreamTheme.green.opacity(0.18), lineWidth: 1)
+                            )
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 Section("正文") {
@@ -126,6 +165,7 @@ struct BrainCardEditorSheet: View {
             let raw = turn.rawText
             title = ""
             content = raw
+            aiTitleSuggestion = nil
             // 来源 excerpt 取 turn 原文前 30 字（与 → ToDo 同款）
             let excerpt = raw.count > 30 ? String(raw.prefix(30)) + "…" : raw
             sources = [BrainCardSource(noteId: turn.id, excerpt: excerpt)]
@@ -145,11 +185,14 @@ struct BrainCardEditorSheet: View {
         let cleanContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanContent.isEmpty else { return }
 
+        aiTitleLoading = true
         aiTitleTask = Task {
             do {
                 let suggestion = try await AIParser.suggestBrainTitle(content: cleanContent)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    aiTitleSuggestion = suggestion
+                    aiTitleLoading = false
                     if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         title = suggestion
                     }
@@ -157,9 +200,8 @@ struct BrainCardEditorSheet: View {
             } catch {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        title = ""
-                    }
+                    aiTitleSuggestion = nil
+                    aiTitleLoading = false
                 }
             }
         }
