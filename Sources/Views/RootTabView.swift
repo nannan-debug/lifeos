@@ -126,13 +126,7 @@ struct QuickCaptureView: View {
                 }
             )
             .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 8) {
-                    topFilterBar
-                    if showCalendarOverlay {
-                        quickCaptureCalendarOverlay
-                            .transition(.opacity)
-                    }
-                }
+                topFilterBar
             }
             // 底部输入框已全局化：RootTabView 的 GlobalAIInputBar 负责所有 Tab
             .onAppear {
@@ -144,6 +138,13 @@ struct QuickCaptureView: View {
                 let m = startOfMonth(for: newDate)
                 if !calendar.isDate(m, equalTo: displayMonth, toGranularity: .month) {
                     displayMonth = m
+                }
+            }
+            .overlay(alignment: .top) {
+                if showCalendarOverlay {
+                    quickCaptureCalendarOverlay
+                        .transition(.opacity)
+                        .zIndex(20)
                 }
             }
             // Animation driven by withAnimation() in calendar toggle button
