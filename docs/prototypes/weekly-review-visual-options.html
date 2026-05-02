@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LifeOS 周复盘视觉方案</title>
+  <style>
+    :root {
+      --cream: #f5f5e8;
+      --mint: #edfdec;
+      --ink: #263326;
+      --muted: #76806f;
+      --green: #3da55c;
+      --sage: #dfeada;
+      --paper: rgba(255, 255, 255, .88);
+      --line: rgba(61, 93, 58, .14);
+      --amber: #c89b4e;
+      --clay: #b67861;
+      --blue: #6b8fa3;
+      --lavender: #8b7e9f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Avenir Next", "Hiragino Maru Gothic ProN", "PingFang SC", sans-serif;
+      background:
+        linear-gradient(115deg, rgba(245,245,232,.94), rgba(255,255,255,.92) 42%, rgba(237,253,236,.92)),
+        radial-gradient(circle at 20% 0%, rgba(200,155,78,.12), transparent 34%),
+        radial-gradient(circle at 82% 12%, rgba(107,143,163,.14), transparent 30%);
+      min-height: 100vh;
+    }
+
+    .page {
+      width: min(1280px, calc(100vw - 36px));
+      margin: 0 auto;
+      padding: 30px 0 42px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, "Songti SC", serif;
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: 0;
+      font-weight: 700;
+    }
+
+    .note {
+      margin: 8px 0 0;
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.62);
+      border-radius: 999px;
+      padding: 7px 10px;
+      color: #52604f;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .boards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .option {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .option-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px;
+    }
+
+    .option-title h2 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    .tag {
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .phone {
+      border: 1px solid rgba(49, 80, 45, .18);
+      border-radius: 30px;
+      background: rgba(252,253,247,.88);
+      box-shadow: 0 18px 45px rgba(52, 74, 49, .12);
+      overflow: hidden;
+      min-height: 760px;
+      position: relative;
+    }
+
+    .screen {
+      padding: 16px 14px 20px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 2px 14px;
+    }
+
+    .topbar strong { font-size: 18px; }
+
+    .seg {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 86px;
+      padding: 3px;
+      border-radius: 11px;
+      background: rgba(63, 92, 60, .08);
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    .seg span {
+      text-align: center;
+      padding: 4px 0;
+      border-radius: 8px;
+      color: var(--muted);
+    }
+
+    .seg span:first-child {
+      color: var(--ink);
+      background: white;
+      box-shadow: 0 2px 8px rgba(30, 60, 30, .08);
+    }
+
+    .date-chip {
+      border: 1px solid rgba(61,165,92,.2);
+      border-radius: 12px;
+      color: var(--green);
+      background: #f1f7f0;
+      padding: 7px 9px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: 0 8px 22px rgba(35, 55, 34, .06);
+      margin-bottom: 12px;
+    }
+
+    .card h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      letter-spacing: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .small {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+    }
+
+    .dow {
+      text-align: center;
+      font-size: 10px;
+      color: #8c9488;
+      padding-bottom: 2px;
+    }
+
+    .day {
+      aspect-ratio: 1;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      position: relative;
+      border: 1px solid rgba(50, 80, 44, .08);
+      background: rgba(255,255,255,.7);
+    }
+
+    .day.done {
+      background: #e3f2df;
+      color: #2f7f45;
+      border-color: rgba(61,165,92,.24);
+      font-weight: 800;
+    }
+
+    .day.blank {
+      color: #a8afa4;
+      background: rgba(246,246,239,.72);
+    }
+
+    .day.today {
+      outline: 2px solid rgba(61,165,92,.28);
+      outline-offset: 2px;
+    }
+
+    .check-matrix {
+      display: grid;
+      gap: 10px;
+    }
+
+    .matrix-week {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .matrix-labels,
+    .matrix-values {
+      display: grid;
+      gap: 8px;
+    }
+
+    .matrix-labels .spacer,
+    .matrix-date {
+      height: 18px;
+    }
+
+    .matrix-label {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 750;
+      color: #445041;
+    }
+
+    .matrix-row {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+    }
+
+    .matrix-date {
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      color: #8c9488;
+      line-height: 1.05;
+    }
+
+    .matrix-date b {
+      color: #596254;
+      font-weight: 700;
+    }
+
+    .matrix-cell {
+      height: 34px;
+      border-radius: 11px;
+      border: 1px solid rgba(50,80,44,.055);
+      background: #fcfcf5;
+      display: grid;
+      place-items: center;
+      color: #3da55c;
+      font-weight: 900;
+    }
+
+    .matrix-cell.full {
+      background: rgba(61,165,92,.045);
+      border-color: rgba(61,165,92,.28);
+    }
+
+    .matrix-cell.partial::after {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(61,165,92,.58);
+    }
+
+    .check-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 78px 1fr;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .week-dots {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+    }
+
+    .dot {
+      aspect-ratio: 1;
+      border-radius: 9px;
+      background: rgba(222, 229, 216, .85);
+      display: grid;
+      place-items: center;
+      color: #2f7f45;
+      font-size: 10px;
+    }
+
+    .dot.done {
+      background: #ddf0d7;
+      box-shadow: inset 0 0 0 1px rgba(61,165,92,.18);
+      font-weight: 900;
+    }
+
+    .bars {
+      display: grid;
+      gap: 10px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 52px 1fr 42px;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .track {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(223, 232, 217, .8);
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      border-radius: inherit;
+      opacity: .55;
+    }
+
+    .work { background: #5b8cb5; }
+    .study { background: #bfa234; }
+    .life { background: #6ba8a0; }
+    .rest { background: #9b7ea5; }
+    .exercise { background: #5a9e6f; }
+    .social { background: #6872ab; }
+    .fun { background: #c0875e; }
+
+    .stacked {
+      display: flex;
+      height: 22px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(223, 232, 217, .8);
+      margin-bottom: 12px;
+    }
+
+    .stacked i { display: block; height: 100%; }
+
+    .group-calendar {
+      display: grid;
+      gap: 8px;
+    }
+
+    .group-row {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 9px;
+      align-items: center;
+    }
+
+    .group-title {
+      font-size: 12px;
+      font-weight: 750;
+      color: #445041;
+      white-space: nowrap;
+    }
+
+    .axis {
+      stroke: rgba(38,51,38,.12);
+      stroke-width: 1;
+    }
+
+    .line {
+      fill: none;
+      stroke: var(--green);
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .area { fill: rgba(61,165,92,.12); }
+    .point { fill: #fff; stroke: var(--green); stroke-width: 3; }
+
+    .ideas {
+      display: grid;
+      gap: 8px;
+    }
+
+    .idea {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: #4e5c4b;
+    }
+
+    .idea:before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(61,165,92,.65);
+      flex: 0 0 auto;
+    }
+
+    .cta {
+      margin-top: 10px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .option-a .card { border-radius: 20px; }
+
+    .option-b .phone {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.95), rgba(246,248,241,.95)),
+        repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(47,74,45,.035) 24px);
+    }
+
+    .option-b .card {
+      border-radius: 12px;
+      box-shadow: none;
+      border-color: rgba(47,74,45,.18);
+    }
+
+    .option-b .day { border-radius: 8px; }
+    .option-b .dot { border-radius: 6px; }
+
+    .option-c .phone {
+      background:
+        linear-gradient(150deg, rgba(250,249,240,.95), rgba(239,248,237,.95));
+    }
+
+    .option-c .card {
+      border-radius: 26px;
+      background: rgba(255,255,255,.78);
+    }
+
+    .leaf-days {
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+    }
+
+    .leaf {
+      width: 34px;
+      height: 48px;
+      border-radius: 22px 22px 22px 8px;
+      transform: rotate(12deg);
+      background: rgba(222,229,216,.7);
+      display: grid;
+      place-items: center;
+      color: #829080;
+      font-size: 11px;
+    }
+
+    .leaf.done {
+      background: #d8efd1;
+      color: #2f7f45;
+      font-weight: 900;
+    }
+
+    @media (max-width: 1040px) {
+      .boards { grid-template-columns: 1fr; }
+      .phone { min-height: auto; }
+      header { align-items: flex-start; flex-direction: column; }
+      .legend { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>周复盘视觉方向</h1>
+        <p class="note">三套都保留 LifeOS 的低压力语气：打卡分组看一眼，时间用固定分类顺序呈现，不做诊断。</p>
+      </div>
+      <div class="legend">
+        <span class="pill">日历打卡</span>
+        <span class="pill">横向时间条</span>
+      </div>
+    </header>
+
+    <section class="boards">
+      <article class="option option-a">
+        <div class="option-title">
+          <h2>A. 手账日历型</h2>
+          <span class="tag">推荐：温柔但信息清楚</span>
+        </div>
+        <div class="phone">
+          <div class="screen">
+            <div class="topbar">
+              <strong>复盘</strong>
+              <div class="seg"><span>周</span><span>月</span></div>
+              <div class="date-chip">4/27-5/3</div>
+            </div>
+
+            <section class="card">
+              <h3>打卡</h3>
+              <div class="check-matrix">
+                <div class="matrix-week">
+                  <div class="matrix-labels">
+                    <div class="spacer"></div>
+                    <div class="matrix-label">早上</div>
+                    <div class="matrix-label">晚上</div>
+                  </div>
+                  <div class="matrix-values">
+                    <div class="matrix-row">
+                      <div class="matrix-date">一<br><b>27</b></div><div class="matrix-date">二<br><b>28</b></div><div class="matrix-date">三<br><b>29</b></div><div class="matrix-date">四<br><b>30</b></div><div class="matrix-date">五<br><b>1</b></div><div class="matrix-date">六<br><b>2</b></div><div class="matrix-date">日<br><b>3</b></div>
+                    </div>
+                    <div class="matrix-row">
+                      <div class="matrix-cell full">✓</div><div class="matrix-cell partial"></div><div class="matrix-cell"></div><div class="matrix-cell full">✓</div><div class="matrix-cell"></div><div class="matrix-cell full">✓</div><div class="matrix-cell"></div>
+                    </div>
+                    <div class="matrix-row">
+                      <div class="matrix-cell"></div><div class="matrix-cell full">✓</div><div class="matrix-cell"></div><div class="matrix-cell partial"></div><div class="matrix-cell full">✓</div><div class="matrix-cell"></div><div class="matrix-cell"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="matrix-week">
+                  <div class="matrix-labels">
+                    <div class="spacer"></div>
+                    <div class="matrix-label">早上</div>
+                    <div class="matrix-label">晚上</div>
+                  </div>
+                  <div class="matrix-values">
+                    <div class="matrix-row">
+                      <div class="matrix-date">一<br><b>4</b></div><div class="matrix-date">二<br><b>5</b></div><div class="matrix-date">三<br><b>6</b></div><div class="matrix-date">四<br><b>7</b></div><div class="matrix-date">五<br><b>8</b></div><div class="matrix-date">六<br><b>9</b></div><div class="matrix-date">日<br><b>10</b></div>
+                    </div>
+                    <div class="matrix-row">
+                      <div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell full">✓</div><div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell partial"></div><div class="matrix-cell"></div>
+                    </div>
+                    <div class="matrix-row">
+                      <div class="matrix-cell partial"></div><div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell full">✓</div><div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>时间分配</h3>
+              <div class="bars">
+                <div class="bar-row"><span>学习</span><div class="track"><div class="fill study" style="width:46%"></div></div><span>7h</span></div>
+                <div class="bar-row"><span>工作</span><div class="track"><div class="fill work" style="width:78%"></div></div><span>12h</span></div>
+                <div class="bar-row"><span>运动</span><div class="track"><div class="fill exercise" style="width:32%"></div></div><span>5h</span></div>
+                <div class="bar-row"><span>娱乐</span><div class="track"><div class="fill fun" style="width:18%"></div></div><span>3h</span></div>
+                <div class="bar-row"><span>社交</span><div class="track"><div class="fill social" style="width:14%"></div></div><span>2h</span></div>
+                <div class="bar-row"><span>睡觉</span><div class="track"><div class="fill rest" style="width:26%"></div></div><span>4h</span></div>
+                <div class="bar-row"><span>其他</span><div class="track"><div class="fill life" style="width:9%"></div></div><span>1h</span></div>
+              </div>
+              <p class="note">未记录时间 134h</p>
+            </section>
+
+            <section class="card">
+              <h3>待处理想法 <span class="small">3 条</span></h3>
+              <div class="ideas">
+                <div class="idea">为什么早上更容易开始</div>
+                <div class="idea">想整理一次 AI 输入体验</div>
+              </div>
+              <div class="cta">去接住几条</div>
+            </section>
+          </div>
+        </div>
+      </article>
+
+      <article class="option option-b">
+        <div class="option-title">
+          <h2>B. 细密报告型</h2>
+          <span class="tag">更像周报，但克制</span>
+        </div>
+        <div class="phone">
+          <div class="screen">
+            <div class="topbar">
+              <strong>复盘</strong>
+              <div class="seg"><span>周</span><span>月</span></div>
+              <div class="date-chip">4/27-5/3</div>
+            </div>
+
+            <section class="card">
+              <h3>打卡 <span class="small">每个习惯一行</span></h3>
+              <div class="check-list">
+                <div class="check-row"><span>吃维生素</span><div class="week-dots"><span class="dot done">✓</span><span class="dot done">✓</span><span class="dot done">✓</span><span class="dot"></span><span class="dot done">✓</span><span class="dot done">✓</span><span class="dot"></span></div></div>
+                <div class="check-row"><span>写日记</span><div class="week-dots"><span class="dot done">✓</span><span class="dot"></span><span class="dot done">✓</span><span class="dot"></span><span class="dot"></span><span class="dot done">✓</span><span class="dot"></span></div></div>
+                <div class="check-row"><span>上床看书</span><div class="week-dots"><span class="dot"></span><span class="dot done">✓</span><span class="dot"></span><span class="dot done">✓</span><span class="dot done">✓</span><span class="dot"></span><span class="dot"></span></div></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>时间分配 <span class="small">一条总览 + 明细</span></h3>
+              <div class="stacked">
+                <i class="work" style="width:43%"></i><i class="study" style="width:25%"></i><i class="life" style="width:18%"></i><i class="rest" style="width:14%"></i>
+              </div>
+              <div class="bars">
+                <div class="bar-row"><span>工作</span><div class="track"><div class="fill work" style="width:100%"></div></div><span>12h</span></div>
+                <div class="bar-row"><span>学习</span><div class="track"><div class="fill study" style="width:58%"></div></div><span>7h</span></div>
+                <div class="bar-row"><span>生活</span><div class="track"><div class="fill life" style="width:42%"></div></div><span>5h</span></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>待处理想法 <span class="small">3 条</span></h3>
+              <div class="ideas">
+                <div class="idea">给复盘页一点仪式感</div>
+                <div class="idea">时间圆盘和周复盘怎么连起来</div>
+              </div>
+              <div class="cta">去接住几条</div>
+            </section>
+          </div>
+        </div>
+      </article>
+
+      <article class="option option-c">
+        <div class="option-title">
+          <h2>C. 自然轨迹型</h2>
+          <span class="tag">更有记忆点</span>
+        </div>
+        <div class="phone">
+          <div class="screen">
+            <div class="topbar">
+              <strong>复盘</strong>
+              <div class="seg"><span>周</span><span>月</span></div>
+              <div class="date-chip">4/27-5/3</div>
+            </div>
+
+            <section class="card">
+              <h3>打卡 <span class="small">一周小叶片</span></h3>
+              <div class="leaf-days">
+                <div class="leaf done">一</div><div class="leaf done">二</div><div class="leaf">三</div><div class="leaf done">四</div><div class="leaf">五</div><div class="leaf done">六</div><div class="leaf">日</div>
+              </div>
+              <p class="note">写日记：完成 4 次 · 留白 3 天</p>
+            </section>
+
+            <section class="card">
+              <h3>时间分配 <span class="small">柔和横条</span></h3>
+              <div class="bars">
+                <div class="bar-row"><span>工作</span><div class="track"><div class="fill work" style="width:78%"></div></div><span>12h</span></div>
+                <div class="bar-row"><span>学习</span><div class="track"><div class="fill study" style="width:46%"></div></div><span>7h</span></div>
+                <div class="bar-row"><span>生活</span><div class="track"><div class="fill life" style="width:32%"></div></div><span>5h</span></div>
+                <div class="bar-row"><span>休息</span><div class="track"><div class="fill rest" style="width:26%"></div></div><span>4h</span></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>待处理想法 <span class="small">3 条</span></h3>
+              <div class="ideas">
+                <div class="idea">这周对“开始”很敏感</div>
+                <div class="idea">想给 Review 做更轻的入口</div>
+              </div>
+              <div class="cta">去接住几条</div>
+            </section>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
