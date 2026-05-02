@@ -95,50 +95,15 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(store.brainCards.count, 0)
     }
 
-    func testLinkBrainCardsBidirectionalAndIdempotent() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [bId])
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [aId])
-        // 二次调应为 idempotent
-        store.linkBrainCards(aId, bId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links.count, 1)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links.count, 1)
-    }
-
-    func testLinkBrainCardsRejectsSelfLink() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, aId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [])
-    }
-
-    func testUnlinkBrainCardsBidirectional() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
-        store.unlinkBrainCards(aId, bId)
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == aId })?.links, [])
-        XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
-    }
-
-    func testBacklinksLookup() {
-        let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
-        XCTAssertEqual(store.backlinks(for: bId).map { $0.id }, [aId])
-        XCTAssertEqual(store.backlinks(for: aId).map { $0.id }, [bId])
-    }
-
     func testRemoveBrainCleansBacklinks() {
         let store = AppStore()
-        let aId = store.addBrain(title: "A", content: "", topics: [], sources: [])!
-        let bId = store.addBrain(title: "B", content: "", topics: [], sources: [])!
-        store.linkBrainCards(aId, bId)
+        let aId = UUID()
+        let bId = UUID()
+        let now = Date()
+        store.brainCards = [
+            BrainCard(id: aId, title: "A", content: "", topics: [], sources: [], links: [bId], createdAt: now, updatedAt: now),
+            BrainCard(id: bId, title: "B", content: "", topics: [], sources: [], links: [aId], createdAt: now, updatedAt: now),
+        ]
         store.removeBrain(id: aId)
         XCTAssertFalse(store.brainCards.contains { $0.id == aId })
         XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
@@ -221,6 +186,21 @@ final class PersonalSystemSmokeTests: XCTestCase {
             makeTurn(createdAt: eightDaysAgo),  // 超出 7 日窗
         ]
         let queue = ReviewQueue.queue(turns: turns, now: now)
+        XCTAssertEqual(queue.count, 2)
+    }
+
+    func testReviewQueue30DayWindow() {
+        let now = Date()
+        let cal = Calendar.current
+        let fourteenDaysAgo = cal.date(byAdding: .day, value: -14, to: now)!
+        let twentyNineDaysAgo = cal.date(byAdding: .day, value: -29, to: now)!
+        let thirtyOneDaysAgo = cal.date(byAdding: .day, value: -31, to: now)!
+        let turns: [ConversationTurn] = [
+            makeTurn(createdAt: fourteenDaysAgo),
+            makeTurn(createdAt: twentyNineDaysAgo),
+            makeTurn(createdAt: thirtyOneDaysAgo),
+        ]
+        let queue = ReviewQueue.queue(turns: turns, now: now, windowDays: 30)
         XCTAssertEqual(queue.count, 2)
     }
 

@@ -40,6 +40,11 @@ struct AIParseResponse: Decodable {
     }
 }
 
+private struct AITopicResponse: Decodable {
+    let topics: [String]?
+    let suggestions: [String]?
+}
+
 enum AIParseError: Error, LocalizedError {
     case badURL
     case network(String)
@@ -135,6 +140,60 @@ enum AIParser {
         }
     }
 
+    static func suggestTopics(title: String, content: String) async throws -> [String] {
+        let prompt = """
+        你是一个第二大脑卡片分类助手。给定一张卡片的 title 和 content，输出 1-3 个最贴切的主题标签。
+
+        优先从以下默认集选：[工作, 学习, 生活, 灵感, 人际]。
+        如默认集都不贴切，可以创新，但应简洁、可复用、有概括性。
+
+        输出 JSON 数组，每项是字符串，不带 # 前缀。不要输出任何其他内容。
+
+        title: \(title)
+        content: \(content)
+        """
+
+        var req = URLRequest(url: workerURL)
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
+
+        let body: [String: Any] = [
+            "task": "suggestTopics",
+            "title": title,
+            "content": content,
+            "text": prompt,
+            "currentDate": isoDate(),
+            "currentTime": isoTime()
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw AIParseError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIParseError.network("no http response")
+        }
+
+        if http.statusCode == 401 {
+            throw AIParseError.unauthorized
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIParseError.serverError(http.statusCode, body)
+        }
+
+        guard !data.isEmpty else { throw AIParseError.empty }
+        let topics = parseTopicPayload(data)
+        return normalizeTopics(topics)
+    }
+
     // MARK: - Helpers
 
     static func isoDate(_ d: Date = Date()) -> String {
@@ -149,5 +208,60 @@ enum AIParser {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "HH:mm"
         return f.string(from: d)
+    }
+
+    private static func parseTopicPayload(_ data: Data) -> [String] {
+        let decoder = JSONDecoder()
+
+        if let direct = try? decoder.decode([String].self, from: data) {
+            return direct
+        }
+
+        if let wrapped = try? decoder.decode(AITopicResponse.self, from: data) {
+            return wrapped.topics ?? wrapped.suggestions ?? []
+        }
+
+        if let text = String(data: data, encoding: .utf8) {
+            return parseTopicText(text)
+        }
+
+        return []
+    }
+
+    private static func parseTopicText(_ text: String) -> [String] {
+        if let data = text.data(using: .utf8),
+           let direct = try? JSONDecoder().decode([String].self, from: data) {
+            return direct
+        }
+
+        guard let start = text.firstIndex(of: "["),
+              let end = text.lastIndex(of: "]"),
+              start <= end else {
+            return []
+        }
+
+        let json = String(text[start...end])
+        guard let data = json.data(using: .utf8),
+              let direct = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return direct
+    }
+
+    private static func normalizeTopics(_ raw: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+
+        for item in raw {
+            let clean = item
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "#＃"))
+            guard !clean.isEmpty, !seen.contains(clean) else { continue }
+            seen.insert(clean)
+            result.append(clean)
+            if result.count == 3 { break }
+        }
+
+        return result
     }
 }

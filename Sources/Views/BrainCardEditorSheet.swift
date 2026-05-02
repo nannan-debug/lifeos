@@ -18,6 +18,12 @@ struct BrainCardEditorSheet: View {
     @State private var topics: [String] = []
     /// 仅展示用：新建模式下从 turn 预填的来源；编辑模式下读卡片的 sources。两种模式都只读。
     @State private var sources: [BrainCardSource] = []
+    @State private var aiSuggestions: [String]? = nil
+    @State private var aiLoading: Bool = false
+    @State private var didRequestAISuggestions: Bool = false
+    @State private var aiSuggestionTask: Task<Void, Never>? = nil
+
+    private static let defaultTopics = ["#工作", "#学习", "#生活", "#灵感", "#人际"]
 
     private var editingID: UUID? {
         if case .edit(let c) = mode { return c.id }
@@ -27,6 +33,10 @@ struct BrainCardEditorSheet: View {
     private var availableTopics: [String] {
         var seen = Set<String>()
         var ordered: [String] = []
+        for t in Self.defaultTopics {
+            seen.insert(t)
+            ordered.append(t)
+        }
         for card in store.brainCards {
             for t in card.topics where !seen.contains(t) {
                 seen.insert(t)
@@ -50,7 +60,12 @@ struct BrainCardEditorSheet: View {
                 }
 
                 Section("主题") {
-                    TopicChipInput(topics: $topics, availableTopics: availableTopics)
+                    TopicChipInput(
+                        topics: $topics,
+                        aiSuggestions: $aiSuggestions,
+                        availableTopics: availableTopics,
+                        aiLoading: aiLoading
+                    )
                 }
 
                 if !sources.isEmpty {
@@ -92,7 +107,13 @@ struct BrainCardEditorSheet: View {
                 }
             }
             .tint(CreamTheme.green)
-            .onAppear(perform: hydrate)
+            .onAppear {
+                hydrate()
+                requestAISuggestions()
+            }
+            .onDisappear {
+                aiSuggestionTask?.cancel()
+            }
         }
     }
 
@@ -117,6 +138,36 @@ struct BrainCardEditorSheet: View {
             content = c.content
             topics = c.topics
             sources = c.sources
+        }
+    }
+
+    private func requestAISuggestions() {
+        guard !didRequestAISuggestions else { return }
+        didRequestAISuggestions = true
+
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty || !cleanContent.isEmpty else {
+            aiSuggestions = []
+            return
+        }
+
+        aiLoading = true
+        aiSuggestionTask = Task {
+            do {
+                let suggestions = try await AIParser.suggestTopics(title: cleanTitle, content: cleanContent)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    aiSuggestions = suggestions
+                    aiLoading = false
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    aiSuggestions = []
+                    aiLoading = false
+                }
+            }
         }
     }
 

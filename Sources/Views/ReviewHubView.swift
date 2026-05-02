@@ -5,10 +5,25 @@ import SwiftUI
 /// V1 PR 5：第二大脑卡片激活，显示张数 + 最近预览，点击 push 进 BrainCardWallView。
 struct ReviewHubView: View {
     @EnvironmentObject var store: AppStore
+    @AppStorage("review.hub.window") private var windowRaw: String = HubWindow.week.rawValue
 
-    private var pending: Int { ReviewQueue.pendingCount(turns: store.turns) }
-    private var archived: Int { ReviewQueue.archivedCount(turns: store.turns) }
-    private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns) }
+    private enum HubWindow: String, CaseIterable, Identifiable {
+        case week
+        case month
+
+        var id: String { rawValue }
+        var title: String { self == .week ? "本周" : "本月" }
+        var days: Int { self == .week ? 7 : 30 }
+    }
+
+    private var window: HubWindow {
+        get { HubWindow(rawValue: windowRaw) ?? .week }
+        nonmutating set { windowRaw = newValue.rawValue }
+    }
+
+    private var pending: Int { ReviewQueue.pendingCount(turns: store.turns, windowDays: window.days) }
+    private var archived: Int { ReviewQueue.archivedCount(turns: store.turns, windowDays: window.days) }
+    private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns, windowDays: window.days) }
 
     var body: some View {
         NavigationStack {
@@ -39,8 +54,24 @@ struct ReviewHubView: View {
             .scrollContentBackground(.hidden)
             .background(CreamTheme.glassStrong)
             .navigationTitle("复盘")
+            .safeAreaInset(edge: .top) {
+                windowPicker
+            }
         }
         .creamBackground()
+    }
+
+    private var windowPicker: some View {
+        Picker("复盘窗口", selection: Binding(get: { window }, set: { window = $0 })) {
+            ForEach(HubWindow.allCases) { value in
+                Text(value.title).tag(value)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(CreamTheme.glassStrong)
     }
 
     // MARK: - Review 卡片
@@ -60,6 +91,12 @@ struct ReviewHubView: View {
                 statBlock(label: "已处理", value: archived, color: CreamTheme.green)
                 Divider().frame(height: 32)
                 statBlock(label: "搁置", value: dismissed, color: .secondary)
+            }
+
+            if window == .month {
+                Text("队列仍为最近 7 天")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(16)
