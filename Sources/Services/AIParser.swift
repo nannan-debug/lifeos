@@ -203,13 +203,18 @@ enum AIParser {
 
     static func suggestBrainTitle(content: String) async throws -> String {
         let prompt = """
-        你是一个第二大脑卡片标题助手。请把下面这段内容总结成一个中文短标题。
+        请从下面这段正文里提取一个简单中文短标题，概括"这件事是什么"。
 
         要求：
+        - 像日记小标题，不要抽象分类。
+        - 优先保留具体动作、对象、地点或人。
         - 8 个字以内，最多不超过 10 个字。
         - 只输出标题本身，不要解释。
         - 不要加引号、编号、标点。
-        - 如果无法总结，输出空字符串。
+        - 不要输出"想法"、"感受"、"记录"、"生活"这种泛泛分类。
+        - 如果正文是"看了《认知觉醒》"，输出：看认知觉醒
+        - 如果正文是"今天去了球馆打羽毛球"，输出：球馆打球
+        - 如果正文是"和朋友聊创业方向"，输出：聊创业方向
         - 如果当前接口必须返回随手记 records，请把标题放进 title 字段。
 
         content: \(content)
@@ -249,7 +254,8 @@ enum AIParser {
         }
 
         guard !data.isEmpty else { throw AIParseError.empty }
-        return normalizeShortTitle(parseTitlePayload(data))
+        let title = normalizeShortTitle(parseTitlePayload(data))
+        return title.isEmpty ? fallbackTitle(from: content) : title
     }
 
     // MARK: - Helpers
@@ -305,7 +311,7 @@ enum AIParser {
 
         if let parsed = try? decoder.decode(AIParseResponse.self, from: data) {
             return parsed.records.compactMap { record in
-                [record.title, record.details, record.notes]
+                [record.title, record.details, record.notes, record.eventName]
                     .compactMap { $0 }
                     .first { !normalizeShortTitle($0).isEmpty }
             }.first ?? ""
@@ -415,7 +421,43 @@ enum AIParser {
             }
         }
 
-        guard !clean.isEmpty else { return "" }
+        clean = clean
+            .replacingOccurrences(of: "标题", with: "")
+            .replacingOccurrences(of: "短标题", with: "")
+            .replacingOccurrences(of: "：", with: "")
+            .replacingOccurrences(of: ":", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let genericTitles = ["想法", "感受", "记录", "生活", "灵感", "随手记", "日常", "主题"]
+        guard !clean.isEmpty, !genericTitles.contains(clean) else { return "" }
         return String(clean.prefix(10))
+    }
+
+    private static func fallbackTitle(from content: String) -> String {
+        let clean = content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’「」『』[]【】（）()。.!！?？：:，,、"))
+        guard !clean.isEmpty else { return "" }
+
+        let separators = CharacterSet(charactersIn: "。.!！?？\n")
+        let firstSentence = clean
+            .components(separatedBy: separators)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? clean
+
+        let prefixes = ["今天", "我", "感觉", "觉得", "突然想到", "记录一下", "就是", "然后"]
+        var title = firstSentence
+        for prefix in prefixes where title.hasPrefix(prefix) {
+            title.removeFirst(prefix.count)
+            title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            break
+        }
+
+        let filler = ["还是", "挺", "比较", "有点", "真的"]
+        for word in filler {
+            title = title.replacingOccurrences(of: word, with: "")
+        }
+
+        return String(title.prefix(10))
     }
 }
