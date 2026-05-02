@@ -31,9 +31,9 @@
 | # | 标题 | 状态 | PR | 合并日期 |
 |---|---|---|---|---|
 | 1 | `fix: Review 卡片时间显示去秒级` | ✅ | [#26](https://github.com/nannan-debug/lifeos/pull/26) | 2026-05-02 |
-| 2 | `refactor: 砍第二大脑关联卡片 + 反向链接` | ⏳ | — | — |
-| 3 | `feat: 第二大脑 topic AI 自动推荐` | ⏳ | — | — |
-| 4 | `feat: 复盘 Hub 本周/本月 toggle` | ⏳ | — | — |
+| 2 | `refactor: 砍第二大脑关联卡片 + 反向链接` | 🚧 | [#27](https://github.com/nannan-debug/lifeos/pull/27) | — |
+| 3 | `feat: 第二大脑 topic AI 自动推荐` | 🚧 | [#27](https://github.com/nannan-debug/lifeos/pull/27) | — |
+| 4 | `feat: 复盘 Hub 本周/本月 toggle` | 🚧 | [#27](https://github.com/nannan-debug/lifeos/pull/27) | — |
 | 5 | `chore: bump 1.3.0 / build 5` | ⏳ | — | — |
 
 总工程量估算：**6-9 个 evening session**（V1 是 17-22 个，V2 比 V1 小很多）
