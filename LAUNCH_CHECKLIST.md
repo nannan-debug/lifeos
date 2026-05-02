@@ -131,6 +131,13 @@ gh pr create --title "feat: ..." --body "..."
 # review 通过后 squash merge
 ```
 
+发版 PR 前额外检查：
+
+- 先 `git fetch origin`，确认本地 `main` 已包含远端最新状态文档，尤其是 `IN_PROGRESS.md` / `LAUNCH_CHECKLIST.md`，避免发版分支和状态更新 PR 冲突。
+- 发版 PR 只做版本号、`xcodegen` 同步、`CHANGELOG` 归档、必要的发版状态文档；不要顺手塞未确认的新功能。
+- PR description 里必须写清楚：版本号 / build、包含哪些用户可见改动、验证命令、Apple Developer / ASC 里仍需人工处理的事项。
+- 开 PR 后，同时准备 GitHub squash merge 的 title/body；body 至少写 1-3 句，避免 merge commit 只剩一行标题和 `Co-authored-by`。
+
 ### 4.2 改 `project.yml` 的版本号（不是 Info.plist！）
 
 > ⚠️ **真正的 source of truth 是 `project.yml`**。`xcodegen` 每次都会用 `project.yml` 重新生成 `Info.plist` 和 `pbxproj`——直接改 `Info.plist` 会被覆盖回去。详见 [VERSIONING.md](VERSIONING.md)。
@@ -242,6 +249,12 @@ EOF
 | 发现 metadata / 截图问题（非代码） | ASC 里改即可，**审核期间也能改大部分 metadata**，改完 Save 不影响排队。但 What's New 一旦提交就锁了，要改得撤审 |
 
 实际操作中，告诉 AI："审核中，我想加 X 功能"，AI 会从最新 main 拉 `feat/xxx` 分支让你正常开发。所有 PR 照常合 main，只是别动版本号；合入后 AI 应主动把用户可见变化写入 `CHANGELOG.md` `[Unreleased]`。
+
+状态口径必须分清：
+
+- **代码已合并**：发版 PR 已进 `main`，但还没 Archive / Upload / Submit。
+- **已提交审核**：ASC 已 Submit to App Review。此时可以更新 `LAUNCH_CHECKLIST.md` / `IN_PROGRESS.md` 记录审核中，但不要打 tag。
+- **已上架**：Apple 显示 Ready for Distribution / 已 release。此时再打 `vX.Y.Z` tag、发 GitHub Release，并把发版状态文档改成已上架。
 
 > 📝 开新 AI session 时直接套用 [AI_HANDOFF.md](AI_HANDOFF.md) 里的开场白模板，
 > 帮 AI 一次性把规范、硬约束、工作流装进上下文。
