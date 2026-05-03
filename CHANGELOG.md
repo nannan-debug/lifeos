@@ -11,6 +11,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] (build 6) — 2026-05-03
+
 ### 改进
 - 时间圆盘支持从当天拖过零点记录到次日，跨日时间会在两天中自然显示，并用轻量虚线区分。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
 - 跨日时间记录会在起始日显示“次日”、在次日显示“昨日”，列表文案更贴近实际查看日期。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
