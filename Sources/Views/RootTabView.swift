@@ -91,6 +91,7 @@ struct QuickCaptureView: View {
     private let positiveFeelings = ["感恩", "平静", "满足", "兴奋", "自信", "被爱", "有动力", "好奇", "放松", "成就感"]
     private let negativeFeelings = ["焦虑", "烦躁", "无力", "愤怒", "孤独", "内疚", "自责", "迷茫", "压抑", "疲惫"]
     private let calendar = Calendar.current
+    private let globalInputClearance: CGFloat = 96
 
     private var turnsForPreview: [ConversationTurn] {
         var result = store.turns.filter {
@@ -128,6 +129,9 @@ struct QuickCaptureView: View {
             )
             .safeAreaInset(edge: .top, spacing: 0) {
                 topFilterBar
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: globalInputClearance)
             }
             // 底部输入框已全局化：RootTabView 的 GlobalAIInputBar 负责所有 Tab
             .onAppear {
@@ -799,7 +803,7 @@ enum QuickCaptureParser {
     private static func parseTimeEntry(_ s: String) -> ParsedTimeEntry? {
         guard let (start, end) = extractTimeRange(s) else { return nil }
         let category = inferCategory(s)
-        let name = inferEventName(s, fallback: "\(category)时间块")
+        let name = inferEventName(s, fallback: category)
         return ParsedTimeEntry(name: name, category: category, start: start, end: end, note: s)
     }
 

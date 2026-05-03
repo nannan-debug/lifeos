@@ -16,6 +16,18 @@ struct TimeEntry: Identifiable {
     var extra: [String: String] = [:]
 }
 
+enum TimeEntryCrossDayKey {
+    static let groupID = "crossDayGroupID"
+    static let role = "crossDayRole"
+    static let startDateKey = "crossDayStartDateKey"
+    static let endDateKey = "crossDayEndDateKey"
+    static let start = "crossDayStart"
+    static let end = "crossDayEnd"
+
+    static let roleStart = "start"
+    static let roleEnd = "end"
+}
+
 struct TaskEntry: Identifiable {
     var id: UUID = UUID()
     var title: String

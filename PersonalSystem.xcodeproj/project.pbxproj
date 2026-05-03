@@ -27,6 +27,7 @@
 		788C8DBCBE451837609C4FA5 /* mascot-cat.pdf in Resources */ = {isa = PBXBuildFile; fileRef = BCD658611087149BE9126035 /* mascot-cat.pdf */; };
 		7E5752949C7D7F2ED2126343 /* TodoEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0601F16A417B711B5E5DA4FE /* TodoEditorSheet.swift */; };
 		804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEF70D944E0A492D3712B2F /* Models.swift */; };
+		850185A117D4494AD731FDFE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 29555BC439ACBC44437DD815 /* LaunchScreen.storyboard */; };
 		872CB671FC91EAC997FFBCAB /* cat-lying.png in Resources */ = {isa = PBXBuildFile; fileRef = D3B2AC351391A95EB5626845 /* cat-lying.png */; };
 		8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */; };
 		A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E49D2D37FD2539D75275B /* Secrets.swift */; };
@@ -56,6 +57,7 @@
 		1A74F453355CC52805ED86CD /* mascot-cat.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mascot-cat.png"; sourceTree = "<group>"; };
 		1BED040E4ACD1E520E36FFC0 /* TurnTypeStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnTypeStyle.swift; sourceTree = "<group>"; };
 		229491345B70D21BB0902CB5 /* AIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIParser.swift; sourceTree = "<group>"; };
+		29555BC439ACBC44437DD815 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		36385E1762B561F298163F27 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		4590EECCF8FD6F4EC701C99B /* PersonalSystemTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PersonalSystemTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4740978737F177B45D684422 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 				F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */,
 				D3B2AC351391A95EB5626845 /* cat-lying.png */,
 				4EBB766411716643B833DBA1 /* Info.plist */,
+				29555BC439ACBC44437DD815 /* LaunchScreen.storyboard */,
 				BCD658611087149BE9126035 /* mascot-cat.pdf */,
 				1A74F453355CC52805ED86CD /* mascot-cat.png */,
 				48EFF892D5B0946268586336 /* PersonalSystem.entitlements */,
@@ -268,6 +271,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				78835B088A90541F80888DFA /* Assets.xcassets in Resources */,
+				850185A117D4494AD731FDFE /* LaunchScreen.storyboard in Resources */,
 				8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */,
 				72FC952174878F7BFE036275 /* cat-lay.png in Resources */,
 				2B9D0194685A8DF2C4A5EB3D /* cat-lay.svg in Resources */,

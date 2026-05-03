@@ -369,6 +369,64 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertFalse(summaries.contains { $0.minutes == 0 })
     }
 
+    func testCrossDayTimeEntrySplitsAcrossSelectedDateAndNextDate() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let startDate = cal.date(from: DateComponents(year: 2026, month: 5, day: 10, hour: 12))!
+        let nextDate = cal.date(byAdding: .day, value: 1, to: startDate)!
+
+        store.selectedDate = startDate
+        XCTAssertNil(store.addTimeEntryFromDial(name: "睡觉", startMinutes: 23 * 60, endMinutes: 6 * 60, category: "睡觉"))
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries[0].start, "23:00")
+        XCTAssertEqual(store.timeEntries[0].end, "24:00")
+
+        let groupID = store.timeEntries[0].extra[TimeEntryCrossDayKey.groupID]
+        XCTAssertNotNil(groupID)
+        XCTAssertEqual(store.timeEntries[0].extra[TimeEntryCrossDayKey.role], TimeEntryCrossDayKey.roleStart)
+
+        store.selectedDate = nextDate
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries[0].start, "00:00")
+        XCTAssertEqual(store.timeEntries[0].end, "06:00")
+        XCTAssertEqual(store.timeEntries[0].extra[TimeEntryCrossDayKey.groupID], groupID)
+        XCTAssertEqual(store.timeEntries[0].extra[TimeEntryCrossDayKey.role], TimeEntryCrossDayKey.roleEnd)
+    }
+
+    func testCrossDayTimeEntryCountsFullDurationInWeeklyReview() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 5, day: 10, hour: 12))!
+        let end = cal.date(byAdding: .day, value: 7, to: start)!
+
+        store.selectedDate = start
+        XCTAssertNil(store.addTimeEntryFromDial(name: "睡觉", startMinutes: 23 * 60, endMinutes: 6 * 60, category: "睡觉"))
+
+        let summaries = store.reviewTimeCategorySummaries(start: start, end: end)
+        XCTAssertEqual(summaries.first(where: { $0.category == "睡觉" })?.minutes, 7 * 60)
+    }
+
+    func testRemovingEitherHalfOfCrossDayTimeEntryRemovesPair() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let startDate = cal.date(from: DateComponents(year: 2026, month: 5, day: 10, hour: 12))!
+        let nextDate = cal.date(byAdding: .day, value: 1, to: startDate)!
+
+        store.selectedDate = startDate
+        XCTAssertNil(store.addTimeEntryFromDial(name: "睡觉", startMinutes: 23 * 60, endMinutes: 6 * 60, category: "睡觉"))
+
+        store.selectedDate = nextDate
+        XCTAssertEqual(store.timeEntries.count, 1)
+        store.removeTimeEntry(at: IndexSet(integer: 0))
+        XCTAssertTrue(store.timeEntries.isEmpty)
+
+        store.selectedDate = startDate
+        XCTAssertTrue(store.timeEntries.isEmpty)
+    }
+
     func testReviewPendingCountUsesSelectedWeekWindow() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!

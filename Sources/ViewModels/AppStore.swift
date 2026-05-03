@@ -346,8 +346,75 @@ final class AppStore: ObservableObject {
     }
 
     func removeTimeEntry(at offsets: IndexSet) {
-        timeEntries.remove(atOffsets: offsets)
-        saveTimeForDate()
+        let targets = offsets.compactMap { index in
+            timeEntries.indices.contains(index) ? timeEntries[index] : nil
+        }
+        for target in targets {
+            removeTimeEntryByID(target.id, dateKey: selectedDateKey)
+        }
+        loadTimeForDate()
+    }
+
+    func addTimeEntryFromDial(name: String, startMinutes: Int, endMinutes: Int, category: String, extra: [String: String] = [:]) -> String? {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanName.isEmpty { return "事件名称不能为空" }
+        if startMinutes == endMinutes { return "结束时间必须晚于开始时间" }
+
+        if endMinutes > startMinutes {
+            return addTimeEntry(
+                name: cleanName,
+                start: Self.clockText(from: startMinutes),
+                end: Self.clockText(from: endMinutes),
+                category: category,
+                extra: extra
+            )
+        }
+
+        if let err = addCrossDayTimeEntry(
+            name: cleanName,
+            startMinutes: startMinutes,
+            endMinutes: endMinutes,
+            category: category,
+            extra: extra,
+            startDateKey: selectedDateKey
+        ) {
+            return err
+        }
+        loadTimeForDate()
+        syncICloudAfterLocalChange()
+        return nil
+    }
+
+    func updateTimeEntryFromDial(id: UUID, name: String, startMinutes: Int, endMinutes: Int, category: String, extra: [String: String] = [:]) -> String? {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanName.isEmpty { return "事件名称不能为空" }
+        if startMinutes == endMinutes { return "结束时间必须晚于开始时间" }
+        guard let existing = timeEntries.first(where: { $0.id == id }) else { return "记录不存在" }
+
+        let startDateKey = existing.extra[TimeEntryCrossDayKey.startDateKey] ?? selectedDateKey
+        removeTimeEntryByID(id, dateKey: selectedDateKey)
+
+        if endMinutes > startMinutes {
+            insertTimeEntry(
+                .init(name: cleanName, start: Self.clockText(from: startMinutes), end: Self.clockText(from: endMinutes), category: category, extra: extra),
+                dateKey: startDateKey
+            )
+        } else {
+            if let err = addCrossDayTimeEntry(
+                name: cleanName,
+                startMinutes: startMinutes,
+                endMinutes: endMinutes,
+                category: category,
+                extra: extra,
+                startDateKey: startDateKey
+            ) {
+                return err
+            }
+        }
+
+        loadTimeForDate()
+        syncICloudAfterLocalChange()
+        return nil
     }
 
     // MARK: - Task entries
@@ -703,10 +770,11 @@ final class AppStore: ObservableObject {
 
         switch turn.targetBucket {
         case "time":
-            let name = turn.payload["name"] ?? "时间块"
             let start = turn.payload["start"] ?? ""
             let end = turn.payload["end"] ?? ""
             let category = turn.payload["category"] ?? "其他"
+            let rawName = turn.payload["name"] ?? ""
+            let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? category : rawName
             let note = turn.payload["note"] ?? ""
             if start.isEmpty || end.isEmpty {
                 turns[idx].status = "needs_fix"
@@ -814,8 +882,18 @@ final class AppStore: ObservableObject {
 
     private func removeTimeEntryByID(_ id: UUID, dateKey: String?) {
         var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        let matchedRow = findTimeEntryRow(id, dateKey: dateKey, in: map)
+        let groupID = decodeExtra(matchedRow?["extra"])[TimeEntryCrossDayKey.groupID]
 
-        if let key = dateKey {
+        if let groupID {
+            for key in map.keys {
+                map[key]?.removeAll { row in
+                    decodeExtra(row["extra"])[TimeEntryCrossDayKey.groupID] == groupID
+                }
+            }
+            defaults.set(map, forKey: keyTime)
+            syncICloudAfterLocalChange()
+        } else if let key = dateKey {
             if var day = map[key] {
                 day.removeAll { ($0["id"] ?? "") == id.uuidString }
                 map[key] = day
@@ -838,6 +916,60 @@ final class AppStore: ObservableObject {
         if selectedDateKey == (dateKey ?? selectedDateKey) {
             loadTimeForDate()
         }
+    }
+
+    private func addCrossDayTimeEntry(name: String, startMinutes: Int, endMinutes: Int, category: String, extra: [String: String], startDateKey: String) -> String? {
+        guard (0..<24 * 60).contains(startMinutes), (0..<24 * 60).contains(endMinutes), endMinutes < startMinutes else {
+            return "跨日时间需要从今天晚些时候延续到明天"
+        }
+        guard let endDateKey = dateKeyByAddingDays(1, to: startDateKey) else {
+            return "无法计算次日日期"
+        }
+
+        let groupID = UUID().uuidString
+        let startText = Self.clockText(from: startMinutes)
+        let endText = Self.clockText(from: endMinutes)
+
+        var startExtra = extra
+        startExtra[TimeEntryCrossDayKey.groupID] = groupID
+        startExtra[TimeEntryCrossDayKey.role] = TimeEntryCrossDayKey.roleStart
+        startExtra[TimeEntryCrossDayKey.startDateKey] = startDateKey
+        startExtra[TimeEntryCrossDayKey.endDateKey] = endDateKey
+        startExtra[TimeEntryCrossDayKey.start] = startText
+        startExtra[TimeEntryCrossDayKey.end] = endText
+
+        var endExtra = startExtra
+        endExtra[TimeEntryCrossDayKey.role] = TimeEntryCrossDayKey.roleEnd
+
+        insertTimeEntry(
+            .init(name: name, start: startText, end: "24:00", category: category, extra: startExtra),
+            dateKey: startDateKey
+        )
+        insertTimeEntry(
+            .init(name: name, start: "00:00", end: endText, category: category, extra: endExtra),
+            dateKey: endDateKey
+        )
+        return nil
+    }
+
+    private func insertTimeEntry(_ entry: TimeEntry, dateKey: String) {
+        var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        var day = map[dateKey] ?? []
+        day.insert(row(from: entry), at: 0)
+        map[dateKey] = day
+        defaults.set(map, forKey: keyTime)
+    }
+
+    private func findTimeEntryRow(_ id: UUID, dateKey: String?, in map: [String: [[String: String]]]) -> [String: String]? {
+        if let dateKey {
+            return map[dateKey]?.first { ($0["id"] ?? "") == id.uuidString }
+        }
+        for day in map.values {
+            if let row = day.first(where: { ($0["id"] ?? "") == id.uuidString }) {
+                return row
+            }
+        }
+        return nil
     }
 
     // MARK: - Load/Save
@@ -863,12 +995,7 @@ final class AppStore: ObservableObject {
     private func loadTimeForDate() {
         let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
         let day = map[selectedDateKey] ?? []
-        timeEntries = day.map {
-            let extra = decodeExtra($0["extra"])
-            let rawCategory = $0["category"] ?? ""
-            let id = UUID(uuidString: $0["id"] ?? "") ?? UUID()
-            return TimeEntry(id: id, name: $0["name"] ?? "", start: $0["start"] ?? "", end: $0["end"] ?? "", category: normalizeLegacyTimeCategory(rawCategory), extra: extra)
-        }
+        timeEntries = day.map(timeEntry(from:))
         if timeEntries.isEmpty && selectedDateKey == currentDateKey() {
             timeEntries = [.init(name: "PRD评审", start: "14:00", end: "15:20", category: "工作")]
         }
@@ -876,9 +1003,34 @@ final class AppStore: ObservableObject {
 
     private func saveTimeForDate() {
         var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
-        map[selectedDateKey] = timeEntries.map { ["id": $0.id.uuidString, "name": $0.name, "start": $0.start, "end": $0.end, "category": $0.category, "extra": encodeExtra($0.extra)] }
+        map[selectedDateKey] = timeEntries.map(row(from:))
         defaults.set(map, forKey: keyTime)
         syncICloudAfterLocalChange()
+    }
+
+    private func row(from entry: TimeEntry) -> [String: String] {
+        [
+            "id": entry.id.uuidString,
+            "name": entry.name,
+            "start": entry.start,
+            "end": entry.end,
+            "category": entry.category,
+            "extra": encodeExtra(entry.extra)
+        ]
+    }
+
+    private func timeEntry(from row: [String: String]) -> TimeEntry {
+        let extra = decodeExtra(row["extra"])
+        let rawCategory = row["category"] ?? ""
+        let id = UUID(uuidString: row["id"] ?? "") ?? UUID()
+        return TimeEntry(
+            id: id,
+            name: row["name"] ?? "",
+            start: row["start"] ?? "",
+            end: row["end"] ?? "",
+            category: normalizeLegacyTimeCategory(rawCategory),
+            extra: extra
+        )
     }
 
     private func loadTasks() {
@@ -1165,13 +1317,30 @@ final class AppStore: ObservableObject {
 
     private func validateTimeInput(name: String, start: String, end: String) -> String? {
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "事件名称不能为空" }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        guard let s = f.date(from: start), let e = f.date(from: end) else {
+        guard let s = Self.clockMinutes(from: start, allow24: false),
+              let e = Self.clockMinutes(from: end, allow24: true) else {
             return "时间格式应为 HH:mm（例如 09:30）"
         }
         if e <= s { return "结束时间必须晚于开始时间" }
         return nil
+    }
+
+    private static func clockMinutes(from value: String, allow24: Bool) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0...59).contains(minute) else { return nil }
+        if allow24, hour == 24, minute == 0 { return 24 * 60 }
+        guard (0...23).contains(hour) else { return nil }
+        return hour * 60 + minute
+    }
+
+    private static func clockText(from minutes: Int) -> String {
+        if minutes == 24 * 60 { return "24:00" }
+        let h = max(0, min(23, minutes / 60))
+        let m = max(0, min(59, minutes % 60))
+        return String(format: "%02d:%02d", h, m)
     }
 
     private func encodeExtra(_ extra: [String: String]) -> String {
@@ -1484,6 +1653,12 @@ final class AppStore: ObservableObject {
         Self.dateKeyFormatter.string(from: date)
     }
 
+    private func dateKeyByAddingDays(_ days: Int, to key: String) -> String? {
+        guard let date = Self.dateKeyFormatter.date(from: key),
+              let shifted = Calendar.current.date(byAdding: .day, value: days, to: date) else { return nil }
+        return dateKey(for: shifted)
+    }
+
     private func dateKeys(start: Date, end: Date) -> [String] {
         dates(start: start, end: end).map { dateKey(for: $0) }
     }
@@ -1502,13 +1677,7 @@ final class AppStore: ObservableObject {
     }
 
     private func parseClockMinutes(_ value: String) -> Int? {
-        let parts = value.split(separator: ":")
-        guard parts.count == 2,
-              let hour = Int(parts[0]),
-              let minute = Int(parts[1]),
-              (0...23).contains(hour),
-              (0...59).contains(minute) else { return nil }
-        return hour * 60 + minute
+        Self.clockMinutes(from: value, allow24: true)
     }
 
     private func monthDateKeys(for month: Date) -> [String] {
@@ -1669,10 +1838,11 @@ final class AppStore: ObservableObject {
     private func commitAIRecord(_ rec: AIParsedRecord, rawText: String) {
         switch rec.bucket {
         case "time":
-            let name = rec.eventName ?? "时间块"
             let start = rec.startTime ?? ""
             let end = rec.endTime ?? ""
             let category = rec.module ?? "✨ 其他"
+            let rawName = rec.eventName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let name = rawName.isEmpty ? category : rawName
             let note = rec.notes ?? ""
             dispatchAndCommit(
                 rawText: rawText,
