@@ -11,6 +11,7 @@ struct TimeView: View {
 
     private let calendar = Calendar.current
     private let weekSymbols = ["日", "一", "二", "三", "四", "五", "六"]
+    private let globalInputClearance: CGFloat = 96
 
     @State private var name = ""
     @State private var start = ""
@@ -22,7 +23,7 @@ struct TimeView: View {
     @State private var errorMessage = ""
     @State private var showError = false
 
-    // 圆盘交互（D1: 15分钟粒度，不支持跨天）
+    // 圆盘交互（15分钟粒度，允许跨过 24/00 后按日期拆分存储）
     @State private var dialStartMinutes = 9 * 60
     @State private var dialEndMinutes = 10 * 60
     @State private var dialCategory = "工作"
@@ -32,24 +33,84 @@ struct TimeView: View {
     @State private var selectedEntryID: UUID?
 
     private var dialSegments: [DialSegment] {
-        store.timeEntries.compactMap { entry in
-            guard let s = parseMinutes(entry.start), let e = parseMinutes(entry.end), e > s else { return nil }
-            return DialSegment(
-                id: entry.id,
+        store.timeEntries.flatMap { entry -> [DialSegment] in
+            guard let s = parseMinutes(entry.start), let e = parseMinutes(entry.end), e > s else { return [] }
+            let physical = DialSegment(
+                id: entry.id.uuidString,
+                entryID: entry.id,
                 startMinutes: s,
                 endMinutes: e,
                 color: colorForCategory(entry.category),
                 name: entry.name,
                 category: entry.category,
                 start: entry.start,
-                end: entry.end
+                end: entry.end,
+                isCrossDayContinuation: false
             )
+            guard entry.extra[TimeEntryCrossDayKey.groupID] != nil,
+                  let originalStart = parseMinutes(entry.extra[TimeEntryCrossDayKey.start] ?? ""),
+                  let originalEnd = parseMinutes(entry.extra[TimeEntryCrossDayKey.end] ?? "") else {
+                return [physical]
+            }
+
+            let role = entry.extra[TimeEntryCrossDayKey.role]
+            let continuation: DialSegment
+            if role == TimeEntryCrossDayKey.roleStart {
+                continuation = DialSegment(
+                    id: "\(entry.id.uuidString)-next",
+                    entryID: entry.id,
+                    startMinutes: 0,
+                    endMinutes: originalEnd,
+                    color: colorForCategory(entry.category),
+                    name: entry.name,
+                    category: entry.category,
+                    start: "00:00",
+                    end: entry.extra[TimeEntryCrossDayKey.end] ?? entry.end,
+                    isCrossDayContinuation: true
+                )
+            } else {
+                continuation = DialSegment(
+                    id: "\(entry.id.uuidString)-previous",
+                    entryID: entry.id,
+                    startMinutes: originalStart,
+                    endMinutes: 24 * 60,
+                    color: colorForCategory(entry.category),
+                    name: entry.name,
+                    category: entry.category,
+                    start: entry.extra[TimeEntryCrossDayKey.start] ?? entry.start,
+                    end: "24:00",
+                    isCrossDayContinuation: true
+                )
+            }
+            return [physical, continuation]
         }
     }
 
     private var selectedEntry: TimeEntry? {
         guard let id = selectedEntryID else { return nil }
         return store.timeEntries.first(where: { $0.id == id })
+    }
+
+    private var isDialCrossDay: Bool {
+        dialEndMinutes < dialStartMinutes
+    }
+
+    private var selectedRangeText: String {
+        if isSelectedCrossDayEnd {
+            return "昨日 \(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))"
+        }
+        return isDialCrossDay ? "\(timeText(from: dialStartMinutes)) - 次日 \(timeText(from: dialEndMinutes))" : "\(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))"
+    }
+
+    private var endLabelText: String {
+        if isSelectedCrossDayEnd {
+            return timeText(from: dialEndMinutes)
+        }
+        return isDialCrossDay ? "次日 \(timeText(from: dialEndMinutes))" : timeText(from: dialEndMinutes)
+    }
+
+    private var isSelectedCrossDayEnd: Bool {
+        selectedEntry?.extra[TimeEntryCrossDayKey.role] == TimeEntryCrossDayKey.roleEnd
     }
 
     var body: some View {
@@ -61,16 +122,22 @@ struct TimeView: View {
                             startMinutes: $dialStartMinutes,
                             endMinutes: $dialEndMinutes,
                             existingSegments: dialSegments,
-                            centerTitle: "\(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))",
+                            centerTitle: selectedRangeText,
                             centerSubtitle: dialName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dialCategory : dialName,
                             accent: colorForCategory(dialCategory),
                             onSelectSegment: { seg in
-                                selectedEntryID = seg.id
+                                selectedEntryID = seg.entryID
                                 dialStartMinutes = seg.startMinutes
                                 dialEndMinutes = seg.endMinutes
                                 dialCategory = normalizedCategory(seg.category)
                                 dialName = seg.name
-                                if let matched = store.timeEntries.first(where: { $0.id == seg.id }) {
+                                if let matched = store.timeEntries.first(where: { $0.id == seg.entryID }) {
+                                    if matched.extra[TimeEntryCrossDayKey.groupID] != nil,
+                                       let originalStart = parseMinutes(matched.extra[TimeEntryCrossDayKey.start] ?? ""),
+                                       let originalEnd = parseMinutes(matched.extra[TimeEntryCrossDayKey.end] ?? "") {
+                                        dialStartMinutes = originalStart
+                                        dialEndMinutes = originalEnd
+                                    }
                                     dialNote = matched.extra[remarkFieldName] ?? ""
                                 } else {
                                     dialNote = ""
@@ -83,7 +150,7 @@ struct TimeView: View {
                         HStack {
                             Label(timeText(from: dialStartMinutes), systemImage: "play.fill")
                             Spacer()
-                            Label(timeText(from: dialEndMinutes), systemImage: "stop.fill")
+                            Label(endLabelText, systemImage: "stop.fill")
                             Spacer()
                             Text(durationText(start: dialStartMinutes, end: dialEndMinutes))
                                 .font(.subheadline.weight(.semibold))
@@ -104,7 +171,7 @@ struct TimeView: View {
                                         .foregroundStyle(colorForCategory(dialCategory))
                                 }
                                 Spacer()
-                                Text("\(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))")
+                                Text(selectedRangeText)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -237,6 +304,12 @@ struct TimeView: View {
                             selectedEntryID = e.id
                             dialStartMinutes = parseMinutes(e.start) ?? 0
                             dialEndMinutes = parseMinutes(e.end) ?? 60
+                            if e.extra[TimeEntryCrossDayKey.groupID] != nil,
+                               let originalStart = parseMinutes(e.extra[TimeEntryCrossDayKey.start] ?? ""),
+                               let originalEnd = parseMinutes(e.extra[TimeEntryCrossDayKey.end] ?? "") {
+                                dialStartMinutes = originalStart
+                                dialEndMinutes = originalEnd
+                            }
                             dialCategory = normalizedCategory(e.category)
                             dialName = e.name
                             dialNote = e.extra[remarkFieldName] ?? ""
@@ -247,8 +320,19 @@ struct TimeView: View {
                                     Image(systemName: iconForCategory(e.category))
                                         .symbolRenderingMode(.hierarchical)
                                         .foregroundStyle(colorForCategory(e.category))
-                                    Text("\(e.start) - \(e.end)")
+                                    Text(timeRangeText(for: e))
                                         .foregroundStyle(.secondary)
+                                    if isCrossDayEntry(e) {
+                                        Text("·")
+                                            .foregroundStyle(.secondary)
+                                        Text("跨日")
+                                            .font(.caption.weight(.semibold))
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 3)
+                                            .background(bgColorForCategory(e.category).opacity(0.75))
+                                            .foregroundStyle(colorForCategory(e.category))
+                                            .clipShape(Capsule())
+                                    }
                                     Text("·")
                                         .foregroundStyle(.secondary)
                                     Text(e.category)
@@ -291,6 +375,9 @@ struct TimeView: View {
             .safeAreaInset(edge: .top) {
                 timeTopDateBar
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: globalInputClearance)
+            }
             .overlay(alignment: .top) {
                 if showCalendarOverlay {
                     timeCalendarOverlay
@@ -323,7 +410,7 @@ struct TimeView: View {
                             extraInputView(field: field, extraIndex: idx)
                         }
                     }
-                    .navigationTitle(editTarget == nil ? "新增时间块" : "编辑时间块")
+                    .navigationTitle(editTarget == nil ? "新增时间" : "编辑时间")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("取消") {
@@ -471,16 +558,14 @@ struct TimeView: View {
     private func updateSelectedEntry() {
         guard let entry = selectedEntry else { return }
         if dialCategory.isEmpty { dialCategory = categoryOptions.first ?? "工作" }
-        if dialEndMinutes <= dialStartMinutes {
-            errorMessage = "结束时间必须晚于开始时间"
+        if dialEndMinutes == dialStartMinutes {
+            errorMessage = "请拖出一段时间"
             showError = true
             return
         }
 
-        let startText = timeText(from: dialStartMinutes)
-        let endText = timeText(from: dialEndMinutes)
         let normalizedName = dialName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalName = normalizedName.isEmpty ? "\(dialCategory)时间块" : normalizedName
+        let finalName = normalizedName.isEmpty ? dialCategory : normalizedName
 
         var extra = entry.extra
         let note = dialNote.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -489,29 +574,33 @@ struct TimeView: View {
         } else {
             extra.removeValue(forKey: remarkFieldName)
         }
+        extra.removeValue(forKey: TimeEntryCrossDayKey.groupID)
+        extra.removeValue(forKey: TimeEntryCrossDayKey.role)
+        extra.removeValue(forKey: TimeEntryCrossDayKey.startDateKey)
+        extra.removeValue(forKey: TimeEntryCrossDayKey.endDateKey)
+        extra.removeValue(forKey: TimeEntryCrossDayKey.start)
+        extra.removeValue(forKey: TimeEntryCrossDayKey.end)
 
-        if let err = store.updateTimeEntry(id: entry.id, name: finalName, start: startText, end: endText, category: dialCategory, extra: extra) {
+        if let err = store.updateTimeEntryFromDial(id: entry.id, name: finalName, startMinutes: dialStartMinutes, endMinutes: dialEndMinutes, category: dialCategory, extra: extra) {
             errorMessage = err
             showError = true
             return
         }
 
-        // 更新成功，保持选中状态
+        selectedEntryID = nil
     }
 
     private func saveFromDial() {
         if dialCategory.isEmpty { dialCategory = categoryOptions.first ?? "工作" }
         if !categoryOptions.contains(dialCategory) { dialCategory = normalizedCategory(dialCategory) }
-        if dialEndMinutes <= dialStartMinutes {
-            errorMessage = "结束时间必须晚于开始时间"
+        if dialEndMinutes == dialStartMinutes {
+            errorMessage = "请拖出一段时间"
             showError = true
             return
         }
 
-        let startText = timeText(from: dialStartMinutes)
-        let endText = timeText(from: dialEndMinutes)
         let normalizedName = dialName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalName = normalizedName.isEmpty ? "\(dialCategory)时间块" : normalizedName
+        let finalName = normalizedName.isEmpty ? dialCategory : normalizedName
 
         var extra: [String: String] = [:]
         let note = dialNote.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -519,7 +608,7 @@ struct TimeView: View {
             extra[remarkFieldName] = note
         }
 
-        if let err = store.addTimeEntry(name: finalName, start: startText, end: endText, category: dialCategory, extra: extra) {
+        if let err = store.addTimeEntryFromDial(name: finalName, startMinutes: dialStartMinutes, endMinutes: dialEndMinutes, category: dialCategory, extra: extra) {
             errorMessage = err
             showError = true
             return
@@ -534,8 +623,10 @@ struct TimeView: View {
     private func createNewFromEditMode() {
         // 检查时间是否与已有事件重叠（排除当前选中的事件）
         let hasOverlap = dialSegments.contains { seg in
-            if seg.id == selectedEntryID { return false }
-            return dialStartMinutes < seg.endMinutes && dialEndMinutes > seg.startMinutes
+            if seg.entryID == selectedEntryID { return false }
+            return selectedRangeParts.contains { part in
+                part.start < seg.endMinutes && part.end > seg.startMinutes
+            }
         }
 
         if hasOverlap {
@@ -592,12 +683,23 @@ struct TimeView: View {
         dialStartMinutes = max(0, dayEnd - minDuration)
     }
 
+    private var selectedRangeParts: [(start: Int, end: Int)] {
+        if dialEndMinutes > dialStartMinutes {
+            return [(dialStartMinutes, dialEndMinutes)]
+        }
+        if dialEndMinutes < dialStartMinutes {
+            return [(dialStartMinutes, 24 * 60), (0, dialEndMinutes)]
+        }
+        return []
+    }
+
     private func durationText(start: Int, end: Int) -> String {
-        let mins = max(0, end - start)
+        let mins = end >= start ? max(0, end - start) : max(0, (24 * 60 - start) + end)
         return "\(mins / 60)h\(mins % 60)m"
     }
 
     private func timeText(from minutes: Int) -> String {
+        if minutes == 24 * 60 { return "24:00" }
         let h = max(0, min(23, minutes / 60))
         let m = max(0, min(59, minutes % 60))
         return String(format: "%02d:%02d", h, m)
@@ -608,9 +710,26 @@ struct TimeView: View {
         guard parts.count == 2,
               let h = Int(parts[0]),
               let m = Int(parts[1]),
-              (0...23).contains(h),
               (0...59).contains(m) else { return nil }
+        if h == 24, m == 0 { return 24 * 60 }
+        guard (0...23).contains(h) else { return nil }
         return h * 60 + m
+    }
+
+    private func isCrossDayEntry(_ entry: TimeEntry) -> Bool {
+        entry.extra[TimeEntryCrossDayKey.groupID] != nil
+    }
+
+    private func timeRangeText(for entry: TimeEntry) -> String {
+        guard isCrossDayEntry(entry),
+              let originalStart = entry.extra[TimeEntryCrossDayKey.start],
+              let originalEnd = entry.extra[TimeEntryCrossDayKey.end] else {
+            return "\(entry.start) - \(entry.end)"
+        }
+        if entry.extra[TimeEntryCrossDayKey.role] == TimeEntryCrossDayKey.roleEnd {
+            return "昨日 \(originalStart) - \(originalEnd)"
+        }
+        return "\(originalStart) - 次日 \(originalEnd)"
     }
 
     private func fieldName(_ index: Int, _ fallback: String) -> String {
@@ -736,7 +855,8 @@ struct TimeView: View {
 }
 
 private struct DialSegment: Identifiable {
-    let id: UUID
+    let id: String
+    let entryID: UUID
     let startMinutes: Int
     let endMinutes: Int
     let color: Color
@@ -744,6 +864,7 @@ private struct DialSegment: Identifiable {
     let category: String
     let start: String
     let end: String
+    let isCrossDayContinuation: Bool
 }
 
 private struct SectorSliceShape: Shape {
@@ -776,7 +897,7 @@ private struct RadialRangePicker: View {
     let onSelectSegment: ((DialSegment) -> Void)?
 
     private let step = 15
-    private let maxMinute = 23 * 60 + 45
+    private let dayMinutes = 24 * 60
 
     var body: some View {
         GeometryReader { geo in
@@ -805,14 +926,24 @@ private struct RadialRangePicker: View {
 
                 ForEach(existingSegments) { seg in
                     SectorSliceShape(
-                        startProgress: CGFloat(seg.startMinutes) / CGFloat(maxMinute + step),
-                        endProgress: CGFloat(seg.endMinutes) / CGFloat(maxMinute + step)
+                        startProgress: progress(for: seg.startMinutes),
+                        endProgress: progress(for: seg.endMinutes)
                     )
-                    .fill(seg.color.opacity(0.38))
+                    .fill(seg.color.opacity(seg.isCrossDayContinuation ? 0.14 : 0.38))
+                    .overlay(
+                        SectorSliceShape(
+                            startProgress: progress(for: seg.startMinutes),
+                            endProgress: progress(for: seg.endMinutes)
+                        )
+                        .stroke(
+                            seg.color.opacity(seg.isCrossDayContinuation ? 0.78 : 0),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: seg.isCrossDayContinuation ? [6, 5] : [])
+                        )
+                    )
                     .contentShape(
                         SectorSliceShape(
-                            startProgress: CGFloat(seg.startMinutes) / CGFloat(maxMinute + step),
-                            endProgress: CGFloat(seg.endMinutes) / CGFloat(maxMinute + step)
+                            startProgress: progress(for: seg.startMinutes),
+                            endProgress: progress(for: seg.endMinutes)
                         )
                     )
                     .onTapGesture {
@@ -820,16 +951,24 @@ private struct RadialRangePicker: View {
                     }
                 }
 
-                SectorSliceShape(
-                    startProgress: CGFloat(startMinutes) / CGFloat(maxMinute + step),
-                    endProgress: CGFloat(endMinutes) / CGFloat(maxMinute + step)
-                )
-                .fill(accent.opacity(0.46))
+                ForEach(Array(selectedParts.enumerated()), id: \.offset) { index, part in
+                    SectorSliceShape(startProgress: progress(for: part.start), endProgress: progress(for: part.end))
+                        .fill(accent.opacity(index == 0 ? 0.46 : 0.16))
+                        .overlay(
+                            SectorSliceShape(startProgress: progress(for: part.start), endProgress: progress(for: part.end))
+                                .stroke(
+                                    accent.opacity(index == 0 ? 0 : 0.82),
+                                    style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: index == 0 ? [] : [6, 5])
+                                )
+                        )
+                }
 
-                Circle()
-                    .trim(from: CGFloat(startMinutes) / CGFloat(maxMinute + step), to: CGFloat(endMinutes) / CGFloat(maxMinute + step))
-                    .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                ForEach(Array(selectedParts.enumerated()), id: \.offset) { index, part in
+                    Circle()
+                        .trim(from: progress(for: part.start), to: progress(for: part.end))
+                        .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: index == 0 ? [] : [6, 5]))
+                        .rotationEffect(.degrees(-90))
+                }
 
                 // 中央留白区：纯白底
                 Circle()
@@ -873,20 +1012,18 @@ private struct RadialRangePicker: View {
 
                 switch target {
                 case .start:
-                    var candidate = max(0, min(snapped, maxMinute - step))
-                    if candidate >= endMinutes {
-                        endMinutes = min(maxMinute, candidate + step)
+                    var candidate = max(0, min(snapped, dayMinutes - step))
+                    if candidate == endMinutes {
+                        candidate = max(0, candidate - step)
                     }
-                    candidate = min(candidate, endMinutes - step)
-                    startMinutes = max(0, candidate)
+                    startMinutes = candidate
 
                 case .end:
-                    var candidate = max(step, min(snapped, maxMinute))
-                    if candidate <= startMinutes {
-                        startMinutes = max(0, candidate - step)
+                    var candidate = max(0, min(snapped, dayMinutes - step))
+                    if candidate == startMinutes {
+                        candidate = (candidate + step) % dayMinutes
                     }
-                    candidate = max(candidate, startMinutes + step)
-                    endMinutes = min(maxMinute, candidate)
+                    endMinutes = candidate
                 }
             }
     }
@@ -921,8 +1058,22 @@ private struct RadialRangePicker: View {
     }
 
     private func angleForMinute(_ minute: Int) -> CGFloat {
-        let ratio = CGFloat(minute) / CGFloat(maxMinute + step)
+        let ratio = progress(for: minute)
         return ratio * 2 * .pi - .pi / 2
+    }
+
+    private var selectedParts: [(start: Int, end: Int)] {
+        if endMinutes > startMinutes {
+            return [(startMinutes, endMinutes)]
+        }
+        if endMinutes < startMinutes {
+            return [(startMinutes, dayMinutes), (0, endMinutes)]
+        }
+        return []
+    }
+
+    private func progress(for minute: Int) -> CGFloat {
+        CGFloat(max(0, min(dayMinutes, minute))) / CGFloat(dayMinutes)
     }
 
     private func point(on center: CGPoint, radius: CGFloat, angle: CGFloat) -> CGPoint {
@@ -935,12 +1086,13 @@ private struct RadialRangePicker: View {
         var angle = atan2(dy, dx) + .pi / 2
         if angle < 0 { angle += 2 * .pi }
         let ratio = angle / (2 * .pi)
-        let minute = Int((ratio * CGFloat(maxMinute + step)).rounded())
-        return max(0, min(maxMinute, minute))
+        let minute = Int((ratio * CGFloat(dayMinutes)).rounded())
+        return max(0, min(dayMinutes, minute))
     }
 
     private func snap(_ minute: Int) -> Int {
         let snapped = Int((Double(minute) / Double(step)).rounded()) * step
-        return max(0, min(maxMinute, snapped))
+        if snapped >= dayMinutes { return 0 }
+        return max(0, min(dayMinutes - step, snapped))
     }
 }
