@@ -13,7 +13,7 @@
 
 （暂无）
 
-## [1.3.0] (build 5) — 2026-05-02
+## [1.3.0] (build 5) — 2026-05-03
 
 ### 新增
 - 设置页新增 iCloud 同步开关：使用 Apple iCloud Key-Value Storage 在同 Apple ID 设备间同步本地数据，默认关闭，用户手动开启（[#22](https://github.com/nannan-debug/lifeos/pull/22)）
