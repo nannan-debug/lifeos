@@ -26,15 +26,6 @@
                 <string>CA92.1</string>
             </array>
         </dict>
-        <dict>
-            <!-- FileManager 写入临时目录用于导出 CSV 给用户分享 -->
-            <key>NSPrivacyAccessedAPIType</key>
-            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
-            <key>NSPrivacyAccessedAPITypeReasons</key>
-            <array>
-                <string>C617.1</string>
-            </array>
-        </dict>
     </array>
 </dict>
 </plist>
