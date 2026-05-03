@@ -36,6 +36,7 @@ struct RootTabView: View {
             // - 「今日·打卡」隐藏（打卡页有 inline 添加）
             // - 「今日·待办」显示
             // - 「复盘」隐藏（仪式空间不该被记录入口干扰）
+            // - 「设置」隐藏（设置页不需要记录入口）
             // - 其余 Tab 始终显示
             if shouldShowAIInputBar {
                 GlobalAIInputBar()
@@ -49,6 +50,7 @@ struct RootTabView: View {
     }
 
     private var shouldShowAIInputBar: Bool {
+        if selectedTab == .settings { return false }
         if selectedTab == .review { return false }
         if selectedTab == .today { return store.todaySegment == "todo" }
         return true

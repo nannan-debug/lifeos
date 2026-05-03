@@ -12,7 +12,14 @@
 ## [Unreleased]
 
 ### 改进
-- 时间圆盘支持从当天拖过零点记录到次日，跨日时间会在两天中自然显示，并用轻量虚线区分。
+- 时间圆盘支持从当天拖过零点记录到次日，跨日时间会在两天中自然显示，并用轻量虚线区分。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
+- 跨日时间记录会在起始日显示“次日”、在次日显示“昨日”，列表文案更贴近实际查看日期。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
+- 时间记录类型名称简化为“工作 / 学习 / 其他”等短标签，减少“时间块”重复感。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
+- 时间记录和随手记面板底部增加留白，避免被悬浮猫猫按钮遮挡。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
+- App 暂时锁定浅色模式，避免未适配暗色模式时出现低对比度文字。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
+- 开屏页更新为猫花素材与“观察生活，记录生活”文案，并改为运行时首屏显示，减少启动页缓存导致图文缺失的问题。（[#32](https://github.com/nannan-debug/lifeos/pull/32)）
+- 设置页标题统一为“设置”，默认昵称不再使用 Anna，并暂时下线不完整的 CSV 导入导出入口。
+- 优化复盘月维度的统计刷新方式，减少切换到“月”时的重复计算和卡顿感。
 
 ## [1.3.0] (build 5) — 2026-05-03
 

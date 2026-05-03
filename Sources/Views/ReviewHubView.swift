@@ -10,6 +10,7 @@ struct ReviewHubView: View {
     @State private var displayMonth = Date()
     @State private var showCalendarOverlay = false
     @State private var reviewCalendarDateKeys: Set<String> = []
+    @State private var snapshot = ReviewHubSnapshot.empty
 
     private let calendar = Calendar.current
 
@@ -31,7 +32,7 @@ struct ReviewHubView: View {
         nonmutating set { selectedDateRaw = storageDateFormatter.string(from: newValue) }
     }
 
-    private var period: (start: Date, end: Date) {
+    private var currentPeriod: (start: Date, end: Date) {
         switch window {
         case .week:
             let start = startOfWeek(for: selectedReviewDate)
@@ -42,41 +43,6 @@ struct ReviewHubView: View {
         }
     }
 
-    private var pending: Int { ReviewQueue.pendingCount(turns: store.turns, start: period.start, end: period.end) }
-    private var checkGroupSummaries: [ReviewCheckGroupSummary] {
-        store.reviewCheckGroupSummaries(start: period.start, end: period.end)
-    }
-    private var timeSummaries: [ReviewTimeCategorySummary] {
-        store.reviewTimeCategorySummaries(start: period.start, end: period.end)
-    }
-    private var recordedTimeMinutes: Int {
-        timeSummaries.reduce(0) { $0 + $1.minutes }
-    }
-    private var periodMinutes: Int {
-        let dayCount = calendar.dateComponents([.day], from: calendar.startOfDay(for: period.start), to: calendar.startOfDay(for: period.end)).day ?? 0
-        return max(dayCount, 0) * 24 * 60
-    }
-    private var unrecordedTimeMinutes: Int {
-        max(periodMinutes - recordedTimeMinutes, 0)
-    }
-    private var maxTimeMinutes: Int {
-        max(timeSummaries.map(\.minutes).max() ?? 1, 1)
-    }
-    private var checkWeekDates: [Date?] {
-        dates(from: period.start, to: period.end).map(Optional.some)
-    }
-    private var checkMonthWeeks: [[Date?]] {
-        let monthDays = dates(from: period.start, to: period.end)
-        let leading = leadingBlankDaysBeforeMonday(for: period.start)
-        let trailing = (7 - ((leading + monthDays.count) % 7)) % 7
-        let cells = Array(repeating: nil as Date?, count: leading) + monthDays.map(Optional.some) + Array(repeating: nil as Date?, count: trailing)
-        return stride(from: 0, to: cells.count, by: 7).map { start in
-            Array(cells[start..<min(start + 7, cells.count)])
-        }
-    }
-    private var recentPendingIdeas: [ConversationTurn] {
-        Array(ReviewQueue.queue(turns: store.turns, start: period.start, end: period.end).prefix(2))
-    }
     private var periodLabel: String {
         window == .week ? "这周" : "这个月"
     }
@@ -122,10 +88,19 @@ struct ReviewHubView: View {
             }
             .onAppear {
                 displayMonth = startOfMonth(for: selectedReviewDate)
+                refreshSnapshot()
                 refreshCalendarMarkers()
             }
+            .onChange(of: windowRaw) { _ in refreshSnapshot() }
+            .onChange(of: selectedDateRaw) { _ in refreshSnapshot() }
             .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
-            .onChange(of: store.turns.count) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.turns.count) { _ in
+                refreshSnapshot()
+                refreshCalendarMarkers()
+            }
+            .onChange(of: store.brainCards.count) { _ in refreshSnapshot() }
+            .onChange(of: store.checkItems.map(\.done)) { _ in refreshSnapshot() }
+            .onChange(of: store.timeEntries.count) { _ in refreshSnapshot() }
         }
         .creamBackground()
     }
@@ -204,13 +179,61 @@ struct ReviewHubView: View {
         )
     }
 
+    private func refreshSnapshot() {
+        let period = currentPeriod
+        let days = dates(from: period.start, to: period.end)
+        let checkGroups = store.reviewCheckGroupSummaries(start: period.start, end: period.end)
+        let timeItems = store.reviewTimeCategorySummaries(start: period.start, end: period.end)
+        let dayCount = calendar.dateComponents([.day], from: calendar.startOfDay(for: period.start), to: calendar.startOfDay(for: period.end)).day ?? 0
+        let recordedMinutes = timeItems.reduce(0) { $0 + $1.minutes }
+        let maxMinutes = max(timeItems.map(\.minutes).max() ?? 1, 1)
+        let queue = ReviewQueue.queue(turns: store.turns, start: period.start, end: period.end)
+
+        snapshot = ReviewHubSnapshot(
+            period: period,
+            pending: queue.count,
+            checkGroupSummaries: checkGroups,
+            checkWeekDates: days.map(Optional.some),
+            checkMonthWeeks: monthWeeks(days: days, periodStart: period.start),
+            checkStatusByGroupAndDate: checkStatusLookup(from: checkGroups),
+            timeSummaries: timeItems,
+            recordedTimeMinutes: recordedMinutes,
+            unrecordedTimeMinutes: max(max(dayCount, 0) * 24 * 60 - recordedMinutes, 0),
+            maxTimeMinutes: maxMinutes,
+            recentPendingIdeas: Array(queue.prefix(2)),
+            brainCount: store.brainCards.count,
+            brainPreview: Array(store.brainCards.sorted { $0.createdAt > $1.createdAt }.prefix(2))
+        )
+    }
+
+    private func monthWeeks(days: [Date], periodStart: Date) -> [[Date?]] {
+        let leading = leadingBlankDaysBeforeMonday(for: periodStart)
+        let trailing = (7 - ((leading + days.count) % 7)) % 7
+        let cells = Array(repeating: nil as Date?, count: leading) + days.map(Optional.some) + Array(repeating: nil as Date?, count: trailing)
+        return stride(from: 0, to: cells.count, by: 7).map { start in
+            Array(cells[start..<min(start + 7, cells.count)])
+        }
+    }
+
+    private func checkStatusLookup(from groups: [ReviewCheckGroupSummary]) -> [String: [String: CheckGroupStatus]] {
+        Dictionary(uniqueKeysWithValues: groups.map { group in
+            let days = Dictionary(uniqueKeysWithValues: group.days.map { day in
+                (
+                    store.calendarDateKey(for: day.date),
+                    CheckGroupStatus(completedCount: day.completedCount, totalCount: day.totalCount)
+                )
+            })
+            return (group.title, days)
+        })
+    }
+
     // MARK: - Weekly review cards
 
     private var checkHabitCard: some View {
         VStack(alignment: .leading, spacing: 13) {
             cardHeader(icon: "checkmark.circle", title: "打卡", trailing: nil)
 
-            if checkGroupSummaries.isEmpty {
+            if snapshot.checkGroupSummaries.isEmpty {
                 emptyLine("还没有固定打卡项，留白也可以被好好放着。")
             } else {
                 checkCalendarPanel
@@ -223,9 +246,9 @@ struct ReviewHubView: View {
         VStack(spacing: window == .week ? 0 : 10) {
             switch window {
             case .week:
-                checkMatrixBlock(dates: checkWeekDates, isMonth: false)
+                checkMatrixBlock(dates: snapshot.checkWeekDates, isMonth: false)
             case .month:
-                ForEach(Array(checkMonthWeeks.enumerated()), id: \.offset) { _, week in
+                ForEach(Array(snapshot.checkMonthWeeks.enumerated()), id: \.offset) { _, week in
                     checkMatrixBlock(dates: week, isMonth: true)
                 }
             }
@@ -237,7 +260,7 @@ struct ReviewHubView: View {
             VStack(alignment: .leading, spacing: isMonth ? 7 : 8) {
                 Text("")
                     .frame(height: isMonth ? 17 : 18)
-                ForEach(checkGroupSummaries, id: \.title) { group in
+                ForEach(snapshot.checkGroupSummaries, id: \.title) { group in
                     Text(group.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -266,7 +289,7 @@ struct ReviewHubView: View {
                     }
                 }
 
-                ForEach(checkGroupSummaries, id: \.title) { group in
+                ForEach(snapshot.checkGroupSummaries, id: \.title) { group in
                     HStack(spacing: 5) {
                         ForEach(Array(dates.enumerated()), id: \.offset) { _, date in
                             CheckMatrixCell(
@@ -287,14 +310,14 @@ struct ReviewHubView: View {
             cardHeader(icon: "clock", title: "时间分配", trailing: nil)
 
             VStack(spacing: 11) {
-                if timeSummaries.isEmpty {
+                if snapshot.timeSummaries.isEmpty {
                     emptyLine("有记录时，这里会按分类汇总已经写下的时间。")
                 } else {
-                    ForEach(timeSummaries, id: \.category) { item in
+                    ForEach(snapshot.timeSummaries, id: \.category) { item in
                         TimeDistributionRow(
                             title: item.category,
                             duration: durationText(minutes: item.minutes),
-                            ratio: CGFloat(item.minutes) / CGFloat(maxTimeMinutes),
+                            ratio: CGFloat(item.minutes) / CGFloat(snapshot.maxTimeMinutes),
                             color: timeColor(for: item.category)
                         )
                     }
@@ -304,7 +327,7 @@ struct ReviewHubView: View {
                     Circle()
                         .fill(Color.black.opacity(0.14))
                         .frame(width: 4, height: 4)
-                    Text("未记录时间 \(durationText(minutes: unrecordedTimeMinutes))")
+                    Text("未记录时间 \(durationText(minutes: snapshot.unrecordedTimeMinutes))")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -317,11 +340,7 @@ struct ReviewHubView: View {
     }
 
     private func checkStatus(for group: ReviewCheckGroupSummary, on date: Date) -> CheckGroupStatus {
-        let day = group.days.first { calendar.isDate($0.date, inSameDayAs: date) }
-        return CheckGroupStatus(
-            completedCount: day?.completedCount ?? 0,
-            totalCount: day?.totalCount ?? 0
-        )
+        snapshot.checkStatusByGroupAndDate[group.title]?[store.calendarDateKey(for: date)] ?? .empty
     }
 
     private func dates(from start: Date, to end: Date) -> [Date] {
@@ -352,7 +371,7 @@ struct ReviewHubView: View {
                         .foregroundStyle(.primary)
                 }
                 Spacer()
-                Text("\(pending) 条")
+                Text("\(snapshot.pending) 条")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
@@ -360,11 +379,11 @@ struct ReviewHubView: View {
                     .foregroundStyle(.secondary.opacity(0.45))
             }
 
-            if recentPendingIdeas.isEmpty {
+            if snapshot.recentPendingIdeas.isEmpty {
                 emptyLine("\(periodLabel)没有等你处理的想法。")
             } else {
                 VStack(alignment: .leading, spacing: 7) {
-                    ForEach(recentPendingIdeas) { turn in
+                    ForEach(snapshot.recentPendingIdeas) { turn in
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(CreamTheme.green.opacity(0.5))
@@ -429,11 +448,6 @@ struct ReviewHubView: View {
         }
     }
 
-    private var brainCount: Int { store.brainCards.count }
-    private var brainPreview: [BrainCard] {
-        Array(store.brainCards.sorted { $0.createdAt > $1.createdAt }.prefix(2))
-    }
-
     private var secondBrainCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -443,7 +457,7 @@ struct ReviewHubView: View {
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Spacer()
-                Text("\(brainCount) 张")
+                Text("\(snapshot.brainCount) 张")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
@@ -451,11 +465,11 @@ struct ReviewHubView: View {
                     .foregroundStyle(.secondary.opacity(0.45))
             }
 
-            if brainPreview.isEmpty {
+            if snapshot.brainPreview.isEmpty {
                 emptyLine("处理过的想法可以沉淀成卡片，之后再回来慢慢读。")
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(brainPreview) { card in
+                    ForEach(snapshot.brainPreview) { card in
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(CreamTheme.green.opacity(0.5))
@@ -475,9 +489,9 @@ struct ReviewHubView: View {
     private var periodTitle: String {
         switch window {
         case .week:
-            return "\(shortDateTitle(period.start))-\(shortDateTitle(calendar.date(byAdding: .day, value: -1, to: period.end) ?? period.start))"
+            return "\(shortDateTitle(snapshot.period.start))-\(shortDateTitle(calendar.date(byAdding: .day, value: -1, to: snapshot.period.end) ?? snapshot.period.start))"
         case .month:
-            return monthTitle(period.start)
+            return monthTitle(snapshot.period.start)
         }
     }
 
@@ -538,8 +552,45 @@ private struct CheckGroupStatus: Equatable {
     let completedCount: Int
     let totalCount: Int
 
+    static let empty = CheckGroupStatus(completedCount: 0, totalCount: 0)
+
     var isFull: Bool { totalCount > 0 && completedCount == totalCount }
     var hasAny: Bool { completedCount > 0 }
+}
+
+private struct ReviewHubSnapshot {
+    let period: (start: Date, end: Date)
+    let pending: Int
+    let checkGroupSummaries: [ReviewCheckGroupSummary]
+    let checkWeekDates: [Date?]
+    let checkMonthWeeks: [[Date?]]
+    let checkStatusByGroupAndDate: [String: [String: CheckGroupStatus]]
+    let timeSummaries: [ReviewTimeCategorySummary]
+    let recordedTimeMinutes: Int
+    let unrecordedTimeMinutes: Int
+    let maxTimeMinutes: Int
+    let recentPendingIdeas: [ConversationTurn]
+    let brainCount: Int
+    let brainPreview: [BrainCard]
+
+    static var empty: ReviewHubSnapshot {
+        let now = Date()
+        return ReviewHubSnapshot(
+            period: (now, now),
+            pending: 0,
+            checkGroupSummaries: [],
+            checkWeekDates: [],
+            checkMonthWeeks: [],
+            checkStatusByGroupAndDate: [:],
+            timeSummaries: [],
+            recordedTimeMinutes: 0,
+            unrecordedTimeMinutes: 0,
+            maxTimeMinutes: 1,
+            recentPendingIdeas: [],
+            brainCount: 0,
+            brainPreview: []
+        )
+    }
 }
 
 private struct CheckMatrixCell: View {
