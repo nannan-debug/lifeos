@@ -31,6 +31,7 @@ struct TimeView: View {
     @State private var dialNote = ""
     @State private var showOverlapConfirm = false
     @State private var selectedEntryID: UUID?
+    @FocusState private var isInputFocused: Bool
 
     private var dialSegments: [DialSegment] {
         store.timeEntries.flatMap { entry -> [DialSegment] in
@@ -217,6 +218,7 @@ struct TimeView: View {
                             TextField("一句话描述", text: $dialName)
                                 .font(.body)
                                 .textInputAutocapitalization(.never)
+                                .focused($isInputFocused)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 11)
                                 .background(Color.white.opacity(0.88))
@@ -229,6 +231,7 @@ struct TimeView: View {
                             TextField("补充详情", text: $dialNote, axis: .vertical)
                                 .font(.body)
                                 .lineLimit(2...4)
+                                .focused($isInputFocused)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 11)
                                 .background(Color.white.opacity(0.88))
@@ -370,8 +373,21 @@ struct TimeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .listStyle(.insetGrouped)
             .tint(CreamTheme.green)
+            .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
             .background(CreamTheme.glassStrong)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if isInputFocused { isInputFocused = false }
+                }
+            )
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") { isInputFocused = false }
+                        .tint(CreamTheme.green)
+                }
+            }
             .safeAreaInset(edge: .top) {
                 timeTopDateBar
             }

@@ -996,9 +996,6 @@ final class AppStore: ObservableObject {
         let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
         let day = map[selectedDateKey] ?? []
         timeEntries = day.map(timeEntry(from:))
-        if timeEntries.isEmpty && selectedDateKey == currentDateKey() {
-            timeEntries = [.init(name: "PRD评审", start: "14:00", end: "15:20", category: "工作")]
-        }
     }
 
     private func saveTimeForDate() {
@@ -1994,5 +1991,117 @@ final class AppStore: ObservableObject {
     private func aiFallbackTitle(_ text: String) -> String {
         if text.count <= 18 { return text }
         return String(text.prefix(18)) + "…"
+    }
+
+    // MARK: - CSV 导出
+
+    /// 在 [start, end] 闭区间内导出时间记录与随手记两个 CSV 文件到临时目录，返回两份文件 URL。
+    /// 跨日时间块按数据库原样输出两行（拆分段），符合规划 Q15-3 = a。
+    func exportCSVs(from start: Date, to end: Date) -> (timeURL: URL?, inboxURL: URL?, errorMessage: String?) {
+        let timeURL = buildTimeCSV(from: start, to: end)
+        let inboxURL = buildInboxCSV(from: start, to: end)
+        if timeURL == nil && inboxURL == nil {
+            return (nil, nil, "所选区间没有可导出的内容")
+        }
+        return (timeURL, inboxURL, nil)
+    }
+
+    private func buildTimeCSV(from start: Date, to end: Date) -> URL? {
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let startKey = f.string(from: start)
+        let endKey = f.string(from: end)
+
+        var rows: [[String]] = []
+        for dateKey in map.keys.sorted() where dateKey >= startKey && dateKey <= endKey {
+            let entries = (map[dateKey] ?? []).map(timeEntry(from:))
+            for entry in entries {
+                let duration = Self.durationMinutes(start: entry.start, end: entry.end)
+                rows.append([
+                    dateKey,
+                    entry.name,
+                    Self.userExtraNote(from: entry.extra),
+                    entry.category,
+                    entry.start,
+                    entry.end,
+                    duration.map(String.init) ?? ""
+                ])
+            }
+        }
+        guard !rows.isEmpty else { return nil }
+        let csv = CSVExporter.makeCSV(
+            header: ["日期", "事件名", "备注", "类别", "开始时间", "结束时间", "时长(分钟)"],
+            rows: rows
+        )
+        let filename = "lifeos-time-\(startKey)_\(endKey).csv"
+        return try? CSVExporter.writeToTemporary(name: filename, content: csv)
+    }
+
+    private func buildInboxCSV(from start: Date, to end: Date) -> URL? {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: start)
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) ?? end
+
+        let dt = DateFormatter()
+        dt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let startKey = f.string(from: start)
+        let endKey = f.string(from: end)
+
+        let filtered = turns
+            .filter { $0.targetBucket == "inbox" }
+            .filter { $0.createdAt >= dayStart && $0.createdAt < dayEnd }
+            .sorted { $0.createdAt < $1.createdAt }
+
+        guard !filtered.isEmpty else { return nil }
+
+        let rows: [[String]] = filtered.map { turn in
+            [
+                dt.string(from: turn.createdAt),
+                turn.recognizedType,
+                turn.rawText,
+                turn.moodScore.map(String.init) ?? "",
+                turn.feelingTags.joined(separator: " · ")
+            ]
+        }
+        let csv = CSVExporter.makeCSV(
+            header: ["日期时间", "识别类型", "内容", "心情分", "情绪标签"],
+            rows: rows
+        )
+        let filename = "lifeos-notes-\(startKey)_\(endKey).csv"
+        return try? CSVExporter.writeToTemporary(name: filename, content: csv)
+    }
+
+    /// 把时间字符串 "HH:mm" / "24:00" 换算成相对零点的分钟数。
+    private static func minutesSinceMidnight(_ clock: String) -> Int? {
+        let parts = clock.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+        return h * 60 + m
+    }
+
+    private static func durationMinutes(start: String, end: String) -> Int? {
+        guard let s = minutesSinceMidnight(start), let e = minutesSinceMidnight(end) else { return nil }
+        return max(0, e - s)
+    }
+
+    /// 过滤掉 TimeEntryCrossDayKey 这些系统键之后，把剩余 extra 序列化成 "k=v ; k=v" 形式。
+    private static func userExtraNote(from extra: [String: String]) -> String {
+        let systemKeys: Set<String> = [
+            TimeEntryCrossDayKey.groupID,
+            TimeEntryCrossDayKey.role,
+            TimeEntryCrossDayKey.startDateKey,
+            TimeEntryCrossDayKey.endDateKey,
+            TimeEntryCrossDayKey.start,
+            TimeEntryCrossDayKey.end,
+        ]
+        let userPairs = extra
+            .filter { !systemKeys.contains($0.key) }
+            .sorted { $0.key < $1.key }
+        // 单条用户字段（绝大多数情况就是「备注」）直接输出值；多条才退回 "k=v ; k=v" 区分。
+        if userPairs.count == 1, let only = userPairs.first {
+            return only.value
+        }
+        return userPairs.map { "\($0.key)=\($0.value)" }.joined(separator: " ; ")
     }
 }

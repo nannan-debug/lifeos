@@ -1,29 +1,29 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-05-03
+> 最后更新：2026-05-04
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 1.3.0 (build 5) 已通过审核并上架；1.4.0 (build 6) 已提交 App Review，等待 Apple 审核结果。**
+**LifeOS 1.3.0 (build 5) 已通过审核并上架；1.4.0 (build 6) 已通过 App Review，等待完成上架收尾。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
 - ✅ `1.2.0 (build 4)` — 2026-05-02 上架（灵感与反思模块 V1 + 静态开屏 + 日历体验优化）
 - ✅ `1.3.0 (build 5)` — 2026-05-03 上架（iCloud 同步开关 + 灵感与反思模块 V2 + 周复盘轻卡片流 + 打卡页交互优化）
-- ⏳ `1.4.0 (build 6)` — 已提交 App Review（跨日时间记录体验、设置页清理、复盘月视图性能优化）
+- ✅ `1.4.0 (build 6)` — 已通过 App Review（跨日时间记录体验、设置页清理、复盘月视图性能优化）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 均 Ready for Distribution
+- ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 均 Ready for Distribution；1.4.0 已通过审核，待确认是否已 Ready for Distribution / 完成手动发布
 
-当前阶段重心是"**等待 1.4.0 App Review 结果**"：
+当前阶段重心是"**完成 1.4.0 上架收尾**"：
 
 1. `1.3.0 (build 5)` 已通过审核并上架。
 2. `v1.3.0` tag / GitHub Release 已完成。
-3. `1.4.0 (build 6)` 已 Archive / Upload / Submit to App Review。
-4. 审核期间不要改 main 上的版本号、不要重新 Archive；如有新功能，另开 feature 分支开发。
-5. `1.4.0` 审核通过并上架后，才能打 `v1.4.0` tag / 发 GitHub Release。
+3. `1.4.0 (build 6)` 已 Archive / Upload / Submit to App Review，并已通过 Apple 审核（2026-05-04）。
+4. 若 ASC 显示 `Pending Developer Release`，需要用户在 App Store Connect 手动点 **Release this version**。
+5. 确认 ASC 显示 `Ready for Distribution` / 已 release 后，再打 `v1.4.0` tag / 发 GitHub Release。
 
 **审核期间想做新功能怎么办？** 见 §4.8（下次进审核时仍生效）。
 
@@ -43,7 +43,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.3.0` (build 5) |
-| 当前 main 状态 | `1.4.0` (build 6) 已提交 App Review；等待 Apple 审核结果 |
+| 当前 main 状态 | `1.4.0` (build 6) 已通过 App Review；等待完成上架收尾 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -329,14 +329,15 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ GitHub Release `v1.3.0` 已发布
 - `IN_PROGRESS.md` 已归档灵感与反思模块 V2，当前没有跨 PR 的在飞功能
 
-### 6.3 1.4.0 发版准备
+### 6.3 1.4.0 上架收尾
 
 - ✅ 发版 PR：`1.4.0 (build 6)` 版本号 / changelog / 公开 Support & Privacy 页面 / 本清单状态更新（[#34](https://github.com/nannan-debug/lifeos/pull/34)）
 - ✅ PR 已合入 main：`f97a4af chore: bump 1.4.0 build 6 (#34)`
 - ✅ 用户已手动 Archive / Upload 到 App Store Connect
 - ✅ ASC 已创建 `1.4.0` 新版本，填写 What's New，选择 build 6，并 Submit to App Review（2026-05-03）
-- ⏳ 当前状态：已提交审核，等待 Apple 结果
-- ⏳ 审核通过并上架后：打 `v1.4.0` tag / 发 GitHub Release
+- ✅ `1.4.0 (build 6)` 已通过 App Review（2026-05-04）
+- ⏳ 若 ASC 仍是 `Pending Developer Release`：用户手动点 **Release this version**
+- ⏳ 确认 `Ready for Distribution` / 已 release 后：打 `v1.4.0` tag / 发 GitHub Release
 
 ---
 
@@ -358,4 +359,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) 均已在 App Store 在线。`1.4.0 (build 6)` 已提交 App Review，当前等待 Apple 审核结果；通过并上架后再打 `v1.4.0` tag / 发 GitHub Release。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) 均已在 App Store 在线。`1.4.0 (build 6)` 已通过 App Review，当前等待完成上架收尾；确认 Ready for Distribution / 已 release 后再打 `v1.4.0` tag / 发 GitHub Release。**
