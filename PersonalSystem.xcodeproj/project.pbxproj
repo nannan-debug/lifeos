@@ -18,6 +18,8 @@
 		3B95585BBBD69166DAA93AC5 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */; };
 		52179BAD1191EDAEC8B14521 /* BrainCardWallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */; };
 		59420AFF6BFE0D3477E30E51 /* CreamCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */; };
+		5CB6CCA5FB108360AD248876 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */; };
+		5CCA53188B3EADB00514E2DE /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADC4BEB4F2A2472C71401985 /* ExportView.swift */; };
 		5D44142D106F280B67EE7F4E /* ReviewSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1C212C5B39C02449173866 /* ReviewSessionView.swift */; };
 		60672086424D747B8429C3B8 /* AIConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54B4D126C777329D7686D7D /* AIConsentSheet.swift */; };
 		6E49034334991F10A5436AB4 /* TopicChipInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1EDCD5D6080D50601AA8F64 /* TopicChipInput.swift */; };
@@ -74,6 +76,7 @@
 		8C9E49D2D37FD2539D75275B /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreamCalendar.swift; sourceTree = "<group>"; };
 		ABE5C6700946B01F00288714 /* PersonalSystem.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PersonalSystem.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ADC4BEB4F2A2472C71401985 /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
 		BCD658611087149BE9126035 /* mascot-cat.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = "mascot-cat.pdf"; sourceTree = "<group>"; };
 		C06AA9437C4C92DB191C4D7F /* TimeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeView.swift; sourceTree = "<group>"; };
 		C9475D2A0A5BA75C93C54CCD /* cat-lay.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "cat-lay.png"; sourceTree = "<group>"; };
@@ -81,6 +84,7 @@
 		D3B2AC351391A95EB5626845 /* cat-lying.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "cat-lying.png"; sourceTree = "<group>"; };
 		D64187D17902AB6CDBE0CB90 /* BrainCardEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainCardEditorSheet.swift; sourceTree = "<group>"; };
 		DC3E4506D76484EEB429054A /* PersonalSystemApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalSystemApp.swift; sourceTree = "<group>"; };
+		E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
 		E43793AFBE40A0207A015C59 /* GlobalAIInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalAIInputBar.swift; sourceTree = "<group>"; };
 		E54B4D126C777329D7686D7D /* AIConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConsentSheet.swift; sourceTree = "<group>"; };
 		F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */ = {isa = PBXFileReference; path = "cat-lay.svg"; sourceTree = "<group>"; };
@@ -91,6 +95,7 @@
 			isa = PBXGroup;
 			children = (
 				229491345B70D21BB0902CB5 /* AIParser.swift */,
+				E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */,
 				8C9E49D2D37FD2539D75275B /* Secrets.swift */,
 			);
 			path = Services;
@@ -161,6 +166,7 @@
 				062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */,
 				9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */,
 				499F1731265F2DDA1F0395B4 /* CreamTheme.swift */,
+				ADC4BEB4F2A2472C71401985 /* ExportView.swift */,
 				E43793AFBE40A0207A015C59 /* GlobalAIInputBar.swift */,
 				8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */,
 				8A1C212C5B39C02449173866 /* ReviewSessionView.swift */,
@@ -294,8 +300,10 @@
 				74F5A5797CBFA7BF85650474 /* BrainCardDetailView.swift in Sources */,
 				23CE8BA3F6D48B6C953A8B29 /* BrainCardEditorSheet.swift in Sources */,
 				52179BAD1191EDAEC8B14521 /* BrainCardWallView.swift in Sources */,
+				5CB6CCA5FB108360AD248876 /* CSVExporter.swift in Sources */,
 				59420AFF6BFE0D3477E30E51 /* CreamCalendar.swift in Sources */,
 				1BF60C73DA6FD63FF0FD1A4C /* CreamTheme.swift in Sources */,
+				5CCA53188B3EADB00514E2DE /* ExportView.swift in Sources */,
 				0BE52857AA88AC63F2AD3350 /* GlobalAIInputBar.swift in Sources */,
 				804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */,
 				1282ACB00F9A6EEB2F100955 /* PersonalSystemApp.swift in Sources */,
@@ -355,14 +363,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -450,14 +458,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
