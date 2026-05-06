@@ -18,6 +18,33 @@ struct SettingsView: View {
                     editableProfileRow(title: "昵称", value: displayNickname, field: .nickname)
                 }
 
+                Section("数据") {
+                    NavigationLink {
+                        ExportView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(CreamTheme.green.opacity(0.12))
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(CreamTheme.green)
+                            }
+                            .frame(width: 36, height: 36)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("导出 CSV")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(CreamTheme.text)
+                                Text("时间记录与随手记，按区间")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
                 Section {
                     Button("清空所有数据", role: .destructive) {
                         showDeleteConfirm = true
