@@ -309,7 +309,7 @@ struct ReviewHubView: View {
         VStack(alignment: .leading, spacing: 13) {
             cardHeader(icon: "clock", title: "时间分配", trailing: nil)
 
-            VStack(spacing: 11) {
+            VStack(spacing: 13) {
                 if snapshot.timeSummaries.isEmpty {
                     emptyLine("有记录时，这里会按分类汇总已经写下的时间。")
                 } else {
@@ -638,30 +638,35 @@ private struct TimeDistributionRow: View {
     let color: Color
 
     var body: some View {
-        HStack(spacing: 9) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .frame(width: 42, alignment: .leading)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Spacer(minLength: 12)
+
+                Text(duration)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(color.opacity(0.92))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.black.opacity(0.045))
                     Capsule()
-                        .fill(color.opacity(0.55))
-                        .frame(width: max(proxy.size.width * min(max(ratio, 0), 1), 8))
+                        .fill(color.opacity(0.58))
+                        .frame(width: max(proxy.size.width * min(max(ratio, 0), 1), 10))
                 }
             }
-            .frame(height: 12)
-
-            Text(duration)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .frame(width: 42, alignment: .trailing)
+            .frame(height: 10)
         }
+        .padding(.vertical, 2)
     }
 }
 

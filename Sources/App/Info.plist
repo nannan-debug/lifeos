@@ -17,11 +17,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.5.0</string>
+	<string>1.5.1</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>用于把你授权的睡眠和运动时间同步到 LifeOS 时间记录中。</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>用于把你授权同步的健康数据转成 LifeOS 本地时间记录。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

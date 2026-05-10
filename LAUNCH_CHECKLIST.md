@@ -1,13 +1,13 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-05-07
+> 最后更新：2026-05-10
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 1.5.0 (build 7) 已通过审核并上架；当前没有进行中的发版周期。**
+**LifeOS 1.5.1 (build 8) 发版 PR 准备中；尚未 Archive / Upload / Submit。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
@@ -15,14 +15,15 @@
 - ✅ `1.3.0 (build 5)` — 2026-05-03 上架（iCloud 同步开关 + 灵感与反思模块 V2 + 周复盘轻卡片流 + 打卡页交互优化）
 - ✅ `1.4.0 (build 6)` — 2026-05-04 上架（跨日时间记录体验、设置页清理、复盘月视图性能优化）
 - ✅ `1.5.0 (build 7)` — 2026-05-07 上架（设置页 CSV 导出 + 时间记录页 PRD seed/键盘修复）
+- 🟡 `1.5.1 (build 8)` — 准备中（Apple 健康睡眠/运动同步、AI 输入框对话式补充、时间页日期切换状态清理、复盘样式与字体调整）
 - ✅ App ID：`6763877227`
 - ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 均 Ready for Distribution
 
-**当前阶段：等待下一个版本计划开启**。
+**当前阶段：准备 `1.5.1 (build 8)` 发版 PR。**
 
 - v1.5.0 tag / GitHub Release 已完成（[v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0)）。
 - ⚠️ v1.4.0 tag / GitHub Release **未完成**（历史遗留；可补打也可跳过，见 §6.3）。
-- 下一个版本若按 [docs/roadmaps/v1.5-v1.7-plan.md](docs/roadmaps/v1.5-v1.7-plan.md) 推进，将是 v1.6（变现层 / 付费墙）。
+- 本轮只准备 `1.5.1 (build 8)`，不进入 v1.6 变现层 / 付费墙计划。
 
 **审核期间想做新功能怎么办？** 见 §4.8。
 
@@ -42,7 +43,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.5.0` (build 7) |
-| 当前 main 状态 | `1.5.0` (build 7) 已上架；当前没有进行中的发版周期 |
+| 当前发版准备 | `1.5.1` (build 8) 发版 PR 准备中，尚未 Archive / Upload / Submit |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -293,10 +294,17 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 如果后续加了任何向第三方发数据的功能（analytics / 第三方 SDK / 新的 AI 服务商），必须更新 ASC 的 App Privacy 问卷。当前承诺：
 
 - 只发往 `ai.dogdada.com`（用户主动触发的 AI 解析）
+- Apple 健康同步只读取用户授权的睡眠分析和体能训练记录，并只写入本地时间表；不发送给 AI 后端
 - 不收集行为日志
 - 没有第三方 analytics
 
 新功能动到这块时记得回 ASC 更新。
+
+下个包含 Apple 健康同步的版本发版前，必须人工确认：
+
+- Apple Developer / App ID 已启用 HealthKit capability
+- App Store Connect App Privacy 问卷补充 Health & Fitness 相关数据使用说明
+- Review Notes 说明 HealthKit 数据只用于本地时间记录同步，不用于诊断、治疗或医疗建议
 
 ### 5.5 截图随版本演进
 
@@ -346,6 +354,12 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.5.0` 已 push（指向 `628491e`）
 - ✅ GitHub Release [v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0) 已发布
 
+### 6.5 1.5.1 发版准备（进行中 🟡）
+
+- 🟡 发版 PR 准备中：`1.5.1 (build 8)` 版本号 / changelog / Apple 健康同步与 AI 输入框体验改进
+- ⏳ 尚未 Archive / Upload / Submit to App Review
+- ⏳ 通过审核且 Ready for Distribution 后再打 `v1.5.1` tag 和 GitHub Release
+
 ---
 
 ## 7. 仓库内与上架最相关的文件
@@ -366,4 +380,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) 均已在 App Store 在线。当前没有进行中的发版周期；下一个版本若按 [docs/roadmaps/v1.5-v1.7-plan.md](docs/roadmaps/v1.5-v1.7-plan.md) 推进将是 v1.6（变现层 / 付费墙）。`v1.4.0` tag/release 历史遗留未补打。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) 均已在 App Store 在线。当前正在准备 `1.5.1 (build 8)` 发版 PR，尚未 Archive / Upload / Submit；`v1.4.0` tag/release 历史遗留未补打。**

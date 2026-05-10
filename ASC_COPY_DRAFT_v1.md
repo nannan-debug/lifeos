@@ -2,7 +2,21 @@
 
 > 用法：把每一栏直接复制到 ASC 对应输入框里。字符数都是 ASC 标准下数好的（中文 1 字 = 1 字符）。
 > 调性原则：温柔、不审判、不焦虑营销、不堆功能名词。
-> 最后更新：2026-04-26
+> 最后更新：2026-05-10
+
+---
+
+## 0. 1.5.1 What's New（App Store 更新说明）
+
+```
+- 新增 Apple 健康同步，可把授权的睡眠和运动记录同步到时间表。
+- 睡眠同步会把同一晚的睡眠阶段合并为一整段「睡觉」。
+- 优化 AI 输入框的补充对话，第一句和后续补充会像对话一样保留。
+- 修复时间页切换日期时沿用上一天编辑状态的问题。
+- 优化复盘页时间分配展示，并收紧整体字号，减少拥挤。
+```
+
+> 提交 `1.5.1` 前，App Store Connect 的 App Privacy 需要补充 Health & Fitness → Health。仅说明用户主动授权 Apple 健康同步时读取睡眠与运动记录，数据只转成本地时间记录，不上传到 AI 服务或服务器。
 
 ---
 
@@ -193,7 +207,9 @@ A：1.0 完全免费、无内购、无广告。未来即使加内购，原有功
 
 ### Data Types Collected
 
-只勾 **User Content → Other User Content**：
+勾选以下数据类型：
+
+**User Content → Other User Content**：
 - **Linked to user**: No
 - **Used for tracking**: No
 - **Used for**: App Functionality
@@ -202,9 +218,17 @@ A：1.0 完全免费、无内购、无广告。未来即使加内购，原有功
   When the user explicitly taps the AI parse button, the text they typed in the input box is sent to our Cloudflare Worker proxy and then forwarded to DeepSeek for natural-language parsing. The text is not stored on our server and is not linked to any user identifier.
   ```
 
+**Health & Fitness → Health**（仅包含启用 Apple 健康同步的版本）：
+- **Linked to user**: No
+- **Used for tracking**: No
+- **Used for**: App Functionality
+- 详细说明（英文，可粘）：
+  ```
+  If the user explicitly enables Apple Health sync, the app reads authorized sleep analysis and workout records from HealthKit and converts them into local time records. This data stays on the user's device and is not sent to our AI service or server.
+  ```
+
 其他全部 **No / Not Collected**：
 - Contact Info: No
-- Health & Fitness: No
 - Financial Info: No
 - Location: No
 - Sensitive Info: No
