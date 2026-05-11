@@ -15,6 +15,7 @@
 		257999BBA159C9066609056B /* AIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 229491345B70D21BB0902CB5 /* AIParser.swift */; };
 		263067111C069AA3CD3501D0 /* TurnTypeStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BED040E4ACD1E520E36FFC0 /* TurnTypeStyle.swift */; };
 		2B9D0194685A8DF2C4A5EB3D /* cat-lay.svg in Resources */ = {isa = PBXBuildFile; fileRef = F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */; };
+		389E8685ABC1255281C3AC53 /* TaskIntentDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5713045EBC3AF36FF3FC610D /* TaskIntentDetector.swift */; };
 		3B95585BBBD69166DAA93AC5 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */; };
 		4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */; };
 		52179BAD1191EDAEC8B14521 /* BrainCardWallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */; };
@@ -67,6 +68,7 @@
 		48EFF892D5B0946268586336 /* PersonalSystem.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PersonalSystem.entitlements; sourceTree = "<group>"; };
 		499F1731265F2DDA1F0395B4 /* CreamTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreamTheme.swift; sourceTree = "<group>"; };
 		4EBB766411716643B833DBA1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5713045EBC3AF36FF3FC610D /* TaskIntentDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskIntentDetector.swift; sourceTree = "<group>"; };
 		5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalSystemSmokeTests.swift; sourceTree = "<group>"; };
 		5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -188,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */,
+				5713045EBC3AF36FF3FC610D /* TaskIntentDetector.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -316,6 +319,7 @@
 				F6896693D277FD78E861D75F /* RootTabView.swift in Sources */,
 				A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */,
 				EECA22D6609959135391624F /* SettingsView.swift in Sources */,
+				389E8685ABC1255281C3AC53 /* TaskIntentDetector.swift in Sources */,
 				19D3943266C325922D29C221 /* TimeView.swift in Sources */,
 				ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */,
 				7E5752949C7D7F2ED2126343 /* TodoEditorSheet.swift in Sources */,
@@ -367,14 +371,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.5.2;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -462,14 +466,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.5.2;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";

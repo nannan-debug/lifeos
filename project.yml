@@ -19,8 +19,8 @@ targets:
     info:
       path: Sources/App/Info.plist
       properties:
-        CFBundleShortVersionString: 1.5.1
-        CFBundleVersion: "8"
+        CFBundleShortVersionString: 1.5.2
+        CFBundleVersion: "9"
         ITSAppUsesNonExemptEncryption: false
         UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
@@ -37,8 +37,8 @@ targets:
     settings:
       base:
         PRODUCT_NAME: PersonalSystem
-        MARKETING_VERSION: 1.5.1
-        CURRENT_PROJECT_VERSION: 8
+        MARKETING_VERSION: 1.5.2
+        CURRENT_PROJECT_VERSION: 9
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Sources/App/PersonalSystem.entitlements
         DEVELOPMENT_TEAM: "355RQ5S3DW"

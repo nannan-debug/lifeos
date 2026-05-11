@@ -200,6 +200,7 @@ struct BrainCardEditorSheet: View {
             } catch {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    store.recordAIFailure(context: "brain_title", input: cleanContent, error: error)
                     aiTitleSuggestion = nil
                     aiTitleLoading = false
                 }

@@ -170,17 +170,11 @@ struct QuickCaptureView: View {
                     }
                     deleteTurnID = nil
                 }
-                Button("今天不再显示", role: .none) {
-                    if let id = deleteTurnID {
-                        hiddenTodayIDs.insert(id)
-                    }
-                    deleteTurnID = nil
-                }
                 Button("取消", role: .cancel) {
                     deleteTurnID = nil
                 }
             } message: {
-                Text("删除将永久移除这条记录。如果只是暂时不想看到，可以选择「今天不再显示」。")
+                Text("删除后将从记录中移除。")
             }
             .sheet(isPresented: Binding(
                 get: { moodEditTurnID != nil },
@@ -701,6 +695,8 @@ struct ParsedTaskEntry {
     var status: String
     var priority: String
     var dueDate: String
+    var startTime: String
+    var endTime: String
     var date: String
 }
 
@@ -758,7 +754,7 @@ enum QuickCaptureParser {
     }
 
     private static func looksLikeTask(_ s: String) -> Bool {
-        ["要做", "记得", "待会", "明天", "下周", "需要", "必须", "提醒我"].contains { s.contains($0) }
+        TaskIntentDetector.looksLikeTask(s)
     }
 
     private static func parseTask(_ s: String) -> ParsedTaskEntry {
@@ -770,10 +766,21 @@ enum QuickCaptureParser {
         let dueDate: String
         if s.contains("明天") { dueDate = "明天" }
         else if s.contains("周五") { dueDate = "周五" }
+        else if s.contains("今天") || s.contains("今晚") { dueDate = todayKey() }
         else { dueDate = "" }
 
+        let timeRange = extractTimeRange(s)
         let title = verbLeadingTitle(from: s)
-        return ParsedTaskEntry(title: title, detail: s, status: "待办", priority: priority, dueDate: dueDate, date: todayKey())
+        return ParsedTaskEntry(
+            title: title,
+            detail: s,
+            status: "待办",
+            priority: priority,
+            dueDate: dueDate,
+            startTime: timeRange?.0 ?? "",
+            endTime: timeRange?.1 ?? "",
+            date: todayKey()
+        )
     }
 
     private static func parseInboxEntries(_ s: String) -> [ParsedInboxEntry] {
@@ -825,10 +832,14 @@ enum QuickCaptureParser {
             return String(s[r])
         }
 
-        let h1 = Int(part(1)) ?? 0
+        var h1 = Int(part(1)) ?? 0
         let m1 = Int(part(2)) ?? 0
-        let h2 = Int(part(3)) ?? 0
+        var h2 = Int(part(3)) ?? 0
         let m2 = Int(part(4)) ?? 0
+        if (s.contains("下午") || s.contains("晚上")) {
+            if h1 < 12 { h1 += 12 }
+            if h2 < 12 { h2 += 12 }
+        }
 
         guard (0...23).contains(h1), (0...23).contains(h2), (0...59).contains(m1), (0...59).contains(m2) else {
             return nil

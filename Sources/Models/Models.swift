@@ -87,3 +87,12 @@ struct BrainCardSource: Codable, Equatable {
     var noteId: UUID
     var excerpt: String              // 创建时截取的 turn 原文片段，防原 note 改后失语境
 }
+
+struct AIFailureLog: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var createdAt: Date
+    var context: String
+    var inputExcerpt: String
+    var errorType: String
+    var message: String
+}

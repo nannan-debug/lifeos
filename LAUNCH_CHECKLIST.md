@@ -7,7 +7,7 @@
 
 ## 0. 当前结论
 
-**LifeOS 1.5.1 (build 8) 已通过审核并上架；`v1.5.1` tag 和 GitHub Release 已完成。**
+**LifeOS 1.5.1 (build 8) 已通过审核并上架；`v1.5.2 (build 9)` 正在准备发版 PR。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
@@ -16,14 +16,15 @@
 - ✅ `1.4.0 (build 6)` — 2026-05-04 上架（跨日时间记录体验、设置页清理、复盘月视图性能优化）
 - ✅ `1.5.0 (build 7)` — 2026-05-07 上架（设置页 CSV 导出 + 时间记录页 PRD seed/键盘修复）
 - ✅ `1.5.1 (build 8)` — 2026-05-11 上架（Apple 健康睡眠/运动同步、AI 输入框对话式补充、时间页日期切换状态清理、复盘样式与字体调整）
+- 🚧 `1.5.2 (build 9)` — 准备中（首屏背景修复、待办识别与交互优化、时间记录删除、设置页降噪、CSV 打卡导出、第二大脑失败日志）
 - ✅ App ID：`6763877227`
 - ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 / 1.5.1 均 Ready for Distribution
 
-**当前阶段：`1.5.1 (build 8)` 发版收尾已完成，等待下一个版本计划开启。**
+**当前阶段：`1.5.2 (build 9)` 发版 PR 准备中；尚未 Archive / Upload / Submit。**
 
 - v1.5.0 tag / GitHub Release 已完成（[v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0)）。
 - ℹ️ v1.4.0 tag / GitHub Release 已决定跳过（历史记录不补打，见 §6.3）。
-- 本轮只处理 `1.5.1 (build 8)` 发版收尾，不进入 v1.6 变现层 / 付费墙计划。
+- 本轮只处理 `1.5.2 (build 9)` 小迭代发版准备，不进入 v1.6 变现层 / 付费墙计划。
 
 **审核期间想做新功能怎么办？** 见 §4.8。
 
@@ -43,7 +44,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.5.1` (build 8) |
-| 当前 main 状态 | `1.5.1` (build 8) 已上架；`v1.5.1` tag / GitHub Release 已完成 |
+| 当前 main 状态 | `1.5.1` (build 8) 已上架；当前分支正在准备 `1.5.2` (build 9) |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -364,6 +365,13 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.5.1` 已 push（指向 `0c238fe`）
 - ✅ GitHub Release [v1.5.1](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.1) 已发布
 
+### 6.6 1.5.2 发版准备（进行中 🚧）
+
+- 🚧 发版 PR 准备中：`1.5.2 (build 9)` 版本号 / changelog / 本清单状态更新。
+- ⏳ 用户尚未手动 Archive / Upload 到 App Store Connect。
+- ⏳ 尚未创建 / 提交 App Store Connect `1.5.2` 新版本。
+- ⏳ `v1.5.2` tag 和 GitHub Release 需等 App Store Ready for Distribution 后再做。
+
 ---
 
 ## 7. 仓库内与上架最相关的文件
@@ -384,4 +392,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) 均已在 App Store 在线。`v1.5.1` tag 和 GitHub Release 已完成；当前没有进行中的发版周期。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) 均已在 App Store 在线。当前正在准备 `1.5.2 (build 9)` 发版 PR；尚未 Archive / Upload / Submit，`v1.5.2` tag 和 GitHub Release 需等 App Store Ready for Distribution 后再做。**

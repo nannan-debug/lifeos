@@ -43,9 +43,10 @@ struct TodayView: View {
 
     // 待办输入
     @State private var newTodoTitle = ""
-
-    // 新建待办详细面板（仿苹果日历）
-    @State private var showNewTodoSheet = false
+    @State private var selectedTodoID: UUID?
+    @State private var editingTodoTitleID: UUID?
+    @State private var editingTodoTitleText = ""
+    @FocusState private var focusedTodoTitleID: UUID?
 
     // 编辑已有待办
     @State private var editingTask: TaskEntry?
@@ -95,10 +96,6 @@ struct TodayView: View {
             .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
             .onChange(of: store.checkItems.count) { _ in refreshCalendarMarkers() }
             .onChange(of: store.timeEntries.count) { _ in refreshCalendarMarkers() }
-            .sheet(isPresented: $showNewTodoSheet) {
-                TodoEditorSheet(mode: .create(defaultDate: store.selectedDate))
-                    .environmentObject(store)
-            }
             .sheet(item: $editingTask) { task in
                 TodoEditorSheet(mode: .edit(task: task))
                     .environmentObject(store)
@@ -559,7 +556,7 @@ struct TodayView: View {
 
     @ViewBuilder
     private var todoSection: some View {
-        // 新建待办 —— 两种方式
+        // 新建待办 —— 快速输入
         Section {
             // 快速输入（只取标题，默认今天、全天、无优先级）
             HStack(spacing: 10) {
@@ -587,36 +584,6 @@ struct TodayView: View {
                     .fill(Color.white.opacity(0.75))
             )
             .listRowInsets(EdgeInsets(top: 6, leading: 6, bottom: 3, trailing: 6))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-
-            // 详细新建（打开仿苹果日历面板）
-            Button {
-                showNewTodoSheet = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 20, weight: .regular))
-                        .foregroundStyle(CreamTheme.green)
-                    Text("详细新建（含时间、优先级、备注）")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.white.opacity(0.75))
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 6, trailing: 6))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }
@@ -662,6 +629,7 @@ struct TodayView: View {
     @ViewBuilder
     private func todoRow(_ task: TaskEntry) -> some View {
         let done = task.status == "已完成"
+        let isSelected = selectedTodoID == task.id
         HStack(alignment: .top, spacing: 12) {
             // 勾选框（独立热区）
             Button {
@@ -672,42 +640,71 @@ struct TodayView: View {
                 Image(systemName: done ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(done ? CreamTheme.green : Color(.tertiaryLabel))
+                    .frame(width: 24, height: 24, alignment: .center)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // 标题/详情区（点击打开编辑面板）
-            Button {
-                editingTask = task
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
+            // 标题/详情区
+            VStack(alignment: .leading, spacing: 4) {
+                if editingTodoTitleID == task.id {
+                    TextField("标题", text: $editingTodoTitleText)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(done ? .secondary : .primary)
+                        .textFieldStyle(.plain)
+                        .submitLabel(.done)
+                        .focused($focusedTodoTitleID, equals: task.id)
+                        .frame(minHeight: 24, alignment: .center)
+                        .onSubmit { commitInlineTodoTitle(task) }
+                } else {
                     Text(task.title)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(done ? .secondary : .primary)
-
-                    if !task.detail.isEmpty {
-                        Text(task.detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    if let metaLine = metaLineFor(task) {
-                        HStack(spacing: 6) {
-                            if !task.priority.isEmpty {
-                                badge(task.priority, tint: priorityTint(task.priority))
-                            }
-                            Text(metaLine)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
+                        .frame(minHeight: 24, alignment: .center)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+
+                if !task.detail.isEmpty {
+                    Text(task.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                if let metaLine = metaLineFor(task) {
+                    HStack(spacing: 6) {
+                        if !task.priority.isEmpty {
+                            badge(task.priority, tint: priorityTint(task.priority))
+                        }
+                        Text(metaLine)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectTodoForInlineEditing(task)
+            }
+
+            if isSelected {
+                Button {
+                    commitInlineTodoTitle(task)
+                    editingTask = task
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 21, weight: .medium))
+                        .foregroundStyle(CreamTheme.green)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onChange(of: focusedTodoTitleID) { focusedID in
+            if editingTodoTitleID == task.id && focusedID != task.id {
+                commitInlineTodoTitle(task)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -728,15 +725,47 @@ struct TodayView: View {
         }
     }
 
-    /// 组装时间/日期元信息行（比如 "今天 · 全天" 或 "4月18日 · 09:00-10:30"）
+    private func selectTodoForInlineEditing(_ task: TaskEntry) {
+        if let currentID = editingTodoTitleID,
+           currentID != task.id,
+           let currentTask = store.tasks.first(where: { $0.id == currentID }) {
+            commitInlineTodoTitle(currentTask)
+        }
+
+        selectedTodoID = task.id
+        editingTodoTitleID = task.id
+        editingTodoTitleText = task.title
+        focusedTodoTitleID = task.id
+    }
+
+    private func commitInlineTodoTitle(_ task: TaskEntry) {
+        guard editingTodoTitleID == task.id else { return }
+        let clean = editingTodoTitleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !clean.isEmpty, clean != task.title {
+            store.updateTask(
+                id: task.id,
+                title: clean,
+                detail: task.detail,
+                priority: task.priority,
+                dueDate: task.dueDate,
+                isAllDay: task.isAllDay,
+                startTime: task.startTime,
+                endTime: task.endTime,
+                location: task.location
+            )
+        }
+        editingTodoTitleID = nil
+        editingTodoTitleText = ""
+        focusedTodoTitleID = nil
+    }
+
+    /// 组装时间/日期元信息行（比如 "今天" 或 "4月18日 · 09:00-10:30"）
     private func metaLineFor(_ task: TaskEntry) -> String? {
         var parts: [String] = []
         if !task.dueDate.isEmpty {
             parts.append(shortDateLabel(task.dueDate))
         }
-        if task.isAllDay {
-            if !task.dueDate.isEmpty { parts.append("全天") }
-        } else if !task.startTime.isEmpty {
+        if !task.startTime.isEmpty {
             if task.endTime.isEmpty {
                 parts.append(task.startTime)
             } else {

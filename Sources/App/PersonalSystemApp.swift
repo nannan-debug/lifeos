@@ -38,7 +38,7 @@ private struct RuntimeSplashView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 8) {
-                Image("LaunchCatFlowerOpaque")
+                Image("LaunchCatFlower")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 212, height: 249)

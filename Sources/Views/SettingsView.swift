@@ -38,9 +38,6 @@ struct SettingsView: View {
                                 Text("导出 CSV")
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(CreamTheme.text)
-                                Text("时间记录与随手记，按区间")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -95,8 +92,6 @@ struct SettingsView: View {
             .tint(CreamTheme.green)
         } header: {
             Text("同步")
-        } footer: {
-            Text("不需要登录 App；使用系统 iCloud 在同一 Apple ID 的设备间同步。")
         }
     }
 
@@ -121,8 +116,7 @@ struct SettingsView: View {
             )) {
                 healthKitRow(
                     icon: "bed.double",
-                    title: "同步睡眠",
-                    subtitle: "写入时间表的「睡觉」分类"
+                    title: "同步睡眠"
                 )
             }
             .tint(CreamTheme.green)
@@ -133,8 +127,7 @@ struct SettingsView: View {
             )) {
                 healthKitRow(
                     icon: "figure.run",
-                    title: "同步运动",
-                    subtitle: "写入时间表的「运动」分类"
+                    title: "同步运动"
                 )
             }
             .tint(CreamTheme.green)
@@ -154,12 +147,10 @@ struct SettingsView: View {
             .disabled(!store.isHealthSleepSyncEnabled && !store.isHealthWorkoutSyncEnabled)
         } header: {
             Text("Apple 健康")
-        } footer: {
-            Text(store.healthSyncStatusText + " 只读取你授权的睡眠和运动，用来补全本地时间记录；不会上传到 AI。")
         }
     }
 
-    private func healthKitRow(icon: String, title: String, subtitle: String) -> some View {
+    private func healthKitRow(icon: String, title: String) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
@@ -175,9 +166,6 @@ struct SettingsView: View {
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
