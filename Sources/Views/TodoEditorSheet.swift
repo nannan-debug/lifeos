@@ -19,7 +19,9 @@ struct TodoEditorSheet: View {
     @State private var title: String = ""
     @State private var notes: String = ""
     @State private var location: String = ""
-    @State private var isAllDay: Bool = true
+    @State private var hasDate: Bool = false
+    @State private var hasTime: Bool = false
+    @State private var hasEndTime: Bool = false
     @State private var startDate: Date = Date()
     @State private var endDate: Date = Date().addingTimeInterval(3600)
     @State private var priority: String = "无"   // 无 / 低 / 中 / 高
@@ -41,26 +43,60 @@ struct TodoEditorSheet: View {
 
                 // 时间
                 Section {
-                    Toggle("全天", isOn: $isAllDay.animation(.easeInOut(duration: 0.15)))
+                    Toggle("日期", isOn: $hasDate.animation(.easeInOut(duration: 0.15)))
                         .tint(CreamTheme.green)
+                        .onChange(of: hasDate) { enabled in
+                            if !enabled {
+                                hasTime = false
+                                hasEndTime = false
+                            }
+                        }
 
-                    DatePicker(
-                        "开始",
-                        selection: $startDate,
-                        displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
-                    )
-                    .onChange(of: startDate) { newVal in
-                        if endDate < newVal {
-                            endDate = newVal.addingTimeInterval(3600)
+                    if hasDate {
+                        DatePicker(
+                            "日期",
+                            selection: $startDate,
+                            displayedComponents: [.date]
+                        )
+
+                        Toggle("时间", isOn: $hasTime.animation(.easeInOut(duration: 0.15)))
+                            .tint(CreamTheme.green)
+                            .onChange(of: hasTime) { enabled in
+                                if !enabled {
+                                    hasEndTime = false
+                                } else {
+                                    ensureEndDateAfterStart()
+                                }
+                            }
+
+                        if hasTime {
+                            DatePicker(
+                                hasEndTime ? "开始" : "时间",
+                                selection: $startDate,
+                                displayedComponents: [.hourAndMinute]
+                            )
+                            .onChange(of: startDate) { _ in
+                                ensureEndDateAfterStart()
+                            }
+
+                            Toggle("时间段", isOn: $hasEndTime.animation(.easeInOut(duration: 0.15)))
+                                .tint(CreamTheme.green)
+                                .onChange(of: hasEndTime) { enabled in
+                                    if enabled {
+                                        ensureEndDateAfterStart()
+                                    }
+                                }
+
+                            if hasEndTime {
+                                DatePicker(
+                                    "结束",
+                                    selection: $endDate,
+                                    in: startDate...,
+                                    displayedComponents: [.hourAndMinute]
+                                )
+                            }
                         }
                     }
-
-                    DatePicker(
-                        "结束",
-                        selection: $endDate,
-                        in: startDate...,
-                        displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
-                    )
                 }
 
                 // 优先级
@@ -118,7 +154,9 @@ struct TodoEditorSheet: View {
             let s = cal.date(from: comps) ?? defaultDate
             startDate = s
             endDate = s.addingTimeInterval(3600)
-            isAllDay = true
+            hasDate = false
+            hasTime = false
+            hasEndTime = false
             priority = "无"
         case .deriveFromTurn(let turn):
             // 前 20 字进 title，剩下塞 notes（grill-me Q5a=B）
@@ -137,14 +175,18 @@ struct TodoEditorSheet: View {
             let s = cal.date(from: comps) ?? Date()
             startDate = s
             endDate = s.addingTimeInterval(3600)
-            isAllDay = true
+            hasDate = false
+            hasTime = false
+            hasEndTime = false
             priority = "无"
         case .edit(let t):
             title = t.title
             notes = t.detail
             location = t.location
             priority = t.priority.isEmpty ? "无" : t.priority
-            isAllDay = t.isAllDay
+            hasDate = !t.dueDate.isEmpty
+            hasTime = !t.startTime.isEmpty
+            hasEndTime = !t.endTime.isEmpty
 
             let df = DateFormatter()
             df.locale = Locale(identifier: "en_US_POSIX")
@@ -154,7 +196,7 @@ struct TodoEditorSheet: View {
             tf.dateFormat = "yyyy-MM-dd HH:mm"
 
             let dayStr = t.dueDate.isEmpty ? df.string(from: Date()) : t.dueDate
-            if t.isAllDay {
+            if t.startTime.isEmpty {
                 startDate = df.date(from: dayStr) ?? Date()
                 endDate = startDate
             } else {
@@ -173,9 +215,10 @@ struct TodoEditorSheet: View {
         tf.locale = Locale(identifier: "en_US_POSIX")
         tf.dateFormat = "HH:mm"
 
-        let dayKey = df.string(from: startDate)
-        let startStr = isAllDay ? "" : tf.string(from: startDate)
-        let endStr = isAllDay ? "" : tf.string(from: endDate)
+        let dayKey = hasDate ? df.string(from: startDate) : ""
+        let startStr = (hasDate && hasTime) ? tf.string(from: startDate) : ""
+        let endStr = (hasDate && hasTime && hasEndTime) ? tf.string(from: endDate) : ""
+        let isAllDay = hasDate && !hasTime
         let prio = priority == "无" ? "" : priority
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return }
@@ -230,5 +273,11 @@ struct TodoEditorSheet: View {
             }
         }
         dismiss()
+    }
+
+    private func ensureEndDateAfterStart() {
+        if endDate <= startDate {
+            endDate = startDate.addingTimeInterval(3600)
+        }
     }
 }

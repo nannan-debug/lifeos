@@ -17,7 +17,7 @@ struct ExportView: View {
             } header: {
                 Text("时间区间")
             } footer: {
-                Text("将导出区间内的「时间记录」和「随手记」两份独立 CSV 文件。")
+                Text("将导出区间内的「时间记录」「随手记」「打卡」CSV 文件。")
             }
 
             Section {
@@ -57,7 +57,7 @@ struct ExportView: View {
             alertMessage = error
             return
         }
-        let urls = [result.timeURL, result.inboxURL].compactMap { $0 }
+        let urls = [result.timeURL, result.inboxURL, result.checkURL].compactMap { $0 }
         guard !urls.isEmpty else {
             alertMessage = "所选区间没有可导出的内容"
             return

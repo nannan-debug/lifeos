@@ -275,6 +275,16 @@ struct TimeView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .tint(colorForCategory(dialCategory))
+
+                                Button(role: .destructive) {
+                                    deleteSelectedEntry()
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 17, weight: .semibold))
+                                        .frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
                             }
                         } else {
                             // ── 新建模式 ──
@@ -678,6 +688,14 @@ struct TimeView: View {
             selectedEntryID = nil
             saveFromDial()
         }
+    }
+
+    private func deleteSelectedEntry() {
+        guard let id = selectedEntryID else { return }
+        store.removeTimeEntry(id: id)
+        selectedEntryID = nil
+        dialName = ""
+        dialNote = ""
     }
 
     private func confirmCreateOverlap() {

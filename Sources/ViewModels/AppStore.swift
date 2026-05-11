@@ -60,6 +60,7 @@ final class AppStore: ObservableObject {
     @Published var tasks: [TaskEntry] = []
     @Published var turns: [ConversationTurn] = []
     @Published var brainCards: [BrainCard] = []
+    @Published var aiFailureLogs: [AIFailureLog] = []
 
     // MARK: - AI dispatch state (全局输入框用)
     @Published var isAILoading: Bool = false
@@ -90,6 +91,7 @@ final class AppStore: ObservableObject {
         "ps.tasks",
         "ps.turns",
         "ps.brain",
+        "ps.ai.failures",
         "fields.daily",
         "fields.daily.initialized",
         "fields.daily.groups",
@@ -112,6 +114,7 @@ final class AppStore: ObservableObject {
     private var keyTasks: String { scopedKey("ps.tasks") }
     private var keyTurns: String { scopedKey("ps.turns") }
     private var keyBrain: String { scopedKey("ps.brain") }
+    private var keyAIFailures: String { scopedKey("ps.ai.failures") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
@@ -149,6 +152,7 @@ final class AppStore: ObservableObject {
         loadTasks()
         loadTurns()
         loadBrain()
+        loadAIFailureLogs()
         loadForSelectedDate()
         if sleepSyncEnabled || workoutSyncEnabled {
             syncHealthKitNow()
@@ -235,12 +239,13 @@ final class AppStore: ObservableObject {
         loadTasks()
         loadTurns()
         loadBrain()
+        loadAIFailureLogs()
         loadForSelectedDate()
     }
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
-        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
+        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
         // 旧版本随手记镜像（已废弃）一并兜底清掉
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
         checkItems = []
@@ -248,6 +253,7 @@ final class AppStore: ObservableObject {
         tasks = []
         turns = []
         brainCards = []
+        aiFailureLogs = []
         syncICloudAfterLocalChange()
     }
 
@@ -718,6 +724,10 @@ final class AppStore: ObservableObject {
         saveTasks()
     }
 
+    func removeTimeEntry(id: UUID) {
+        removeTimeEntryByID(id, dateKey: selectedDateKey)
+    }
+
     // MARK: - Daily check-in item management
     /// 新增打卡项目（追加到 fields.daily 末尾，按 title 去重）
     /// tag 为空表示"未分组"，UI 上不会出现在分组 header 下，单独排在最后
@@ -1032,7 +1042,10 @@ final class AppStore: ObservableObject {
                 status: turn.payload["status"] ?? "待办",
                 priority: turn.payload["priority"] ?? "",
                 dueDate: turn.payload["dueDate"] ?? "",
-                date: turn.payload["date"] ?? selectedDateKey
+                date: turn.payload["date"] ?? selectedDateKey,
+                isAllDay: (turn.payload["isAllDay"] ?? "1") == "1",
+                startTime: turn.payload["startTime"] ?? "",
+                endTime: turn.payload["endTime"] ?? ""
             )
             if let taskID {
                 turn.payload["committedTaskID"] = taskID.uuidString
@@ -1415,6 +1428,42 @@ final class AppStore: ObservableObject {
         guard let data = try? encoder.encode(brainCards) else { return }
         defaults.set(data, forKey: keyBrain)
         syncICloudAfterLocalChange()
+    }
+
+    func recordAIFailure(context: String, input: String, error: Error) {
+        let cleanInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let excerpt = cleanInput.count > 120 ? String(cleanInput.prefix(120)) + "..." : cleanInput
+        let message = error.localizedDescription
+        let log = AIFailureLog(
+            createdAt: Date(),
+            context: context,
+            inputExcerpt: excerpt,
+            errorType: String(describing: type(of: error)),
+            message: message
+        )
+
+        aiFailureLogs.insert(log, at: 0)
+        if aiFailureLogs.count > 30 {
+            aiFailureLogs = Array(aiFailureLogs.prefix(30))
+        }
+        saveAIFailureLogs()
+    }
+
+    private func loadAIFailureLogs() {
+        guard let data = defaults.data(forKey: keyAIFailures) else {
+            aiFailureLogs = []
+            return
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        aiFailureLogs = (try? decoder.decode([AIFailureLog].self, from: data)) ?? []
+    }
+
+    private func saveAIFailureLogs() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(aiFailureLogs) else { return }
+        defaults.set(data, forKey: keyAIFailures)
     }
 
     private func encodeDerivatives(_ arr: [TurnDerivative]) -> String {
@@ -2058,7 +2107,8 @@ final class AppStore: ObservableObject {
 
     /// 把一条 AI 返回的 record 按 bucket 落库
     private func commitAIRecord(_ rec: AIParsedRecord, rawText: String) {
-        switch rec.bucket {
+        let normalizedBucket = normalizedAIBucket(for: rec, rawText: rawText)
+        switch normalizedBucket {
         case "time":
             let start = rec.startTime ?? ""
             let end = rec.endTime ?? ""
@@ -2080,6 +2130,8 @@ final class AppStore: ObservableObject {
         case "task":
             let title = rec.title?.isEmpty == false ? rec.title! : (rec.eventName ?? aiFallbackTitle(rawText))
             let detail = rec.details ?? rec.notes ?? ""
+            let start = rec.startTime ?? ""
+            let end = rec.endTime ?? ""
             dispatchAndCommit(
                 rawText: rawText,
                 recognizedType: "待办",
@@ -2090,6 +2142,9 @@ final class AppStore: ObservableObject {
                     "detail": detail,
                     "status": "待办",
                     "dueDate": rec.date ?? "",
+                    "isAllDay": start.isEmpty ? "1" : "0",
+                    "startTime": start,
+                    "endTime": end,
                     "ai_source": "ai"
                 ]
             )
@@ -2112,6 +2167,20 @@ final class AppStore: ObservableObject {
                 feelingTags: rec.feelings ?? []
             )
         }
+    }
+
+    private func normalizedAIBucket(for rec: AIParsedRecord, rawText: String) -> String {
+        if rec.bucket == "task" { return rec.bucket }
+        let candidates = [
+            rawText,
+            rec.title,
+            rec.details,
+            rec.eventName,
+            rec.notes
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+        return TaskIntentDetector.looksLikeTask(candidates) ? "task" : rec.bucket
     }
 
     /// 本地关键词兜底
@@ -2138,7 +2207,12 @@ final class AppStore: ObservableObject {
                 confidence: 0.78,
                 payload: [
                     "title": t.title, "detail": t.detail,
-                    "status": "待办", "ai_source": markSource
+                    "status": "待办",
+                    "dueDate": t.dueDate,
+                    "isAllDay": t.startTime.isEmpty ? "1" : "0",
+                    "startTime": t.startTime,
+                    "endTime": t.endTime,
+                    "ai_source": markSource
                 ]
             )
             return
@@ -2220,15 +2294,16 @@ final class AppStore: ObservableObject {
 
     // MARK: - CSV 导出
 
-    /// 在 [start, end] 闭区间内导出时间记录与随手记两个 CSV 文件到临时目录，返回两份文件 URL。
+    /// 在 [start, end] 闭区间内导出时间记录、随手记、打卡三个 CSV 文件到临时目录，返回文件 URL。
     /// 跨日时间块按数据库原样输出两行（拆分段），符合规划 Q15-3 = a。
-    func exportCSVs(from start: Date, to end: Date) -> (timeURL: URL?, inboxURL: URL?, errorMessage: String?) {
+    func exportCSVs(from start: Date, to end: Date) -> (timeURL: URL?, inboxURL: URL?, checkURL: URL?, errorMessage: String?) {
         let timeURL = buildTimeCSV(from: start, to: end)
         let inboxURL = buildInboxCSV(from: start, to: end)
-        if timeURL == nil && inboxURL == nil {
-            return (nil, nil, "所选区间没有可导出的内容")
+        let checkURL = buildCheckCSV(from: start, to: end)
+        if timeURL == nil && inboxURL == nil && checkURL == nil {
+            return (nil, nil, nil, "所选区间没有可导出的内容")
         }
-        return (timeURL, inboxURL, nil)
+        return (timeURL, inboxURL, checkURL, nil)
     }
 
     private func buildTimeCSV(from start: Date, to end: Date) -> URL? {
@@ -2295,6 +2370,36 @@ final class AppStore: ObservableObject {
             rows: rows
         )
         let filename = "lifeos-notes-\(startKey)_\(endKey).csv"
+        return try? CSVExporter.writeToTemporary(name: filename, content: csv)
+    }
+
+    private func buildCheckCSV(from start: Date, to end: Date) -> URL? {
+        let entries = currentCheckEntries()
+        guard !entries.isEmpty else { return nil }
+
+        let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let startKey = f.string(from: start)
+        let endKey = f.string(from: end)
+        let calendar = Calendar.current
+
+        var rows: [[String]] = []
+        var cursor = calendar.startOfDay(for: start)
+        let finalDay = calendar.startOfDay(for: end)
+        while cursor <= finalDay {
+            let dateKey = f.string(from: cursor)
+            let day = map[dateKey] ?? [:]
+            rows.append([dateKey] + entries.map { day[$0.title] == true ? "1" : "0" })
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+
+        guard !rows.isEmpty else { return nil }
+        let csv = CSVExporter.makeCSV(
+            header: ["日期"] + entries.map(\.title),
+            rows: rows
+        )
+        let filename = "lifeos-checks-\(startKey)_\(endKey).csv"
         return try? CSVExporter.writeToTemporary(name: filename, content: csv)
     }
 

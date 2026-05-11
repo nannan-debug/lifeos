@@ -77,6 +77,41 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(task.sourceExcerpt, "")
     }
 
+    func testTaskIntentDetectorRecognizesActionableTodo() {
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask("记得明天买猫粮"))
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask("帮我周五提交报销"))
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask("待办：预约体检"))
+    }
+
+    func testTaskIntentDetectorKeepsFeelingsAsObservation() {
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("我今天感觉很焦虑"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("感恩今天晒到了太阳"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("昨晚做梦梦到在海边散步"))
+    }
+
+    func testLocalCaptureCreatesTodoFromActionableText() {
+        let result = QuickCaptureParser.parse("记得明天买猫粮")
+        XCTAssertEqual(result.plan.tasks.count, 1)
+        XCTAssertEqual(result.plan.inboxEntries.count, 0)
+        XCTAssertEqual(result.plan.tasks.first?.status, "待办")
+    }
+
+    func testLocalCaptureTreatsFutureInterviewAsTodoNotTimeLog() {
+        let result = QuickCaptureParser.parse("今天下午我有一场面试，2 到 3 点")
+        XCTAssertEqual(result.plan.tasks.count, 1)
+        XCTAssertEqual(result.plan.timeEntries.count, 0)
+        XCTAssertEqual(result.plan.tasks.first?.startTime, "14:00")
+        XCTAssertEqual(result.plan.tasks.first?.endTime, "15:00")
+    }
+
+    func testTaskIntentDetectorRecognizesHelpMeRememberTodo() {
+        let text = "帮我记一条，图图想要看 Claude 的视频"
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask(text))
+        let result = QuickCaptureParser.parse(text)
+        XCTAssertEqual(result.plan.tasks.count, 1)
+        XCTAssertEqual(result.plan.inboxEntries.count, 0)
+    }
+
     // MARK: - Brain card store API
 
     func testAddAndRemoveBrainCard() {
@@ -125,6 +160,22 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let turn = store.turns.first(where: { $0.id == turnId })
         XCTAssertEqual(turn?.derivatives.count, 1)
         XCTAssertEqual(turn?.derivatives.first?.type, "todo")
+    }
+
+    func testAIFailureLogsPersistAcrossReload() {
+        let store = AppStore()
+        store.recordAIFailure(
+            context: "brain_title",
+            input: String(repeating: "标题提取失败", count: 20),
+            error: AIParseError.network("timed out")
+        )
+
+        let reloaded = AppStore()
+        XCTAssertEqual(reloaded.aiFailureLogs.count, 1)
+        XCTAssertEqual(reloaded.aiFailureLogs.first?.context, "brain_title")
+        XCTAssertEqual(reloaded.aiFailureLogs.first?.errorType, "AIParseError")
+        XCTAssertTrue(reloaded.aiFailureLogs.first?.message.contains("timed out") == true)
+        XCTAssertLessThanOrEqual(reloaded.aiFailureLogs.first?.inputExcerpt.count ?? 0, 123)
     }
 
     // MARK: - Review queue (PR 4 新增)
@@ -367,6 +418,34 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(summaries.first(where: { $0.category == "运动" })?.minutes, 20)
         XCTAssertEqual(summaries.first(where: { $0.category == "娱乐" })?.minutes, 60)
         XCTAssertFalse(summaries.contains { $0.minutes == 0 })
+    }
+
+    func testExportCSVsIncludesDailyChecksAsBinaryColumns() throws {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = cal.date(from: DateComponents(year: 2026, month: 4, day: 27, hour: 12))!
+        let secondDay = cal.date(byAdding: .day, value: 1, to: start)!
+
+        store.selectedDate = start
+        guard let vitamin = store.checkItems.first(where: { $0.title == "吃维生素" }) else {
+            return XCTFail("missing fallback check item 吃维生素")
+        }
+        store.toggle(vitamin)
+
+        store.selectedDate = secondDay
+        guard let journal = store.checkItems.first(where: { $0.title == "写日记" }) else {
+            return XCTFail("missing fallback check item 写日记")
+        }
+        store.toggle(journal)
+
+        let result = store.exportCSVs(from: start, to: secondDay)
+        let url = try XCTUnwrap(result.checkURL)
+        let csv = try String(contentsOf: url, encoding: .utf8)
+
+        XCTAssertTrue(csv.contains("日期,吃维生素,回忆梦境,洗漱,出门,写日记,洗澡,上床看书"))
+        XCTAssertTrue(csv.contains("2026-04-27,1,0,0,0,0,0,0"))
+        XCTAssertTrue(csv.contains("2026-04-28,0,0,0,0,1,0,0"))
     }
 
     func testCrossDayTimeEntrySplitsAcrossSelectedDateAndNextDate() {
