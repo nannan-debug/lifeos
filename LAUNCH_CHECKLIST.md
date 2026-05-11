@@ -7,7 +7,7 @@
 
 ## 0. 当前结论
 
-**LifeOS 1.5.1 (build 8) 已通过审核并上架；本轮发版进入 GitHub 收尾。**
+**LifeOS 1.5.1 (build 8) 已通过审核并上架；`v1.5.1` tag 和 GitHub Release 已完成。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
@@ -19,7 +19,7 @@
 - ✅ App ID：`6763877227`
 - ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 / 1.5.1 均 Ready for Distribution
 
-**当前阶段：`1.5.1 (build 8)` 已上架，准备合并 PR、打 `v1.5.1` tag 和 GitHub Release。**
+**当前阶段：`1.5.1 (build 8)` 发版收尾已完成，等待下一个版本计划开启。**
 
 - v1.5.0 tag / GitHub Release 已完成（[v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0)）。
 - ⚠️ v1.4.0 tag / GitHub Release **未完成**（历史遗留；可补打也可跳过，见 §6.3）。
@@ -43,7 +43,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.5.1` (build 8) |
-| 当前发版准备 | `1.5.1` (build 8) 已上架，待 GitHub tag / release 收尾 |
+| 当前 main 状态 | `1.5.1` (build 8) 已上架；`v1.5.1` tag / GitHub Release 已完成 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -353,13 +353,16 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ ASC 已创建 `1.5.0` 新版本，Submit to App Review 并通过审核（2026-05-07）
 - ✅ Tag `v1.5.0` 已 push（指向 `628491e`）
 - ✅ GitHub Release [v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0) 已发布
-### 6.5 1.5.1 上架收尾（已上架，GitHub 收尾中 🟡）
+
+### 6.5 1.5.1 上架收尾（已完成 ✅）
 
 - ✅ 发版 PR：`1.5.1 (build 8)` 版本号 / changelog / Apple 健康同步与 AI 输入框体验改进（[#40](https://github.com/nannan-debug/lifeos/pull/40)）
 - ✅ 用户已手动 Archive / Upload 到 App Store Connect
 - ✅ ASC 已创建 `1.5.1` 新版本，Submit to App Review 并通过审核（2026-05-11，用户确认）
 - ✅ `1.5.1 (build 8)` 已上架（2026-05-11，用户确认）
-- ⏳ PR 合入 main 后打 `v1.5.1` tag 和 GitHub Release
+- ✅ PR 已合入 main：`0c238fe Prepare LifeOS 1.5.1 build 8 release`
+- ✅ Tag `v1.5.1` 已 push（指向 `0c238fe`）
+- ✅ GitHub Release [v1.5.1](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.1) 已发布
 
 ---
 
@@ -381,4 +384,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) 均已在 App Store 在线。当前正在做 `1.5.1` GitHub 收尾：PR #40 合入 main 后打 `v1.5.1` tag 和 GitHub Release。`v1.4.0` tag/release 历史遗留未补打。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) 均已在 App Store 在线。`v1.5.1` tag 和 GitHub Release 已完成；当前没有进行中的发版周期。`v1.4.0` tag/release 历史遗留未补打。**
