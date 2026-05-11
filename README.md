@@ -1,6 +1,6 @@
 # LifeOS
 
-> 一个为 ADHD 人群设计的「人生观察系统」。不是待办清单，不是日记本，而是一套**生活脚手架**——帮助那些难以自我监督、时间感薄弱、情绪识别模糊的人，通过低摩擦的记录 + 可视化的回看，逐渐看清自己。
+> 「人生观察系统」。不是待办清单，不是日记本，而是一套**生活脚手架**——帮助那些难以自我监督、时间感薄弱、情绪识别模糊的人，通过低摩擦的记录 + 可视化的回看，逐渐看清自己。
 
 方法论底层借用了 DBT（辩证行为疗法）的四项核心技能：观察、情绪调节、痛苦耐受、人际有效性。
 
@@ -12,9 +12,9 @@
 - 🗂️ 四个 Tab：**今日**（打卡/待办）、**时间**（时间块记录）、**随记**（想法/感受/感恩/做梦）、**设置**
 - 🤖 全局 AI 输入框：说一句话，自动归类到对应桶
 - 🌿 奶油 + 森林绿调性、趴姿小猫 mascot、空状态不空文案
-- 🧘 ADHD 友好：不 streak、不审判、不通知轰炸
+- 🧘 不 streak、不审判、不通知轰炸
 
-详见 [`PRODUCT_BRIEF.md`](./PRODUCT_BRIEF.md) / [`PRODUCT_BRIEF_SHORT.md`](./PRODUCT_BRIEF_SHORT.md)
+发版状态见 [`LAUNCH_CHECKLIST.md`](./LAUNCH_CHECKLIST.md)，版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ---
 
@@ -72,7 +72,6 @@ Cmd + R 即可。默认 scheme = `PersonalSystem`。
 ├── Resources/            # 插画 / SVG 素材
 ├── project.yml           # XcodeGen 配置
 ├── Secrets.example.swift # Secrets 模板
-├── PRODUCT_BRIEF.md      # 产品完整简介
 ├── CONTRIBUTING.md       # 协作规范
 ├── VERSIONING.md         # 版本号规范
 └── LAUNCH_CHECKLIST.md   # 上架清单
