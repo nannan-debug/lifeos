@@ -16,6 +16,7 @@
 		263067111C069AA3CD3501D0 /* TurnTypeStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BED040E4ACD1E520E36FFC0 /* TurnTypeStyle.swift */; };
 		2B9D0194685A8DF2C4A5EB3D /* cat-lay.svg in Resources */ = {isa = PBXBuildFile; fileRef = F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */; };
 		3B95585BBBD69166DAA93AC5 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */; };
+		4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */; };
 		52179BAD1191EDAEC8B14521 /* BrainCardWallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */; };
 		59420AFF6BFE0D3477E30E51 /* CreamCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */; };
 		5CB6CCA5FB108360AD248876 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */; };
@@ -69,6 +70,7 @@
 		5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalSystemSmokeTests.swift; sourceTree = "<group>"; };
 		5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSyncService.swift; sourceTree = "<group>"; };
 		7C822E9B099D15F6EE89A2EC /* BrainCardDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainCardDetailView.swift; sourceTree = "<group>"; };
 		7DEF70D944E0A492D3712B2F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		8A1C212C5B39C02449173866 /* ReviewSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewSessionView.swift; sourceTree = "<group>"; };
@@ -96,6 +98,7 @@
 			children = (
 				229491345B70D21BB0902CB5 /* AIParser.swift */,
 				E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */,
+				73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */,
 				8C9E49D2D37FD2539D75275B /* Secrets.swift */,
 			);
 			path = Services;
@@ -305,6 +308,7 @@
 				1BF60C73DA6FD63FF0FD1A4C /* CreamTheme.swift in Sources */,
 				5CCA53188B3EADB00514E2DE /* ExportView.swift in Sources */,
 				0BE52857AA88AC63F2AD3350 /* GlobalAIInputBar.swift in Sources */,
+				4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */,
 				804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */,
 				1282ACB00F9A6EEB2F100955 /* PersonalSystemApp.swift in Sources */,
 				F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */,
@@ -363,14 +367,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.0;
+				MARKETING_VERSION = 1.5.1;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -458,14 +462,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.0;
+				MARKETING_VERSION = 1.5.1;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";

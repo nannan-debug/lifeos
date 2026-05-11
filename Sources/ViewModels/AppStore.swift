@@ -48,6 +48,12 @@ final class AppStore: ObservableObject {
         return formatter
     }()
 
+    private static let healthKitDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     @Published var selectedDate = Date() { didSet { loadForSelectedDate() } }
     @Published var checkItems: [DailyCheckItem] = []
     @Published var timeEntries: [TimeEntry] = []
@@ -63,6 +69,9 @@ final class AppStore: ObservableObject {
     @Published var todaySegment: String = "check"
     @Published var isICloudSyncEnabled: Bool
     @Published var iCloudSyncStatusText: String
+    @Published var isHealthSleepSyncEnabled: Bool
+    @Published var isHealthWorkoutSyncEnabled: Bool
+    @Published var healthSyncStatusText: String
 
     /// 上一轮 AI 追问的上下文：当 AI 返回 needsClarification 时，暂存原文与 hint。
     /// 用户下次提交时自动把两段拼起来发给 AI，避免"9 点到 10 点"这种裸时间丢失上下文。
@@ -72,6 +81,8 @@ final class AppStore: ObservableObject {
     private let authUserIdKey = "auth.userId"
     private let iCloudSyncEnabledKey = "icloud.sync.enabled"
     private let iCloudSnapshotKey = "lifeos.snapshot.v1"
+    private let healthSleepSyncEnabledKey = "healthkit.sync.sleep.enabled"
+    private let healthWorkoutSyncEnabledKey = "healthkit.sync.workout.enabled"
 
     private let scopedDataKeyBases = [
         "ps.checks.byDate",
@@ -125,6 +136,11 @@ final class AppStore: ObservableObject {
         let syncEnabled = defaults.bool(forKey: iCloudSyncEnabledKey)
         isICloudSyncEnabled = syncEnabled
         iCloudSyncStatusText = Self.defaultICloudSyncStatus(isEnabled: syncEnabled)
+        let sleepSyncEnabled = defaults.bool(forKey: healthSleepSyncEnabledKey)
+        let workoutSyncEnabled = defaults.bool(forKey: healthWorkoutSyncEnabledKey)
+        isHealthSleepSyncEnabled = sleepSyncEnabled
+        isHealthWorkoutSyncEnabled = workoutSyncEnabled
+        healthSyncStatusText = Self.defaultHealthSyncStatus(sleepEnabled: sleepSyncEnabled, workoutEnabled: workoutSyncEnabled)
         observeICloudChanges()
         if isICloudSyncEnabled {
             applyICloudSnapshotIfNeeded(reason: .startup)
@@ -134,6 +150,9 @@ final class AppStore: ObservableObject {
         loadTurns()
         loadBrain()
         loadForSelectedDate()
+        if sleepSyncEnabled || workoutSyncEnabled {
+            syncHealthKitNow()
+        }
     }
 
     var currentAuthUserId: String {
@@ -159,6 +178,54 @@ final class AppStore: ObservableObject {
         let pulled = applyICloudSnapshotIfNeeded(reason: .userEnabled)
         if !pulled {
             pushICloudSnapshot(reason: .userEnabled)
+        }
+    }
+
+    func setHealthSleepSyncEnabled(_ enabled: Bool) {
+        isHealthSleepSyncEnabled = enabled
+        defaults.set(enabled, forKey: healthSleepSyncEnabledKey)
+        syncHealthKitNow()
+    }
+
+    func setHealthWorkoutSyncEnabled(_ enabled: Bool) {
+        isHealthWorkoutSyncEnabled = enabled
+        defaults.set(enabled, forKey: healthWorkoutSyncEnabledKey)
+        syncHealthKitNow()
+    }
+
+    func syncHealthKitNow() {
+        let readSleep = isHealthSleepSyncEnabled
+        let readWorkouts = isHealthWorkoutSyncEnabled
+        guard readSleep || readWorkouts else {
+            healthSyncStatusText = Self.defaultHealthSyncStatus(sleepEnabled: false, workoutEnabled: false)
+            return
+        }
+
+        healthSyncStatusText = "正在从 Apple 健康同步..."
+        let endDate = Date()
+        let startDate = Calendar.current.date(byAdding: .day, value: -30, to: endDate) ?? endDate
+
+        Task {
+            do {
+                try await HealthKitSyncService.shared.requestAuthorization(readSleep: readSleep, readWorkouts: readWorkouts)
+                let blocks = try await HealthKitSyncService.shared.fetchTimeBlocks(readSleep: readSleep, readWorkouts: readWorkouts, since: startDate, until: endDate)
+                await MainActor.run {
+                    let imported = self.importHealthKitTimeBlocks(blocks, replacingSleepSince: readSleep ? startDate : nil, until: endDate)
+                    if imported > 0 {
+                        self.healthSyncStatusText = "已同步 \(imported) 条睡眠/运动记录。"
+                    } else {
+                        self.healthSyncStatusText = "已检查 Apple 健康，没有新的记录。"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.healthSyncStatusText = error.localizedDescription
+                    self.isHealthSleepSyncEnabled = false
+                    self.isHealthWorkoutSyncEnabled = false
+                    self.defaults.set(false, forKey: self.healthSleepSyncEnabledKey)
+                    self.defaults.set(false, forKey: self.healthWorkoutSyncEnabledKey)
+                }
+            }
         }
     }
 
@@ -202,6 +269,19 @@ final class AppStore: ObservableObject {
 
     private static func defaultICloudSyncStatus(isEnabled: Bool) -> String {
         isEnabled ? "开启中。会在同一 Apple ID 的设备间同步。" : "关闭。数据只保存在本机。"
+    }
+
+    private static func defaultHealthSyncStatus(sleepEnabled: Bool, workoutEnabled: Bool) -> String {
+        switch (sleepEnabled, workoutEnabled) {
+        case (true, true):
+            return "已开启睡眠和运动同步。"
+        case (true, false):
+            return "已开启睡眠同步。"
+        case (false, true):
+            return "已开启运动同步。"
+        case (false, false):
+            return "关闭时不会读取 Apple 健康。"
+        }
     }
 
     private var iCloudStore: NSUbiquitousKeyValueStore {
@@ -415,6 +495,151 @@ final class AppStore: ObservableObject {
         loadTimeForDate()
         syncICloudAfterLocalChange()
         return nil
+    }
+
+    private func importHealthKitTimeBlocks(_ blocks: [HealthKitTimeBlock], replacingSleepSince sleepStartDate: Date?, until endDate: Date) -> Int {
+        let hasSleepBlocks = blocks.contains { $0.extra[HealthKitTimeEntryKey.kind] == HealthKitTimeEntryKey.kindSleep }
+        if let sleepStartDate, hasSleepBlocks {
+            let exclusiveEnd = Calendar.current.date(byAdding: .day, value: 1, to: endDate) ?? endDate
+            removeHealthKitTimeEntries(kind: HealthKitTimeEntryKey.kindSleep, in: Set(dateKeys(start: sleepStartDate, end: exclusiveEnd)))
+        }
+        var existingSourceIDs = existingHealthKitSourceIDs()
+        var imported = 0
+
+        for block in blocks {
+            guard !existingSourceIDs.contains(block.sourceIdentifier),
+                  insertHealthKitTimeBlock(block) else { continue }
+            existingSourceIDs.insert(block.sourceIdentifier)
+            imported += 1
+        }
+
+        if imported > 0 {
+            loadTimeForDate()
+            syncICloudAfterLocalChange()
+        }
+        return imported
+    }
+
+    private func existingHealthKitSourceIDs() -> Set<String> {
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        var ids = Set<String>()
+        for rows in map.values {
+            for row in rows {
+                let extra = decodeExtra(row["extra"])
+                if extra[HealthKitTimeEntryKey.source] == HealthKitTimeEntryKey.sourceValue,
+                   let sourceID = extra[HealthKitTimeEntryKey.sourceID],
+                   !sourceID.isEmpty {
+                    ids.insert(sourceID)
+                }
+            }
+        }
+        return ids
+    }
+
+    private func removeHealthKitTimeEntries(kind: String, in dateKeys: Set<String>) {
+        guard !dateKeys.isEmpty else { return }
+        var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        var didRemove = false
+
+        for key in dateKeys {
+            guard var rows = map[key] else { continue }
+            let before = rows.count
+            rows.removeAll { row in
+                let extra = decodeExtra(row["extra"])
+                return extra[HealthKitTimeEntryKey.source] == HealthKitTimeEntryKey.sourceValue
+                    && extra[HealthKitTimeEntryKey.kind] == kind
+            }
+            if rows.count != before {
+                map[key] = rows
+                didRemove = true
+            }
+        }
+
+        if didRemove {
+            defaults.set(map, forKey: keyTime)
+        }
+    }
+
+    private func insertHealthKitTimeBlock(_ block: HealthKitTimeBlock) -> Bool {
+        guard block.endDate > block.startDate else { return false }
+
+        var extra = block.extra
+        extra[HealthKitTimeEntryKey.source] = HealthKitTimeEntryKey.sourceValue
+        extra[HealthKitTimeEntryKey.sourceID] = block.sourceIdentifier
+        extra["healthkitStartDate"] = Self.healthKitDateFormatter.string(from: block.startDate)
+        extra["healthkitEndDate"] = Self.healthKitDateFormatter.string(from: block.endDate)
+
+        let startDateKey = dateKey(for: block.startDate)
+        if calendarDate(block.startDate, isSameDayAs: block.endDate) {
+            insertTimeEntry(
+                .init(
+                    name: block.name,
+                    start: Self.clockText(from: minutesSinceMidnight(block.startDate)),
+                    end: Self.clockText(from: minutesSinceMidnight(block.endDate)),
+                    category: block.category,
+                    extra: extra
+                ),
+                dateKey: startDateKey
+            )
+            return true
+        }
+
+        if dateKeyByAddingDays(1, to: startDateKey) == dateKey(for: block.endDate),
+           addCrossDayTimeEntry(
+                name: block.name,
+                startMinutes: minutesSinceMidnight(block.startDate),
+                endMinutes: minutesSinceMidnight(block.endDate),
+                category: block.category,
+                extra: extra,
+                startDateKey: startDateKey
+           ) == nil {
+            return true
+        }
+
+        return insertMultiDayHealthKitTimeBlock(block, extra: extra)
+    }
+
+    private func insertMultiDayHealthKitTimeBlock(_ block: HealthKitTimeBlock, extra: [String: String]) -> Bool {
+        var cursor = block.startDate
+        var segmentIndex = 0
+        var inserted = false
+
+        while cursor < block.endDate {
+            let dayStart = Calendar.current.startOfDay(for: cursor)
+            let nextDayStart = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? block.endDate
+            let segmentEnd = min(nextDayStart, block.endDate)
+            let startMinutes = minutesSinceMidnight(cursor)
+            let endMinutes = Calendar.current.isDate(segmentEnd, inSameDayAs: cursor) ? minutesSinceMidnight(segmentEnd) : 24 * 60
+
+            if endMinutes > startMinutes {
+                var segmentExtra = extra
+                segmentExtra["healthkitSegmentIndex"] = "\(segmentIndex)"
+                insertTimeEntry(
+                    .init(
+                        name: block.name,
+                        start: Self.clockText(from: startMinutes),
+                        end: Self.clockText(from: endMinutes),
+                        category: block.category,
+                        extra: segmentExtra
+                    ),
+                    dateKey: dateKey(for: cursor)
+                )
+                inserted = true
+            }
+
+            segmentIndex += 1
+            cursor = segmentEnd
+        }
+        return inserted
+    }
+
+    private func calendarDate(_ left: Date, isSameDayAs right: Date) -> Bool {
+        Calendar.current.isDate(left, inSameDayAs: right)
+    }
+
+    private func minutesSinceMidnight(_ date: Date) -> Int {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
     }
 
     // MARK: - Task entries

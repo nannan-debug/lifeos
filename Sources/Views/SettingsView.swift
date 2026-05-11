@@ -13,6 +13,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 iCloudSection
+                healthKitSection
 
                 Section("账号信息") {
                     editableProfileRow(title: "昵称", value: displayNickname, field: .nickname)
@@ -109,6 +110,76 @@ struct SettingsView: View {
                 .foregroundStyle(CreamTheme.green)
         }
         .frame(width: 36, height: 36)
+    }
+
+    @ViewBuilder
+    private var healthKitSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { store.isHealthSleepSyncEnabled },
+                set: { store.setHealthSleepSyncEnabled($0) }
+            )) {
+                healthKitRow(
+                    icon: "bed.double",
+                    title: "同步睡眠",
+                    subtitle: "写入时间表的「睡觉」分类"
+                )
+            }
+            .tint(CreamTheme.green)
+
+            Toggle(isOn: Binding(
+                get: { store.isHealthWorkoutSyncEnabled },
+                set: { store.setHealthWorkoutSyncEnabled($0) }
+            )) {
+                healthKitRow(
+                    icon: "figure.run",
+                    title: "同步运动",
+                    subtitle: "写入时间表的「运动」分类"
+                )
+            }
+            .tint(CreamTheme.green)
+
+            Button {
+                store.syncHealthKitNow()
+            } label: {
+                HStack {
+                    Text("立即同步")
+                        .font(.body.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(CreamTheme.green)
+            }
+            .disabled(!store.isHealthSleepSyncEnabled && !store.isHealthWorkoutSyncEnabled)
+        } header: {
+            Text("Apple 健康")
+        } footer: {
+            Text(store.healthSyncStatusText + " 只读取你授权的睡眠和运动，用来补全本地时间记录；不会上传到 AI。")
+        }
+    }
+
+    private func healthKitRow(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(CreamTheme.green.opacity(0.12))
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(CreamTheme.green)
+            }
+            .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(CreamTheme.text)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var displayNickname: String {

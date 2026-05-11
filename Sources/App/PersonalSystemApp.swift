@@ -27,6 +27,7 @@ private struct SplashRootView: View {
                 RootTabView()
             }
         }
+        .dynamicTypeSize(.xSmall)
     }
 }
 

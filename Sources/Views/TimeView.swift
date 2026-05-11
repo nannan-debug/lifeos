@@ -469,6 +469,7 @@ struct TimeView: View {
                 if !calendar.isDate(m, equalTo: displayMonth, toGranularity: .month) {
                     displayMonth = m
                 }
+                resetTimeDraftForDateChange()
             }
             .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
             .onChange(of: store.timeEntries.count) { _ in refreshCalendarMarkers() }
@@ -557,6 +558,31 @@ struct TimeView: View {
 
     private func refreshCalendarMarkers() {
         calendarCategoriesByDateKey = store.timeCategoriesByDateKey(inMonth: displayMonth)
+    }
+
+    private func resetTimeDraftForDateChange() {
+        let fallbackCategory = categoryOptions.first ?? "工作"
+        selectedEntryID = nil
+        dialStartMinutes = 9 * 60
+        dialEndMinutes = 10 * 60
+        dialCategory = fallbackCategory
+        dialName = ""
+        dialNote = ""
+        showOverlapConfirm = false
+        errorMessage = ""
+        showError = false
+        isInputFocused = false
+
+        showAdd = false
+        editTarget = nil
+        name = ""
+        start = ""
+        end = ""
+        let now = Date()
+        startAt = now
+        endAt = Calendar.current.date(byAdding: .minute, value: 30, to: now) ?? now
+        category = fallbackCategory
+        extraValues = [:]
     }
 
     private func startOfMonth(for date: Date) -> Date {

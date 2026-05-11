@@ -19,13 +19,15 @@ targets:
     info:
       path: Sources/App/Info.plist
       properties:
-        CFBundleShortVersionString: 1.5.0
-        CFBundleVersion: "7"
+        CFBundleShortVersionString: 1.5.1
+        CFBundleVersion: "8"
         ITSAppUsesNonExemptEncryption: false
         UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: LifeOS
+        NSHealthShareUsageDescription: 用于把你授权的睡眠和运动时间同步到 LifeOS 时间记录中。
+        NSHealthUpdateUsageDescription: 用于把你授权同步的健康数据转成 LifeOS 本地时间记录。
         UIRequiresFullScreen: true
         UIUserInterfaceStyle: Light
         UISupportedInterfaceOrientations:
@@ -35,8 +37,8 @@ targets:
     settings:
       base:
         PRODUCT_NAME: PersonalSystem
-        MARKETING_VERSION: 1.5.0
-        CURRENT_PROJECT_VERSION: 7
+        MARKETING_VERSION: 1.5.1
+        CURRENT_PROJECT_VERSION: 8
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Sources/App/PersonalSystem.entitlements
         DEVELOPMENT_TEAM: "355RQ5S3DW"

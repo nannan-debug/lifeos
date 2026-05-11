@@ -14,7 +14,7 @@
 - 🌿 奶油 + 森林绿调性、趴姿小猫 mascot、空状态不空文案
 - 🧘 不 streak、不审判、不通知轰炸
 
-详见 [`PRODUCT_BRIEF.md`](./PRODUCT_BRIEF.md) / [`PRODUCT_BRIEF_SHORT.md`](./PRODUCT_BRIEF_SHORT.md)
+发版状态见 [`LAUNCH_CHECKLIST.md`](./LAUNCH_CHECKLIST.md)，版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ---
 
@@ -72,7 +72,6 @@ Cmd + R 即可。默认 scheme = `PersonalSystem`。
 ├── Resources/            # 插画 / SVG 素材
 ├── project.yml           # XcodeGen 配置
 ├── Secrets.example.swift # Secrets 模板
-├── PRODUCT_BRIEF.md      # 产品完整简介
 ├── CONTRIBUTING.md       # 协作规范
 ├── VERSIONING.md         # 版本号规范
 └── LAUNCH_CHECKLIST.md   # 上架清单
