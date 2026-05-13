@@ -26,10 +26,17 @@ struct AIParsedRecord: Decodable {
 struct AIParseResponse: Decodable {
     let records: [AIParsedRecord]
     let needsClarification: String?
+    let rawBody: String?
 
     private enum CodingKeys: String, CodingKey {
         case records
         case needsClarification
+    }
+
+    init(records: [AIParsedRecord], needsClarification: String?, rawBody: String?) {
+        self.records = records
+        self.needsClarification = needsClarification
+        self.rawBody = rawBody
     }
 
     init(from decoder: Decoder) throws {
@@ -37,6 +44,7 @@ struct AIParseResponse: Decodable {
         // DeepSeek 偶尔不返回 records 字段，容错处理成空数组走本地兜底
         self.records = (try? c.decode([AIParsedRecord].self, forKey: .records)) ?? []
         self.needsClarification = try? c.decodeIfPresent(String.self, forKey: .needsClarification)
+        self.rawBody = nil
     }
 }
 
@@ -138,7 +146,12 @@ enum AIParser {
         guard !data.isEmpty else { throw AIParseError.empty }
 
         do {
-            return try JSONDecoder().decode(AIParseResponse.self, from: data)
+            let decoded = try JSONDecoder().decode(AIParseResponse.self, from: data)
+            return AIParseResponse(
+                records: decoded.records,
+                needsClarification: decoded.needsClarification,
+                rawBody: String(data: data, encoding: .utf8) ?? "<binary>"
+            )
         } catch {
             let raw = String(data: data, encoding: .utf8) ?? "<binary>"
             throw AIParseError.decoding("\(error.localizedDescription) · raw=\(raw.prefix(200))")

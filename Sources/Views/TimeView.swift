@@ -31,6 +31,7 @@ struct TimeView: View {
     @State private var dialNote = ""
     @State private var showOverlapConfirm = false
     @State private var selectedEntryID: UUID?
+    @State private var successMessage: String?
     @FocusState private var isInputFocused: Bool
 
     private var dialSegments: [DialSegment] {
@@ -114,6 +115,24 @@ struct TimeView: View {
         selectedEntry?.extra[TimeEntryCrossDayKey.role] == TimeEntryCrossDayKey.roleEnd
     }
 
+    private var newDraftOverlapState: DialSelectionOverlapState {
+        guard selectedEntry == nil else { return .clear }
+        let selectedParts = selectedRangeParts
+        guard !selectedParts.isEmpty else { return .clear }
+
+        var hasOverlap = false
+        for entry in store.timeEntries {
+            let entryParts = rangeParts(for: entry)
+            if rangesMatch(selectedParts, entryParts) {
+                return .duplicate
+            }
+            if rangesOverlap(selectedParts, entryParts) {
+                hasOverlap = true
+            }
+        }
+        return hasOverlap ? .overlap : .clear
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -126,6 +145,7 @@ struct TimeView: View {
                             centerTitle: selectedRangeText,
                             centerSubtitle: dialName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dialCategory : dialName,
                             accent: colorForCategory(dialCategory),
+                            selectionOverlapState: newDraftOverlapState,
                             onSelectSegment: { seg in
                                 selectedEntryID = seg.entryID
                                 dialStartMinutes = seg.startMinutes
@@ -288,19 +308,30 @@ struct TimeView: View {
                             }
                         } else {
                             // ── 新建模式 ──
-                            Button {
-                                saveFromDial()
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text("保存这段时间")
-                                        .fontWeight(.semibold)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button {
+                                    saveNewDraftFromDial()
+                                } label: {
+                                    HStack {
+                                        Image(systemName: newDraftOverlapState == .duplicate ? "checkmark.circle.fill" : "plus.circle.fill")
+                                        Text(newDraftButtonTitle)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .buttonStyle(.borderedProminent)
+                                .tint(newDraftOverlapState == .duplicate ? .secondary : colorForCategory(dialCategory))
+                                .disabled(newDraftOverlapState == .duplicate)
+
+                                if let hint = newDraftOverlapHint {
+                                    Text(hint)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 4)
+                                }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(colorForCategory(dialCategory))
                         }
                     }
                     .onAppear {
@@ -495,12 +526,19 @@ struct TimeView: View {
                 Text(errorMessage)
             }
             .alert("时间重叠", isPresented: $showOverlapConfirm) {
-                Button("取消", role: .cancel) {}
-                Button("继续新建") {
+                Button("先不加", role: .cancel) {}
+                Button("仍然新建") {
                     confirmCreateOverlap()
                 }
             } message: {
-                Text("这段时间已有其他事件，是否还要新建？")
+                Text("这段时间已有记录。要保留原来的记录，并再加一条吗？")
+            }
+            .overlay(alignment: .bottom) {
+                if let successMessage {
+                    successToast(successMessage)
+                        .padding(.bottom, globalInputClearance + 14)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .creamBackground()
@@ -639,7 +677,8 @@ struct TimeView: View {
             return
         }
 
-        selectedEntryID = nil
+        selectedEntryID = store.timeEntries.first?.id
+        showSuccess("已更新")
     }
 
     private func saveFromDial() {
@@ -670,6 +709,43 @@ struct TimeView: View {
         dialName = ""
         dialNote = ""
         selectedEntryID = nil
+    }
+
+    private func saveNewDraftFromDial() {
+        switch newDraftOverlapState {
+        case .duplicate:
+            return
+        case .overlap:
+            showOverlapConfirm = true
+        case .clear:
+            saveFromDial()
+        }
+    }
+
+    private func showSuccess(_ message: String) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            successMessage = message
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            guard successMessage == message else { return }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                successMessage = nil
+            }
+        }
+    }
+
+    private func successToast(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+            Text(message)
+                .font(.subheadline.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Capsule().fill(CreamTheme.green.opacity(0.94)))
+        .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
     }
 
     private func createNewFromEditMode() {
@@ -751,6 +827,57 @@ struct TimeView: View {
             return [(dialStartMinutes, 24 * 60), (0, dialEndMinutes)]
         }
         return []
+    }
+
+    private var newDraftButtonTitle: String {
+        switch newDraftOverlapState {
+        case .duplicate: return "这段已经记录过了"
+        case .overlap: return "仍然新建"
+        case .clear: return "保存这段时间"
+        }
+    }
+
+    private var newDraftOverlapHint: String? {
+        switch newDraftOverlapState {
+        case .duplicate:
+            return "可以点圆盘上的这段来编辑"
+        case .overlap:
+            return "这段时间已有记录，保存前会先确认"
+        case .clear:
+            return nil
+        }
+    }
+
+    private func rangeParts(for entry: TimeEntry) -> [(start: Int, end: Int)] {
+        if isCrossDayEntry(entry),
+           let originalStart = parseMinutes(entry.extra[TimeEntryCrossDayKey.start] ?? ""),
+           let originalEnd = parseMinutes(entry.extra[TimeEntryCrossDayKey.end] ?? "") {
+            return rangeParts(start: originalStart, end: originalEnd)
+        }
+        guard let start = parseMinutes(entry.start),
+              let end = parseMinutes(entry.end) else {
+            return []
+        }
+        return rangeParts(start: start, end: end)
+    }
+
+    private func rangeParts(start: Int, end: Int) -> [(start: Int, end: Int)] {
+        if end > start { return [(start, end)] }
+        if end < start { return [(start, 24 * 60), (0, end)] }
+        return []
+    }
+
+    private func rangesMatch(_ left: [(start: Int, end: Int)], _ right: [(start: Int, end: Int)]) -> Bool {
+        guard left.count == right.count else { return false }
+        return zip(left, right).allSatisfy { $0.start == $1.start && $0.end == $1.end }
+    }
+
+    private func rangesOverlap(_ left: [(start: Int, end: Int)], _ right: [(start: Int, end: Int)]) -> Bool {
+        left.contains { l in
+            right.contains { r in
+                l.start < r.end && r.start < l.end
+            }
+        }
     }
 
     private func durationText(start: Int, end: Int) -> String {
@@ -927,6 +1054,12 @@ private struct DialSegment: Identifiable {
     let isCrossDayContinuation: Bool
 }
 
+private enum DialSelectionOverlapState {
+    case clear
+    case overlap
+    case duplicate
+}
+
 private struct SectorSliceShape: Shape {
     let startProgress: CGFloat
     let endProgress: CGFloat
@@ -954,6 +1087,7 @@ private struct RadialRangePicker: View {
     let centerTitle: String
     let centerSubtitle: String
     let accent: Color
+    let selectionOverlapState: DialSelectionOverlapState
     let onSelectSegment: ((DialSegment) -> Void)?
 
     private let step = 15
@@ -1013,12 +1147,12 @@ private struct RadialRangePicker: View {
 
                 ForEach(Array(selectedParts.enumerated()), id: \.offset) { index, part in
                     SectorSliceShape(startProgress: progress(for: part.start), endProgress: progress(for: part.end))
-                        .fill(accent.opacity(index == 0 ? 0.46 : 0.16))
+                        .fill(selectionFillColor(for: index))
                         .overlay(
                             SectorSliceShape(startProgress: progress(for: part.start), endProgress: progress(for: part.end))
                                 .stroke(
-                                    accent.opacity(index == 0 ? 0 : 0.82),
-                                    style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: index == 0 ? [] : [6, 5])
+                                    selectionStrokeColor(for: index),
+                                    style: StrokeStyle(lineWidth: selectionOverlapState == .clear ? 2 : 2.5, lineCap: .round, dash: selectionStrokeDash(for: index))
                                 )
                         )
                 }
@@ -1026,7 +1160,7 @@ private struct RadialRangePicker: View {
                 ForEach(Array(selectedParts.enumerated()), id: \.offset) { index, part in
                     Circle()
                         .trim(from: progress(for: part.start), to: progress(for: part.end))
-                        .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: index == 0 ? [] : [6, 5]))
+                        .stroke(selectionRingColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: selectionRingDash(for: index)))
                         .rotationEffect(.degrees(-90))
                 }
 
@@ -1063,6 +1197,46 @@ private struct RadialRangePicker: View {
     }
 
     private enum DragTarget { case start, end }
+
+    private var selectionRingColor: Color {
+        switch selectionOverlapState {
+        case .clear: return accent
+        case .overlap: return accent.opacity(0.78)
+        case .duplicate: return .secondary.opacity(0.72)
+        }
+    }
+
+    private func selectionFillColor(for index: Int) -> Color {
+        switch selectionOverlapState {
+        case .clear:
+            return accent.opacity(index == 0 ? 0.46 : 0.16)
+        case .overlap:
+            return accent.opacity(index == 0 ? 0.22 : 0.10)
+        case .duplicate:
+            return Color.secondary.opacity(index == 0 ? 0.16 : 0.08)
+        }
+    }
+
+    private func selectionStrokeColor(for index: Int) -> Color {
+        switch selectionOverlapState {
+        case .clear:
+            return accent.opacity(index == 0 ? 0 : 0.82)
+        case .overlap:
+            return accent.opacity(0.72)
+        case .duplicate:
+            return Color.secondary.opacity(0.65)
+        }
+    }
+
+    private func selectionStrokeDash(for index: Int) -> [CGFloat] {
+        if selectionOverlapState != .clear { return [5, 4] }
+        return index == 0 ? [] : [6, 5]
+    }
+
+    private func selectionRingDash(for index: Int) -> [CGFloat] {
+        if selectionOverlapState != .clear { return [5, 4] }
+        return index == 0 ? [] : [6, 5]
+    }
 
     private func dragGesture(for target: DragTarget, center: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)

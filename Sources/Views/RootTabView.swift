@@ -99,8 +99,8 @@ struct QuickCaptureView: View {
         var result = store.turns.filter {
             Calendar.current.isDate($0.createdAt, inSameDayAs: previewDate)
         }
-        // 时间记录不在随记展示，直接去时间页面查看
-        result = result.filter { $0.targetBucket != "time" }
+        // 时间记录和待办都有自己的主模块，随手记只展示观察类记录。
+        result = result.filter { $0.targetBucket == "inbox" }
         if previewFilter != "全部" {
             result = result.filter { $0.recognizedType == previewFilter }
         }
@@ -264,6 +264,8 @@ struct QuickCaptureView: View {
                                         .font(.caption)
                                         .foregroundStyle(.orange)
                                 }
+
+                                aiConfirmationRow(turn)
                             }
                             .padding(.leading, 10)
                             .padding(.trailing, 12)
@@ -332,6 +334,43 @@ struct QuickCaptureView: View {
     }
 
     // MARK: - Edit Sheet
+    @ViewBuilder
+    private func aiConfirmationRow(_ turn: ConversationTurn) -> some View {
+        if turn.payload["ai_confirmation"] == "task" {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("我先记到随手记了。也可以改成待办。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button {
+                        store.dismissAIConfirmation(id: turn.id)
+                    } label: {
+                        Label("保持", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(CreamTheme.green)
+
+                    Button {
+                        let err = store.confirmTurnAsTask(id: turn.id)
+                        if let err {
+                            errorMessage = err
+                            showError = true
+                        }
+                    } label: {
+                        Label("改成待办", systemImage: "checklist")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(Color(red: 0.353, green: 0.498, blue: 0.608))
+                }
+            }
+            .padding(10)
+            .background(TurnTypeStyle.bgColor(for: turn.recognizedType).opacity(0.65))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
     private var editSheet: some View {
         NavigationStack {
             Form {

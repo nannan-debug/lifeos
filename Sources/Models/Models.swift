@@ -96,3 +96,16 @@ struct AIFailureLog: Identifiable, Codable, Equatable {
     var errorType: String
     var message: String
 }
+
+struct AIDebugLog: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var createdAt: Date
+    var input: String
+    var currentDate: String
+    var currentTime: String
+    var rawResponse: String
+    var needsClarification: String
+    var recordsSummary: [String]
+    var commitSummary: [String]
+    var errorMessage: String
+}

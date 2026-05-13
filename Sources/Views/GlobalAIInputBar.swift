@@ -31,17 +31,6 @@ struct GlobalAIInputBar: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // 展开态下点击外部空白区域收起
-            if isExpanded {
-                Color.black.opacity(0.001)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        collapse()
-                    }
-                    .transition(.opacity)
-            }
-
             VStack(alignment: .trailing, spacing: 8) {
                 // 没有输入上下文时才使用独立提示条；有上下文时提示放在输入框底部。
                 if isExpanded, submittedPromptPreview == nil, store.pendingClarification == nil, let msg = store.aiDebugMessage {
