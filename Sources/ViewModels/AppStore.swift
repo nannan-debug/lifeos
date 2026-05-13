@@ -42,6 +42,11 @@ final class AppStore: ObservableObject {
         case remoteChange
     }
 
+    private struct TimeCommitResult {
+        let id: UUID?
+        let dateKey: String?
+    }
+
     private static let dateKeyFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -61,6 +66,7 @@ final class AppStore: ObservableObject {
     @Published var turns: [ConversationTurn] = []
     @Published var brainCards: [BrainCard] = []
     @Published var aiFailureLogs: [AIFailureLog] = []
+    @Published var aiDebugLogs: [AIDebugLog] = []
 
     // MARK: - AI dispatch state (全局输入框用)
     @Published var isAILoading: Bool = false
@@ -115,6 +121,7 @@ final class AppStore: ObservableObject {
     private var keyTurns: String { scopedKey("ps.turns") }
     private var keyBrain: String { scopedKey("ps.brain") }
     private var keyAIFailures: String { scopedKey("ps.ai.failures") }
+    private var keyAIDebugLogs: String { scopedKey("ps.ai.debug.logs") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
@@ -153,6 +160,7 @@ final class AppStore: ObservableObject {
         loadTurns()
         loadBrain()
         loadAIFailureLogs()
+        loadAIDebugLogs()
         loadForSelectedDate()
         if sleepSyncEnabled || workoutSyncEnabled {
             syncHealthKitNow()
@@ -240,12 +248,13 @@ final class AppStore: ObservableObject {
         loadTurns()
         loadBrain()
         loadAIFailureLogs()
+        loadAIDebugLogs()
         loadForSelectedDate()
     }
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
-        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
+        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyAIDebugLogs, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
         // 旧版本随手记镜像（已废弃）一并兜底清掉
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
         checkItems = []
@@ -254,6 +263,7 @@ final class AppStore: ObservableObject {
         turns = []
         brainCards = []
         aiFailureLogs = []
+        aiDebugLogs = []
         syncICloudAfterLocalChange()
     }
 
@@ -998,6 +1008,23 @@ final class AppStore: ObservableObject {
         saveTurns()
     }
 
+    func dismissAIConfirmation(id: UUID) {
+        guard let idx = turns.firstIndex(where: { $0.id == id }) else { return }
+        turns[idx].payload.removeValue(forKey: "ai_confirmation")
+        turns[idx].payload.removeValue(forKey: "ai_confirmation_reason")
+        saveTurns()
+    }
+
+    func confirmTurnAsTask(id: UUID) -> String? {
+        guard let turn = turns.first(where: { $0.id == id }) else { return "记录不存在" }
+        return reviseCommittedTurn(
+            id: id,
+            recognizedType: "待办",
+            targetBucket: "task",
+            text: TurnTypeStyle.displayText(for: turn)
+        )
+    }
+
     @discardableResult
     func commitTurn(id: UUID) -> String? {
         guard let idx = turns.firstIndex(where: { $0.id == id }) else { return "记录不存在" }
@@ -1017,15 +1044,26 @@ final class AppStore: ObservableObject {
                 saveTurns()
                 return turns[idx].fixHint
             }
-            if let err = addTimeEntry(name: name, start: start, end: end, category: category, extra: note.isEmpty ? [:] : ["备注": note]) {
+            let dateKey = normalizedAIRecordDateKey(turn.payload["date"])
+            let result = commitTimeEntryFromTurn(
+                name: name,
+                start: start,
+                end: end,
+                category: category,
+                note: note,
+                dateKey: dateKey
+            )
+            if let err = result.error {
                 turns[idx].status = "needs_fix"
                 turns[idx].fixHint = err
                 saveTurns()
                 return err
             }
-            if let inserted = timeEntries.first {
-                turn.payload["committedTimeEntryID"] = inserted.id.uuidString
-                turn.payload["committedDateKey"] = selectedDateKey
+            if let insertedID = result.inserted.id {
+                turn.payload["committedTimeEntryID"] = insertedID.uuidString
+            }
+            if let committedDateKey = result.inserted.dateKey {
+                turn.payload["committedDateKey"] = committedDateKey
             }
 
         case "task":
@@ -1061,6 +1099,46 @@ final class AppStore: ObservableObject {
         turns[idx] = turn
         saveTurns()
         return nil
+    }
+
+    private func commitTimeEntryFromTurn(name: String, start: String, end: String, category: String, note: String, dateKey: String? = nil) -> (error: String?, inserted: TimeCommitResult) {
+        let extra = note.isEmpty ? [:] : ["备注": note]
+        guard let startMinutes = Self.clockMinutes(from: start, allow24: false),
+              let endMinutes = Self.clockMinutes(from: end, allow24: true) else {
+            let err = addTimeEntry(name: name, start: start, end: end, category: category, extra: extra)
+            return (err, TimeCommitResult(id: err == nil ? timeEntries.first?.id : nil, dateKey: err == nil ? selectedDateKey : nil))
+        }
+        if endMinutes == startMinutes {
+            return ("结束时间必须晚于开始时间", TimeCommitResult(id: nil, dateKey: nil))
+        }
+        let targetDateKey = dateKey ?? selectedDateKey
+        if endMinutes < startMinutes {
+            let result = addCrossDayTimeEntryForDate(
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                startMinutes: startMinutes,
+                endMinutes: endMinutes,
+                category: category,
+                extra: extra,
+                startDateKey: targetDateKey
+            )
+            if result.error == nil {
+                loadTimeForDate()
+                syncICloudAfterLocalChange()
+            }
+            return result
+        }
+        if targetDateKey == selectedDateKey {
+            let err = addTimeEntry(name: name, start: start, end: end, category: category, extra: extra)
+            return (err, TimeCommitResult(id: err == nil ? timeEntries.first?.id : nil, dateKey: err == nil ? selectedDateKey : nil))
+        }
+
+        if let err = validateTimeInput(name: name, start: start, end: end) {
+            return (err, TimeCommitResult(id: nil, dateKey: nil))
+        }
+        let entry = TimeEntry(name: name.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end, category: category, extra: extra)
+        insertTimeEntry(entry, dateKey: targetDateKey)
+        syncICloudAfterLocalChange()
+        return (nil, TimeCommitResult(id: entry.id, dateKey: targetDateKey))
     }
 
     func removeTurn(id: UUID) {
@@ -1157,11 +1235,26 @@ final class AppStore: ObservableObject {
     }
 
     private func addCrossDayTimeEntry(name: String, startMinutes: Int, endMinutes: Int, category: String, extra: [String: String], startDateKey: String) -> String? {
+        addCrossDayTimeEntryForDate(
+            name: name,
+            startMinutes: startMinutes,
+            endMinutes: endMinutes,
+            category: category,
+            extra: extra,
+            startDateKey: startDateKey
+        ).error
+    }
+
+    private func addCrossDayTimeEntryForDate(name: String, startMinutes: Int, endMinutes: Int, category: String, extra: [String: String], startDateKey: String) -> (error: String?, inserted: TimeCommitResult) {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanName.isEmpty {
+            return ("事件名称不能为空", TimeCommitResult(id: nil, dateKey: nil))
+        }
         guard (0..<24 * 60).contains(startMinutes), (0..<24 * 60).contains(endMinutes), endMinutes < startMinutes else {
-            return "跨日时间需要从今天晚些时候延续到明天"
+            return ("跨日时间需要从今天晚些时候延续到明天", TimeCommitResult(id: nil, dateKey: nil))
         }
         guard let endDateKey = dateKeyByAddingDays(1, to: startDateKey) else {
-            return "无法计算次日日期"
+            return ("无法计算次日日期", TimeCommitResult(id: nil, dateKey: nil))
         }
 
         let groupID = UUID().uuidString
@@ -1179,15 +1272,15 @@ final class AppStore: ObservableObject {
         var endExtra = startExtra
         endExtra[TimeEntryCrossDayKey.role] = TimeEntryCrossDayKey.roleEnd
 
-        insertTimeEntry(
-            .init(name: name, start: startText, end: "24:00", category: category, extra: startExtra),
-            dateKey: startDateKey
-        )
-        insertTimeEntry(
-            .init(name: name, start: "00:00", end: endText, category: category, extra: endExtra),
-            dateKey: endDateKey
-        )
-        return nil
+        let startEntry = TimeEntry(name: cleanName, start: startText, end: "24:00", category: category, extra: startExtra)
+        insertTimeEntry(startEntry, dateKey: startDateKey)
+        if endMinutes > 0 {
+            insertTimeEntry(
+                .init(name: cleanName, start: "00:00", end: endText, category: category, extra: endExtra),
+                dateKey: endDateKey
+            )
+        }
+        return (nil, TimeCommitResult(id: startEntry.id, dateKey: startDateKey))
     }
 
     private func insertTimeEntry(_ entry: TimeEntry, dateKey: String) {
@@ -1233,7 +1326,15 @@ final class AppStore: ObservableObject {
     private func loadTimeForDate() {
         let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
         let day = map[selectedDateKey] ?? []
-        timeEntries = day.map(timeEntry(from:))
+        timeEntries = day
+            .map(timeEntry(from:))
+            .filter { !isZeroLengthCrossDayContinuation($0) }
+    }
+
+    private func isZeroLengthCrossDayContinuation(_ entry: TimeEntry) -> Bool {
+        entry.extra[TimeEntryCrossDayKey.role] == TimeEntryCrossDayKey.roleEnd
+            && entry.start == "00:00"
+            && entry.end == "00:00"
     }
 
     private func saveTimeForDate() {
@@ -1464,6 +1565,88 @@ final class AppStore: ObservableObject {
         encoder.dateEncodingStrategy = .secondsSince1970
         guard let data = try? encoder.encode(aiFailureLogs) else { return }
         defaults.set(data, forKey: keyAIFailures)
+    }
+
+    @discardableResult
+    private func recordAIDebugLog(
+        input: String,
+        currentDate: String,
+        currentTime: String,
+        rawResponse: String?,
+        records: [AIParsedRecord],
+        needsClarification: String?,
+        errorMessage: String = ""
+    ) -> UUID {
+        let log = AIDebugLog(
+            createdAt: Date(),
+            input: input.trimmingCharacters(in: .whitespacesAndNewlines),
+            currentDate: currentDate,
+            currentTime: currentTime,
+            rawResponse: rawResponse ?? "",
+            needsClarification: needsClarification ?? "",
+            recordsSummary: records.map { aiDebugRecordSummary($0, rawText: input) },
+            commitSummary: [],
+            errorMessage: errorMessage
+        )
+        aiDebugLogs.insert(log, at: 0)
+        trimAndSaveAIDebugLogs()
+        return log.id
+    }
+
+    private func appendAIDebugCommit(logID: UUID?, summary: String) {
+        guard let logID, let idx = aiDebugLogs.firstIndex(where: { $0.id == logID }) else { return }
+        aiDebugLogs[idx].commitSummary.append(summary)
+        trimAndSaveAIDebugLogs()
+    }
+
+    func clearAIDebugLogs() {
+        aiDebugLogs = []
+        defaults.removeObject(forKey: keyAIDebugLogs)
+    }
+
+    private func loadAIDebugLogs() {
+        guard let data = defaults.data(forKey: keyAIDebugLogs) else {
+            aiDebugLogs = []
+            return
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        aiDebugLogs = (try? decoder.decode([AIDebugLog].self, from: data)) ?? []
+    }
+
+    private func trimAndSaveAIDebugLogs() {
+        if aiDebugLogs.count > 20 {
+            aiDebugLogs = Array(aiDebugLogs.prefix(20))
+        }
+        saveAIDebugLogs()
+    }
+
+    private func saveAIDebugLogs() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(aiDebugLogs) else { return }
+        defaults.set(data, forKey: keyAIDebugLogs)
+    }
+
+    private func aiDebugRecordSummary(_ rec: AIParsedRecord, rawText: String) -> String {
+        let appBucket = aiDebugAppBucket(for: rec, rawText: rawText)
+        let title = rec.eventName ?? rec.title ?? ""
+        let type = rec.type ?? rec.module ?? ""
+        let date = rec.date ?? ""
+        let start = rec.startTime ?? ""
+        let end = rec.endTime ?? ""
+        let detail = rec.details ?? rec.notes ?? ""
+        return [
+            "aiBucket=\(rec.bucket)",
+            appBucket == rec.bucket ? "" : "appBucket=\(appBucket)",
+            title.isEmpty ? "" : "title=\(title)",
+            type.isEmpty ? "" : "type=\(type)",
+            date.isEmpty ? "" : "date=\(date)",
+            start.isEmpty && end.isEmpty ? "" : "time=\(start)-\(end)",
+            detail.isEmpty ? "" : "detail=\(detail)"
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " · ")
     }
 
     private func encodeDerivatives(_ arr: [TurnDerivative]) -> String {
@@ -1930,6 +2113,16 @@ final class AppStore: ObservableObject {
         return dateKey(for: shifted)
     }
 
+    private func normalizedAIRecordDateKey(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        if Self.dateKeyFormatter.date(from: clean) != nil {
+            return clean
+        }
+        return nil
+    }
+
     private func dateKeys(start: Date, end: Date) -> [String] {
         dates(start: start, end: end).map { dateKey(for: $0) }
     }
@@ -2003,6 +2196,14 @@ final class AppStore: ObservableObject {
                 let resp = try await AIParser.parse(text: effectiveText, currentDate: today, currentTime: now)
                 await MainActor.run {
                     self.isAILoading = false
+                    let debugLogID = self.recordAIDebugLog(
+                        input: effectiveText,
+                        currentDate: today,
+                        currentTime: now,
+                        rawResponse: resp.rawBody,
+                        records: resp.records,
+                        needsClarification: resp.needsClarification
+                    )
                     if resp.records.isEmpty {
                         if let hint = resp.needsClarification {
                             // 保存上下文，等用户补充后再次提交时合并
@@ -2011,10 +2212,12 @@ final class AppStore: ObservableObject {
                                 hint: hint
                             )
                             self.aiDebugMessage = "还差一点：\(hint)"
+                            self.appendAIDebugCommit(logID: debugLogID, summary: "needsClarification=\(hint)")
                         } else {
                             self.pendingClarification = nil
                             self.aiDebugMessage = "AI 未识别内容 · 已走本地兜底"
                             self.dispatchLocalFallback(effectiveText, markSource: "local")
+                            self.appendAIDebugCommit(logID: debugLogID, summary: "AI 无 records，已走本地兜底")
                         }
                         return
                     }
@@ -2024,14 +2227,24 @@ final class AppStore: ObservableObject {
                     // （"今天感恩 A，感恩 B，感恩 C" 不应该变成 3 条独立记录）
                     let mergedRecords = self.mergeSameTypeNoteRecords(resp.records)
                     for rec in mergedRecords {
-                        self.commitAIRecord(rec, rawText: effectiveText)
+                        self.commitAIRecord(rec, rawText: effectiveText, debugLogID: debugLogID)
                     }
                 }
             } catch {
                 await MainActor.run {
                     self.isAILoading = false
                     self.aiDebugMessage = "AI 调用失败：\(error.localizedDescription.prefix(80)) · 已走本地兜底"
+                    let debugLogID = self.recordAIDebugLog(
+                        input: effectiveText,
+                        currentDate: today,
+                        currentTime: now,
+                        rawResponse: nil,
+                        records: [],
+                        needsClarification: nil,
+                        errorMessage: error.localizedDescription
+                    )
                     self.dispatchLocalFallback(effectiveText, markSource: "local")
+                    self.appendAIDebugCommit(logID: debugLogID, summary: "AI 调用失败，已走本地兜底：\(error.localizedDescription)")
                 }
             }
         }
@@ -2106,33 +2319,56 @@ final class AppStore: ObservableObject {
     }
 
     /// 把一条 AI 返回的 record 按 bucket 落库
-    private func commitAIRecord(_ rec: AIParsedRecord, rawText: String) {
+    private func commitAIRecord(_ rec: AIParsedRecord, rawText: String, debugLogID: UUID? = nil) {
         let normalizedBucket = normalizedAIBucket(for: rec, rawText: rawText)
         switch normalizedBucket {
         case "time":
+            guard rawTextHasExplicitTimeRange(rawText) else {
+                let type = aiKindForRawText(rawText)
+                let result = dispatchAndCommit(
+                    rawText: rawText,
+                    recognizedType: type,
+                    targetBucket: "inbox",
+                    confidence: 0.84,
+                    payload: [
+                        "title": aiFallbackTitle(rawText),
+                        "detail": rawText,
+                        "status": "待处理",
+                        "ai_source": "ai_vague_time_fallback"
+                    ],
+                    moodScore: rec.mood,
+                    feelingTags: rec.feelings ?? []
+                )
+                appendAIDebugCommit(logID: debugLogID, summary: "time skipped · 没有明确起止时间，转入 inbox/\(type) · \(result)")
+                return
+            }
             let start = rec.startTime ?? ""
             let end = rec.endTime ?? ""
             let category = rec.module ?? "✨ 其他"
             let rawName = rec.eventName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let name = rawName.isEmpty ? category : rawName
             let note = rec.notes ?? ""
-            dispatchAndCommit(
+            let result = dispatchAndCommit(
                 rawText: rawText,
                 recognizedType: "时间记录",
                 targetBucket: "time",
                 confidence: 0.95,
                 payload: [
                     "name": name, "start": start, "end": end,
-                    "category": category, "note": note, "ai_source": "ai"
+                    "category": category, "note": note,
+                    "date": rec.date ?? "",
+                    "ai_source": "ai"
                 ]
             )
+            let dateSummary = normalizedAIRecordDateKey(rec.date) ?? selectedDateKey
+            appendAIDebugCommit(logID: debugLogID, summary: "time · \(dateSummary) · \(name) · \(start)-\(end) · \(result)")
 
         case "task":
             let title = rec.title?.isEmpty == false ? rec.title! : (rec.eventName ?? aiFallbackTitle(rawText))
             let detail = rec.details ?? rec.notes ?? ""
             let start = rec.startTime ?? ""
             let end = rec.endTime ?? ""
-            dispatchAndCommit(
+            let result = dispatchAndCommit(
                 rawText: rawText,
                 recognizedType: "待办",
                 targetBucket: "task",
@@ -2148,29 +2384,38 @@ final class AppStore: ObservableObject {
                     "ai_source": "ai"
                 ]
             )
+            appendAIDebugCommit(logID: debugLogID, summary: "task · \(title) · \(result)")
 
         default:
             let rawType = rec.type ?? "想法"
             let type = aiIntentOptions.contains(rawType) ? rawType : "想法"
             let title = rec.title?.isEmpty == false ? rec.title! : aiFallbackTitle(rawText)
-            let detail = rec.details ?? rawText
-            dispatchAndCommit(
+            let detail = type == "感受" ? rawText : (rec.details ?? rawText)
+            var payload = [
+                "title": title,
+                "detail": detail,
+                "status": "待处理",
+                "ai_source": "ai"
+            ]
+            if rec.bucket == "task" {
+                payload["ai_confirmation"] = "task"
+                payload["ai_confirmation_reason"] = "AI 觉得它像待办，但原文没有明确待办信号"
+            }
+            let result = dispatchAndCommit(
                 rawText: rawText,
                 recognizedType: type,
                 targetBucket: "inbox",
                 confidence: 0.95,
-                payload: [
-                    "title": title, "detail": detail,
-                    "status": "待处理", "ai_source": "ai"
-                ],
+                payload: payload,
                 moodScore: rec.mood,
                 feelingTags: rec.feelings ?? []
             )
+            appendAIDebugCommit(logID: debugLogID, summary: "inbox/\(type) · \(title) · \(result)")
         }
     }
 
     private func normalizedAIBucket(for rec: AIParsedRecord, rawText: String) -> String {
-        if rec.bucket == "task" { return rec.bucket }
+        if rec.bucket == "time" { return "time" }
         let candidates = [
             rawText,
             rec.title,
@@ -2180,7 +2425,18 @@ final class AppStore: ObservableObject {
         ]
         .compactMap { $0 }
         .joined(separator: "\n")
+        if rec.bucket == "task" {
+            return TaskIntentDetector.looksLikeTask(candidates) ? "task" : "note"
+        }
+        if rec.bucket == "note" {
+            return "note"
+        }
         return TaskIntentDetector.looksLikeTask(candidates) ? "task" : rec.bucket
+    }
+
+    private func aiDebugAppBucket(for rec: AIParsedRecord, rawText: String) -> String {
+        let bucket = normalizedAIBucket(for: rec, rawText: rawText)
+        return bucket == "note" ? "inbox" : bucket
     }
 
     /// 本地关键词兜底
@@ -2247,6 +2503,7 @@ final class AppStore: ObservableObject {
     }
 
     /// addTurnDraft + commitTurn 的薄包装，失败写入 aiDebugMessage
+    @discardableResult
     private func dispatchAndCommit(
         rawText: String,
         recognizedType: String,
@@ -2255,7 +2512,11 @@ final class AppStore: ObservableObject {
         payload: [String: String],
         moodScore: Int? = nil,
         feelingTags: [String] = []
-    ) {
+    ) -> String {
+        guard !isRecentDuplicateTurn(rawText: rawText, recognizedType: recognizedType, targetBucket: targetBucket, payload: payload) else {
+            aiDebugMessage = nil
+            return "跳过：最近 180 秒内已有同类重复记录"
+        }
         guard let id = addTurnDraft(
             rawText: rawText,
             recognizedType: recognizedType,
@@ -2266,10 +2527,45 @@ final class AppStore: ObservableObject {
             fixHint: "",
             moodScore: moodScore,
             feelingTags: feelingTags
-        ) else { return }
+        ) else { return "跳过：原文为空，未创建 turn" }
         if let err = commitTurn(id: id) {
             aiDebugMessage = err
+            return "失败：\(err)"
         }
+        return "已提交 turn=\(id.uuidString)"
+    }
+
+    private func isRecentDuplicateTurn(rawText: String, recognizedType: String, targetBucket: String, payload: [String: String]) -> Bool {
+        let key = duplicateComparableText(rawText: rawText, targetBucket: targetBucket, payload: payload)
+        guard !key.isEmpty else { return false }
+        let now = Date()
+        return turns.contains { turn in
+            guard turn.recognizedType == recognizedType,
+                  turn.targetBucket == targetBucket,
+                  now.timeIntervalSince(turn.createdAt) <= 180 else {
+                return false
+            }
+            return duplicateComparableText(rawText: turn.rawText, targetBucket: turn.targetBucket, payload: turn.payload) == key
+        }
+    }
+
+    private func duplicateComparableText(rawText: String, targetBucket: String, payload: [String: String]) -> String {
+        let value: String
+        if targetBucket == "time" {
+            value = [
+                payload["name"] ?? "",
+                payload["start"] ?? "",
+                payload["end"] ?? "",
+                payload["category"] ?? ""
+            ].joined(separator: "|")
+        } else {
+            let detail = payload["detail"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            value = detail.isEmpty ? rawText : detail
+        }
+        return value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: " ", with: "")
     }
 
     private func aiNormalizeKind(_ raw: String) -> String {
@@ -2277,6 +2573,37 @@ final class AppStore: ObservableObject {
         if raw.contains("感受") || raw.contains("情绪") || raw.contains("Emotion") { return "感受" }
         if raw.contains("梦") { return "做梦" }
         return "想法"
+    }
+
+    private func aiKindForRawText(_ raw: String) -> String {
+        if raw.contains("感恩") || raw.contains("感谢") { return "感恩" }
+        if raw.contains("梦") { return "做梦" }
+        if raw.contains("感觉") || raw.contains("感到") || raw.contains("状态") || raw.contains("丧") || raw.contains("焦虑") || raw.contains("难过") || raw.contains("开心") || raw.contains("疲惫") {
+            return "感受"
+        }
+        return "想法"
+    }
+
+    private func rawTextHasExplicitTimeRange(_ text: String) -> Bool {
+        let normalized = text
+            .replacingOccurrences(of: "：", with: ":")
+            .replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: "－", with: "-")
+            .replacingOccurrences(of: "～", with: "~")
+        let clockTokenPattern = #"\d{1,2}\s*:\s*\d{1,2}|\d{1,2}\s*点(?:半|多)?|\d{1,2}\s*时(?:半|多)?"#
+        let connectorPattern = #"到|至|-|~|开始|从"#
+        let tokenCount = regexMatchCount(pattern: clockTokenPattern, in: normalized)
+        return tokenCount >= 2 && regexContains(pattern: connectorPattern, in: normalized)
+    }
+
+    private func regexContains(pattern: String, in text: String) -> Bool {
+        regexMatchCount(pattern: pattern, in: text) > 0
+    }
+
+    private func regexMatchCount(pattern: String, in text: String) -> Int {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return 0 }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.numberOfMatches(in: text, range: range)
     }
 
     private func aiDefaultBucket(for type: String) -> String {

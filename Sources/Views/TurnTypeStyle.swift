@@ -49,6 +49,7 @@ enum TurnTypeStyle {
             if let note = turn.payload["note"], !note.isEmpty { return note }
             return turn.payload["name"] ?? turn.rawText
         }
-        return turn.payload["detail"] ?? turn.rawText
+        let detail = turn.payload["detail"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? turn.rawText : detail
     }
 }

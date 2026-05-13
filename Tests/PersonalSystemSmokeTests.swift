@@ -79,8 +79,9 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
     func testTaskIntentDetectorRecognizesActionableTodo() {
         XCTAssertTrue(TaskIntentDetector.looksLikeTask("记得明天买猫粮"))
-        XCTAssertTrue(TaskIntentDetector.looksLikeTask("帮我周五提交报销"))
         XCTAssertTrue(TaskIntentDetector.looksLikeTask("待办：预约体检"))
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask("请帮我加入待办，明天提交报销"))
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask("这是我的 todo list：预约体检"))
     }
 
     func testTaskIntentDetectorKeepsFeelingsAsObservation() {
@@ -106,10 +107,120 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
     func testTaskIntentDetectorRecognizesHelpMeRememberTodo() {
         let text = "帮我记一条，图图想要看 Claude 的视频"
-        XCTAssertTrue(TaskIntentDetector.looksLikeTask(text))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask(text))
         let result = QuickCaptureParser.parse(text)
-        XCTAssertEqual(result.plan.tasks.count, 1)
-        XCTAssertEqual(result.plan.inboxEntries.count, 0)
+        XCTAssertEqual(result.plan.tasks.count, 0)
+        XCTAssertEqual(result.plan.inboxEntries.count, 1)
+    }
+
+    func testTaskIntentDetectorRespectsExplicitInboxRouting() {
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("你就帮我记录在想法里头"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("帮我记到感受：越打越虚，停不下来"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("帮我放到随手记，今天状态又好起来了"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("帮我周五提交报销"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("希望找一些更年轻有活力的团队"))
+        XCTAssertFalse(TaskIntentDetector.looksLikeTask("突然发现还是不喜欢老登的团队"))
+    }
+
+    func testTurnDisplayTextFallsBackWhenDetailIsEmpty() {
+        let turn = ConversationTurn(
+            id: UUID(),
+            createdAt: Date(),
+            rawText: "越打越虚，停不下来",
+            recognizedType: "待办",
+            targetBucket: "task",
+            confidence: 1.0,
+            status: "committed",
+            payload: ["detail": ""],
+            fixHint: "",
+            moodScore: nil,
+            feelingTags: [],
+            reviewStatus: "pending"
+        )
+        XCTAssertEqual(TurnTypeStyle.displayText(for: turn), "越打越虚，停不下来")
+    }
+
+    func testCommitAITimeTurnSupportsCrossDayRange() {
+        let store = AppStore()
+        guard let turnID = store.addTurnDraft(
+            rawText: "从晚上 7 点开始打游戏到 12 点多",
+            recognizedType: "时间记录",
+            targetBucket: "time",
+            confidence: 1.0,
+            payload: [
+                "name": "打游戏",
+                "start": "19:00",
+                "end": "00:30",
+                "category": "娱乐",
+                "note": "从晚上 7 点开始打游戏到 12 点多"
+            ]
+        ) else {
+            return XCTFail("addTurnDraft failed")
+        }
+
+        XCTAssertNil(store.commitTurn(id: turnID))
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries.first?.start, "19:00")
+        XCTAssertEqual(store.timeEntries.first?.end, "24:00")
+    }
+
+    func testCommitAITimeTurnUsesPayloadDate() {
+        let store = AppStore()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        store.selectedDate = formatter.date(from: "2026-05-13")!
+
+        guard let turnID = store.addTurnDraft(
+            rawText: "昨天 10 点到 10 点半面试",
+            recognizedType: "时间记录",
+            targetBucket: "time",
+            confidence: 1.0,
+            payload: [
+                "name": "面试",
+                "start": "10:00",
+                "end": "10:30",
+                "category": "工作",
+                "date": "2026-05-12"
+            ]
+        ) else {
+            return XCTFail("addTurnDraft failed")
+        }
+
+        XCTAssertNil(store.commitTurn(id: turnID))
+        XCTAssertEqual(store.timeEntries.count, 0)
+
+        store.selectedDate = formatter.date(from: "2026-05-12")!
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries.first?.name, "面试")
+        XCTAssertEqual(store.timeEntries.first?.start, "10:00")
+        XCTAssertEqual(store.timeEntries.first?.end, "10:30")
+    }
+
+    func testLowConfidenceTaskCanBeConfirmedLater() {
+        let store = AppStore()
+        guard let turnID = store.addTurnDraft(
+            rawText: "希望找一些更年轻有活力的团队",
+            recognizedType: "想法",
+            targetBucket: "inbox",
+            confidence: 0.95,
+            payload: [
+                "title": "团队偏好",
+                "detail": "希望找一些更年轻有活力的团队",
+                "status": "待处理",
+                "ai_confirmation": "task"
+            ]
+        ) else {
+            return XCTFail("addTurnDraft failed")
+        }
+
+        XCTAssertNil(store.commitTurn(id: turnID))
+        XCTAssertEqual(store.tasks.count, 0)
+        XCTAssertEqual(store.turns.first?.targetBucket, "inbox")
+        XCTAssertEqual(store.turns.first?.payload["ai_confirmation"], "task")
+
+        XCTAssertNil(store.confirmTurnAsTask(id: turnID))
+        XCTAssertEqual(store.tasks.count, 1)
+        XCTAssertEqual(store.turns.first?.targetBucket, "task")
     }
 
     // MARK: - Brain card store API
@@ -471,6 +582,23 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(store.timeEntries[0].end, "06:00")
         XCTAssertEqual(store.timeEntries[0].extra[TimeEntryCrossDayKey.groupID], groupID)
         XCTAssertEqual(store.timeEntries[0].extra[TimeEntryCrossDayKey.role], TimeEntryCrossDayKey.roleEnd)
+    }
+
+    func testCrossDayTimeEntryEndingAtMidnightDoesNotCreateZeroLengthNextDayEntry() {
+        let store = AppStore()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let startDate = cal.date(from: DateComponents(year: 2026, month: 5, day: 10, hour: 12))!
+        let nextDate = cal.date(byAdding: .day, value: 1, to: startDate)!
+
+        store.selectedDate = startDate
+        XCTAssertNil(store.addTimeEntryFromDial(name: "打游戏", startMinutes: 21 * 60 + 30, endMinutes: 0, category: "娱乐"))
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries[0].start, "21:30")
+        XCTAssertEqual(store.timeEntries[0].end, "24:00")
+
+        store.selectedDate = nextDate
+        XCTAssertTrue(store.timeEntries.isEmpty)
     }
 
     func testCrossDayTimeEntryCountsFullDurationInWeeklyReview() {

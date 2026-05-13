@@ -41,6 +41,32 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    NavigationLink {
+                        AIDebugLogListView()
+                            .environmentObject(store)
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(CreamTheme.green.opacity(0.12))
+                                Image(systemName: "stethoscope")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(CreamTheme.green)
+                            }
+                            .frame(width: 36, height: 36)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("AI 调试记录")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(CreamTheme.text)
+                                Text("仅本机保存最近 20 条")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 Section {
@@ -254,5 +280,176 @@ private enum ProfileField: String, Identifiable {
         switch self {
         case .nickname: return "昵称"
         }
+    }
+}
+
+private struct AIDebugLogListView: View {
+    @EnvironmentObject var store: AppStore
+    @State private var showClearConfirm = false
+
+    var body: some View {
+        List {
+            Section {
+                if store.aiDebugLogs.isEmpty {
+                    Text("还没有 AI 调试记录")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.aiDebugLogs) { log in
+                        NavigationLink {
+                            AIDebugLogDetailView(log: log)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(log.input)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(CreamTheme.text)
+                                    .lineLimit(2)
+                                HStack(spacing: 8) {
+                                    Text(log.createdAt, style: .time)
+                                    Text("\(log.recordsSummary.count) records")
+                                    if !log.errorMessage.isEmpty {
+                                        Text("失败")
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            } header: {
+                Text("最近记录")
+            } footer: {
+                Text("包含原始输入和 AI 返回内容，只保存在当前设备。")
+            }
+        }
+        .navigationTitle("AI 调试记录")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("清空") { showClearConfirm = true }
+                    .disabled(store.aiDebugLogs.isEmpty)
+            }
+        }
+        .confirmationDialog("清空本机 AI 调试记录？", isPresented: $showClearConfirm, titleVisibility: .visible) {
+            Button("清空", role: .destructive) {
+                store.clearAIDebugLogs()
+            }
+            Button("取消", role: .cancel) {}
+        }
+        .listStyle(.insetGrouped)
+        .tint(CreamTheme.green)
+        .scrollContentBackground(.hidden)
+        .background(CreamTheme.glassStrong)
+    }
+}
+
+private struct AIDebugLogDetailView: View {
+    let log: AIDebugLog
+    @State private var exportFileURL: URL?
+
+    var body: some View {
+        List {
+            detailSection("输入", rows: [log.input])
+            detailSection("请求上下文", rows: [
+                "currentDate=\(log.currentDate)",
+                "currentTime=\(log.currentTime)"
+            ])
+            detailSection("AI records", rows: emptyFallback(log.recordsSummary))
+            detailSection("App commit", rows: emptyFallback(log.commitSummary))
+            if !log.needsClarification.isEmpty {
+                detailSection("追问", rows: [log.needsClarification])
+            }
+            if !log.errorMessage.isEmpty {
+                detailSection("错误", rows: [log.errorMessage])
+            }
+            detailSection("Raw JSON", rows: [log.rawResponse.isEmpty ? "无" : log.rawResponse])
+        }
+        .navigationTitle(log.createdAt.formatted(date: .abbreviated, time: .shortened))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let exportFileURL {
+                    ShareLink(item: exportFileURL) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                } else {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onAppear {
+            exportFileURL = makeMarkdownExportFile()
+        }
+        .listStyle(.insetGrouped)
+        .tint(CreamTheme.green)
+        .scrollContentBackground(.hidden)
+        .background(CreamTheme.glassStrong)
+    }
+
+    private func makeMarkdownExportFile() -> URL? {
+        let filename = "lifeos-ai-debug-\(Self.filenameTimestamp.string(from: log.createdAt)).md"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            try markdownExportText.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private var markdownExportText: String {
+        """
+        # LifeOS AI Debug Log
+
+        - Created At: \(log.createdAt.formatted(date: .complete, time: .complete))
+        - Current Date: \(log.currentDate)
+        - Current Time: \(log.currentTime)
+
+        ## Input
+        \(log.input)
+
+        ## AI Records
+        \(joined(log.recordsSummary))
+
+        ## App Commit
+        \(joined(log.commitSummary))
+
+        ## Needs Clarification
+        \(log.needsClarification.isEmpty ? "无" : log.needsClarification)
+
+        ## Error
+        \(log.errorMessage.isEmpty ? "无" : log.errorMessage)
+
+        ## Raw JSON
+        ```json
+        \(log.rawResponse.isEmpty ? "无" : log.rawResponse)
+        ```
+        """
+    }
+
+    private static let filenameTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private func detailSection(_ title: String, rows: [String]) -> some View {
+        Section(title) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                Text(row)
+                    .font(.footnote)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private func emptyFallback(_ rows: [String]) -> [String] {
+        rows.isEmpty ? ["无"] : rows
+    }
+
+    private func joined(_ rows: [String]) -> String {
+        rows.isEmpty ? "无" : rows.map { "- \($0)" }.joined(separator: "\n")
     }
 }

@@ -5,6 +5,10 @@ enum TaskIntentDetector {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return false }
 
+        if containsAny(value, explicitInboxRoutingSignals) {
+            return false
+        }
+
         if containsAny(value, hardTaskSignals) { return true }
 
         let hasObservationSignal = containsAny(value, observationSignals)
@@ -15,13 +19,20 @@ enum TaskIntentDetector {
         if hasObservationSignal && !hasNeedSignal && !hasScheduleSignal {
             return false
         }
-        if hasScheduleSignal && hasActionSignal { return true }
+        if hasScheduleSignal && hasActionSignal && hasNeedSignal { return true }
         if hasNeedSignal && (hasActionSignal || !hasObservationSignal) { return true }
         return false
     }
 
     private static let hardTaskSignals = [
-        "待办", "todo", "to-do", "提醒我", "记得", "帮我"
+        "待办", "todo", "to-do", "提醒我", "记得", "加入待办", "加到待办", "添加到待办", "这是我的 todo list"
+    ]
+
+    private static let explicitInboxRoutingSignals = [
+        "记录在想法", "记到想法", "放到想法", "存到想法",
+        "记录在感受", "记到感受", "放到感受", "存到感受",
+        "记录在随手记", "记到随手记", "放到随手记", "存到随手记",
+        "记录成想法", "记录成感受"
     ]
 
     private static let needSignals = [
