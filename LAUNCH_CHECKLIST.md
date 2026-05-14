@@ -374,6 +374,13 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.5.2` 已 push（指向 `940579f`）。
 - ✅ GitHub Release [v1.5.2](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.2) 已发布。
 
+### 6.7 1.6.0 上架准备（进行中）
+
+- ✅ 发版 PR 已准备：`1.6.0 (build 10)` 版本号 / changelog / AI 识别治理 / 每日状态提醒 / 待办完成历史 / 时间圆盘新建交互 / App Store 更新提示（[#46](https://github.com/nannan-debug/lifeos/pull/46)）。
+- ⏳ PR #46 待合入 `main`。
+- ⏳ PR 合入后，用户手动 Archive / Upload 到 App Store Connect。
+- ⏳ ASC 创建 `1.6.0` 新版本，填写 What's New，选择 build 10，并 Submit to App Review。
+
 ---
 
 ## 7. 仓库内与上架最相关的文件
@@ -394,4 +401,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) / 1.5.2 (build 9, 2026-05-13) 均已在 App Store 在线。`v1.5.2` tag 和 GitHub Release 已完成；当前没有进行中的发版周期。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) / 1.5.2 (build 9, 2026-05-13) 均已在 App Store 在线。`v1.5.2` tag 和 GitHub Release 已完成；当前正在准备 `1.6.0 (build 10)` 发版 PR #46，尚未 Archive / Upload / Submit。**
