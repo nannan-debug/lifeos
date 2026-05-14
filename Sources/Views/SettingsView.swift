@@ -3,8 +3,12 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: AppStore
     @AppStorage("auth.user") private var user = ""
+    @AppStorage(DailyStateReminderService.enabledKey) private var dailyReminderEnabled = false
+    @AppStorage(DailyStateReminderService.hourKey) private var dailyReminderHour = DailyStateReminderService.defaultHour
+    @AppStorage(DailyStateReminderService.minuteKey) private var dailyReminderMinute = DailyStateReminderService.defaultMinute
 
     @State private var showDeleteConfirm = false
+    @State private var reminderStatusText = "只在本机提醒，不上传你的记录。"
 
     @State private var editingField: ProfileField?
     @State private var draftValue = ""
@@ -14,6 +18,7 @@ struct SettingsView: View {
             List {
                 iCloudSection
                 healthKitSection
+                dailyReminderSection
 
                 Section("账号信息") {
                     editableProfileRow(title: "昵称", value: displayNickname, field: .nickname)
@@ -196,6 +201,90 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var dailyReminderSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { dailyReminderEnabled },
+                set: { enabled in
+                    dailyReminderEnabled = enabled
+                    if enabled {
+                        scheduleDailyReminder()
+                    } else {
+                        DailyStateReminderService.cancel()
+                        reminderStatusText = "已关闭。你可以随时再打开。"
+                    }
+                }
+            )) {
+                reminderRow
+            }
+            .tint(CreamTheme.green)
+
+            if dailyReminderEnabled {
+                DatePicker(
+                    "提醒时间",
+                    selection: Binding(
+                        get: {
+                            DailyStateReminderService.reminderDate(hour: dailyReminderHour, minute: dailyReminderMinute)
+                        },
+                        set: { newDate in
+                            let value = DailyStateReminderService.hourAndMinute(from: newDate)
+                            dailyReminderHour = value.hour
+                            dailyReminderMinute = value.minute
+                            scheduleDailyReminder()
+                        }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+            }
+        } header: {
+            Text("提醒")
+        } footer: {
+            Text(reminderStatusText)
+        }
+    }
+
+    private var reminderRow: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(CreamTheme.green.opacity(0.12))
+                Image(systemName: "bell.badge")
+                    .font(.system(size: 17, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(CreamTheme.green)
+            }
+            .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("每日状态提醒")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(CreamTheme.text)
+                Text("到点轻轻提醒你记录一下今天")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func scheduleDailyReminder() {
+        let hour = dailyReminderHour
+        let minute = dailyReminderMinute
+        reminderStatusText = "正在设置本机提醒..."
+        Task {
+            let granted = await DailyStateReminderService.schedule(hour: hour, minute: minute)
+            await MainActor.run {
+                if granted {
+                    dailyReminderEnabled = true
+                    reminderStatusText = "每天 \(String(format: "%02d:%02d", hour, minute)) 提醒。只在本机提醒，不上传你的记录。"
+                } else {
+                    dailyReminderEnabled = false
+                    reminderStatusText = "没有通知权限。可以在系统设置里为 LifeOS 打开通知。"
+                }
+            }
+        }
+    }
+
     private var displayNickname: String {
         let clean = user.trimmingCharacters(in: .whitespacesAndNewlines)
         if !clean.isEmpty { return clean }
@@ -286,6 +375,9 @@ private enum ProfileField: String, Identifiable {
 private struct AIDebugLogListView: View {
     @EnvironmentObject var store: AppStore
     @State private var showClearConfirm = false
+    @State private var isSelecting = false
+    @State private var selectedLogIDs: Set<UUID> = []
+    @State private var batchExportFileURL: URL?
 
     var body: some View {
         List {
@@ -295,30 +387,27 @@ private struct AIDebugLogListView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(store.aiDebugLogs) { log in
-                        NavigationLink {
-                            AIDebugLogDetailView(log: log)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(log.input)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(CreamTheme.text)
-                                    .lineLimit(2)
-                                HStack(spacing: 8) {
-                                    Text(log.createdAt, style: .time)
-                                    Text("\(log.recordsSummary.count) records")
-                                    if !log.errorMessage.isEmpty {
-                                        Text("失败")
-                                    }
+                        if isSelecting {
+                            Button {
+                                toggleSelection(for: log)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    selectionIcon(for: log)
+                                    logRow(log)
                                 }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                             }
-                            .padding(.vertical, 4)
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink {
+                                AIDebugLogDetailView(log: log)
+                            } label: {
+                                logRow(log)
+                            }
                         }
                     }
                 }
             } header: {
-                Text("最近记录")
+                Text(isSelecting ? "已选择 \(selectedLogIDs.count) 条" : "最近记录")
             } footer: {
                 Text("包含原始输入和 AI 返回内容，只保存在当前设备。")
             }
@@ -326,21 +415,98 @@ private struct AIDebugLogListView: View {
         .navigationTitle("AI 调试记录")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if !store.aiDebugLogs.isEmpty {
+                    Button(isSelecting ? "取消" : "选择") {
+                        setSelectionMode(!isSelecting)
+                    }
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
-                Button("清空") { showClearConfirm = true }
-                    .disabled(store.aiDebugLogs.isEmpty)
+                if isSelecting {
+                    if let batchExportFileURL, !selectedLogIDs.isEmpty {
+                        ShareLink(item: batchExportFileURL) {
+                            Text("导出")
+                        }
+                    } else {
+                        Button("导出") {}
+                            .disabled(true)
+                    }
+                } else {
+                    Button("清空") { showClearConfirm = true }
+                        .disabled(store.aiDebugLogs.isEmpty)
+                }
             }
         }
         .confirmationDialog("清空本机 AI 调试记录？", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("清空", role: .destructive) {
                 store.clearAIDebugLogs()
+                setSelectionMode(false)
             }
             Button("取消", role: .cancel) {}
+        }
+        .onChange(of: selectedLogIDs) { _ in
+            refreshBatchExportFile()
+        }
+        .onChange(of: store.aiDebugLogs) { logs in
+            selectedLogIDs = selectedLogIDs.intersection(Set(logs.map(\.id)))
+            refreshBatchExportFile()
         }
         .listStyle(.insetGrouped)
         .tint(CreamTheme.green)
         .scrollContentBackground(.hidden)
         .background(CreamTheme.glassStrong)
+    }
+
+    private var selectedLogs: [AIDebugLog] {
+        store.aiDebugLogs.filter { selectedLogIDs.contains($0.id) }
+    }
+
+    private func setSelectionMode(_ enabled: Bool) {
+        isSelecting = enabled
+        if !enabled {
+            selectedLogIDs = []
+            batchExportFileURL = nil
+        }
+    }
+
+    private func toggleSelection(for log: AIDebugLog) {
+        if selectedLogIDs.contains(log.id) {
+            selectedLogIDs.remove(log.id)
+        } else {
+            selectedLogIDs.insert(log.id)
+        }
+    }
+
+    private func refreshBatchExportFile() {
+        batchExportFileURL = AIDebugLogMarkdownExporter.makeFile(for: selectedLogs)
+    }
+
+    private func logRow(_ log: AIDebugLog) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(log.input)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(CreamTheme.text)
+                .lineLimit(2)
+            HStack(spacing: 8) {
+                Text(log.createdAt, style: .time)
+                Text("\(log.recordsSummary.count) records")
+                if !log.errorMessage.isEmpty {
+                    Text("失败")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func selectionIcon(for log: AIDebugLog) -> some View {
+        Image(systemName: selectedLogIDs.contains(log.id) ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(selectedLogIDs.contains(log.id) ? CreamTheme.green : .secondary)
+            .frame(width: 28, height: 28)
     }
 }
 
@@ -389,51 +555,8 @@ private struct AIDebugLogDetailView: View {
     }
 
     private func makeMarkdownExportFile() -> URL? {
-        let filename = "lifeos-ai-debug-\(Self.filenameTimestamp.string(from: log.createdAt)).md"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        do {
-            try markdownExportText.write(to: url, atomically: true, encoding: .utf8)
-            return url
-        } catch {
-            return nil
-        }
+        AIDebugLogMarkdownExporter.makeFile(for: [log])
     }
-
-    private var markdownExportText: String {
-        """
-        # LifeOS AI Debug Log
-
-        - Created At: \(log.createdAt.formatted(date: .complete, time: .complete))
-        - Current Date: \(log.currentDate)
-        - Current Time: \(log.currentTime)
-
-        ## Input
-        \(log.input)
-
-        ## AI Records
-        \(joined(log.recordsSummary))
-
-        ## App Commit
-        \(joined(log.commitSummary))
-
-        ## Needs Clarification
-        \(log.needsClarification.isEmpty ? "无" : log.needsClarification)
-
-        ## Error
-        \(log.errorMessage.isEmpty ? "无" : log.errorMessage)
-
-        ## Raw JSON
-        ```json
-        \(log.rawResponse.isEmpty ? "无" : log.rawResponse)
-        ```
-        """
-    }
-
-    private static let filenameTimestamp: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter
-    }()
 
     private func detailSection(_ title: String, rows: [String]) -> some View {
         Section(title) {
@@ -448,8 +571,85 @@ private struct AIDebugLogDetailView: View {
     private func emptyFallback(_ rows: [String]) -> [String] {
         rows.isEmpty ? ["无"] : rows
     }
+}
 
-    private func joined(_ rows: [String]) -> String {
+private enum AIDebugLogMarkdownExporter {
+    static func makeFile(for logs: [AIDebugLog]) -> URL? {
+        guard !logs.isEmpty else { return nil }
+        let filename: String
+        if logs.count == 1, let log = logs.first {
+            filename = "lifeos-ai-debug-\(filenameTimestamp.string(from: log.createdAt)).md"
+        } else {
+            filename = "lifeos-ai-debug-\(filenameTimestamp.string(from: Date()))-\(logs.count).md"
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            try markdown(for: logs).write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    static func markdown(for logs: [AIDebugLog]) -> String {
+        guard !logs.isEmpty else { return "" }
+        if logs.count == 1, let log = logs.first {
+            return """
+            # LifeOS AI Debug Log
+
+            \(markdownBody(for: log, headingLevel: 2))
+            """
+        }
+
+        return """
+        # LifeOS AI Debug Logs
+
+        - Exported At: \(Date().formatted(date: .complete, time: .complete))
+        - Count: \(logs.count)
+
+        \(logs.map { markdownBody(for: $0, headingLevel: 2) }.joined(separator: "\n\n---\n\n"))
+        """
+    }
+
+    private static let filenameTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private static func markdownBody(for log: AIDebugLog, headingLevel: Int) -> String {
+        let h = String(repeating: "#", count: headingLevel)
+        let childH = String(repeating: "#", count: headingLevel + 1)
+        return """
+        \(h) \(log.createdAt.formatted(date: .abbreviated, time: .shortened))
+
+        - Created At: \(log.createdAt.formatted(date: .complete, time: .complete))
+        - Current Date: \(log.currentDate)
+        - Current Time: \(log.currentTime)
+
+        \(childH) Input
+        \(log.input)
+
+        \(childH) AI Records
+        \(joined(log.recordsSummary))
+
+        \(childH) App Commit
+        \(joined(log.commitSummary))
+
+        \(childH) Needs Clarification
+        \(log.needsClarification.isEmpty ? "无" : log.needsClarification)
+
+        \(childH) Error
+        \(log.errorMessage.isEmpty ? "无" : log.errorMessage)
+
+        \(childH) Raw JSON
+        ```json
+        \(log.rawResponse.isEmpty ? "无" : log.rawResponse)
+        ```
+        """
+    }
+
+    private static func joined(_ rows: [String]) -> String {
         rows.isEmpty ? "无" : rows.map { "- \($0)" }.joined(separator: "\n")
     }
 }
