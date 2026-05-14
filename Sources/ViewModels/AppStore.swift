@@ -59,6 +59,12 @@ final class AppStore: ObservableObject {
         return formatter
     }()
 
+    private static let taskDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     @Published var selectedDate = Date() { didSet { loadForSelectedDate() } }
     @Published var checkItems: [DailyCheckItem] = []
     @Published var timeEntries: [TimeEntry] = []
@@ -667,6 +673,7 @@ final class AppStore: ObservableObject {
         priority: String = "",
         dueDate: String = "",
         date: String? = nil,
+        completedAt: Date? = nil,
         isAllDay: Bool = true,
         startTime: String = "",
         endTime: String = "",
@@ -683,6 +690,7 @@ final class AppStore: ObservableObject {
             priority: priority,
             dueDate: dueDate,
             date: date ?? selectedDateKey,
+            completedAt: status == "已完成" ? (completedAt ?? Date()) : nil,
             isAllDay: isAllDay,
             startTime: startTime,
             endTime: endTime,
@@ -724,7 +732,13 @@ final class AppStore: ObservableObject {
     /// 切换任务完成状态：待办 ↔ 已完成
     func toggleTask(_ task: TaskEntry) {
         guard let idx = tasks.firstIndex(where: { $0.id == task.id }) else { return }
-        tasks[idx].status = (tasks[idx].status == "已完成") ? "待办" : "已完成"
+        if tasks[idx].status == "已完成" {
+            tasks[idx].status = "待办"
+            tasks[idx].completedAt = nil
+        } else {
+            tasks[idx].status = "已完成"
+            tasks[idx].completedAt = Date()
+        }
         saveTasks()
     }
 
@@ -732,6 +746,25 @@ final class AppStore: ObservableObject {
     func removeTask(id: UUID) {
         tasks.removeAll { $0.id == id }
         saveTasks()
+    }
+
+    @discardableResult
+    func clearCompletedTasks(olderThan cutoff: Date?) -> Int {
+        let beforeCount = tasks.count
+        tasks.removeAll { task in
+            guard task.status == "已完成" else { return false }
+            guard let cutoff else { return true }
+            return (task.completedAt ?? dateFromKey(task.date) ?? .distantPast) < cutoff
+        }
+        let removedCount = beforeCount - tasks.count
+        if removedCount > 0 {
+            saveTasks()
+        }
+        return removedCount
+    }
+
+    private func dateFromKey(_ key: String) -> Date? {
+        Self.dateKeyFormatter.date(from: key)
     }
 
     func removeTimeEntry(id: UUID) {
@@ -1387,6 +1420,7 @@ final class AppStore: ObservableObject {
                 priority: $0["priority"] ?? "",
                 dueDate: $0["dueDate"] ?? "",
                 date: $0["date"] ?? currentDateKey(),
+                completedAt: Self.taskDateFormatter.date(from: $0["completedAt"] ?? ""),
                 isAllDay: isAllDay,
                 startTime: $0["startTime"] ?? "",
                 endTime: $0["endTime"] ?? "",
@@ -1407,6 +1441,7 @@ final class AppStore: ObservableObject {
                 "priority": $0.priority,
                 "dueDate": $0.dueDate,
                 "date": $0.date,
+                "completedAt": $0.completedAt.map(Self.taskDateFormatter.string(from:)) ?? "",
                 "isAllDay": $0.isAllDay ? "1" : "0",
                 "startTime": $0.startTime,
                 "endTime": $0.endTime,
@@ -1629,7 +1664,7 @@ final class AppStore: ObservableObject {
     }
 
     private func aiDebugRecordSummary(_ rec: AIParsedRecord, rawText: String) -> String {
-        let appBucket = aiDebugAppBucket(for: rec, rawText: rawText)
+        let appBucket = AIRoutingPolicy.appBucket(for: rec, rawText: rawText)
         let title = rec.eventName ?? rec.title ?? ""
         let type = rec.type ?? rec.module ?? ""
         let date = rec.date ?? ""
@@ -1681,7 +1716,17 @@ final class AppStore: ObservableObject {
             "selectedDate": selectedDateKey,
             "checkItems": checkItems.map { ["title": $0.title, "done": $0.done] },
             "timeEntries": timeEntries.map { ["name": $0.name, "start": $0.start, "end": $0.end, "category": $0.category, "extra": $0.extra] },
-            "tasks": tasks.map { ["title": $0.title, "detail": $0.detail, "status": $0.status, "priority": $0.priority, "dueDate": $0.dueDate, "date": $0.date] }
+            "tasks": tasks.map {
+                [
+                    "title": $0.title,
+                    "detail": $0.detail,
+                    "status": $0.status,
+                    "priority": $0.priority,
+                    "dueDate": $0.dueDate,
+                    "date": $0.date,
+                    "completedAt": $0.completedAt.map(Self.taskDateFormatter.string(from:)) ?? ""
+                ]
+            }
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]),
               let str = String(data: data, encoding: .utf8) else { return "{}" }
@@ -1747,7 +1792,8 @@ final class AppStore: ObservableObject {
                     "status": status.isEmpty ? "待办" : status,
                     "priority": "",
                     "dueDate": "",
-                    "date": date
+                    "date": date,
+                    "completedAt": status == "已完成" ? Self.taskDateFormatter.string(from: Date()) : ""
                 ]
                 taskArr.insert(item, at: 0)
                 importedCount += 1
@@ -2167,9 +2213,6 @@ final class AppStore: ObservableObject {
     // MARK: - AI Dispatch Pipeline
     // 全局 AI 输入框调用这些方法；原本住在 QuickCaptureView 的私有实现搬进来。
 
-    /// 已知的记录类型（note bucket 内部的子类型）
-    private let aiIntentOptions = ["想法", "感受", "感恩", "做梦"]
-
     /// 入口：AI 优先，失败降级本地关键词。调用方只需传原文。
     func submitAIText(_ text: String) {
         let cleanInput = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2320,28 +2363,9 @@ final class AppStore: ObservableObject {
 
     /// 把一条 AI 返回的 record 按 bucket 落库
     private func commitAIRecord(_ rec: AIParsedRecord, rawText: String, debugLogID: UUID? = nil) {
-        let normalizedBucket = normalizedAIBucket(for: rec, rawText: rawText)
-        switch normalizedBucket {
-        case "time":
-            guard rawTextHasExplicitTimeRange(rawText) else {
-                let type = aiKindForRawText(rawText)
-                let result = dispatchAndCommit(
-                    rawText: rawText,
-                    recognizedType: type,
-                    targetBucket: "inbox",
-                    confidence: 0.84,
-                    payload: [
-                        "title": aiFallbackTitle(rawText),
-                        "detail": rawText,
-                        "status": "待处理",
-                        "ai_source": "ai_vague_time_fallback"
-                    ],
-                    moodScore: rec.mood,
-                    feelingTags: rec.feelings ?? []
-                )
-                appendAIDebugCommit(logID: debugLogID, summary: "time skipped · 没有明确起止时间，转入 inbox/\(type) · \(result)")
-                return
-            }
+        let routing = AIRoutingPolicy.decision(for: rec, rawText: rawText)
+        switch routing.action {
+        case .time:
             let start = rec.startTime ?? ""
             let end = rec.endTime ?? ""
             let category = rec.module ?? "✨ 其他"
@@ -2350,29 +2374,29 @@ final class AppStore: ObservableObject {
             let note = rec.notes ?? ""
             let result = dispatchAndCommit(
                 rawText: rawText,
-                recognizedType: "时间记录",
-                targetBucket: "time",
-                confidence: 0.95,
+                recognizedType: routing.recognizedType,
+                targetBucket: routing.targetBucket,
+                confidence: routing.confidence,
                 payload: [
                     "name": name, "start": start, "end": end,
                     "category": category, "note": note,
                     "date": rec.date ?? "",
-                    "ai_source": "ai"
+                    "ai_source": routing.source
                 ]
             )
             let dateSummary = normalizedAIRecordDateKey(rec.date) ?? selectedDateKey
             appendAIDebugCommit(logID: debugLogID, summary: "time · \(dateSummary) · \(name) · \(start)-\(end) · \(result)")
 
-        case "task":
+        case .task:
             let title = rec.title?.isEmpty == false ? rec.title! : (rec.eventName ?? aiFallbackTitle(rawText))
             let detail = rec.details ?? rec.notes ?? ""
             let start = rec.startTime ?? ""
             let end = rec.endTime ?? ""
             let result = dispatchAndCommit(
                 rawText: rawText,
-                recognizedType: "待办",
-                targetBucket: "task",
-                confidence: 0.95,
+                recognizedType: routing.recognizedType,
+                targetBucket: routing.targetBucket,
+                confidence: routing.confidence,
                 payload: [
                     "title": title,
                     "detail": detail,
@@ -2381,62 +2405,40 @@ final class AppStore: ObservableObject {
                     "isAllDay": start.isEmpty ? "1" : "0",
                     "startTime": start,
                     "endTime": end,
-                    "ai_source": "ai"
+                    "ai_source": routing.source
                 ]
             )
             appendAIDebugCommit(logID: debugLogID, summary: "task · \(title) · \(result)")
 
-        default:
-            let rawType = rec.type ?? "想法"
-            let type = aiIntentOptions.contains(rawType) ? rawType : "想法"
+        case .inbox:
+            let type = routing.recognizedType
             let title = rec.title?.isEmpty == false ? rec.title! : aiFallbackTitle(rawText)
             let detail = type == "感受" ? rawText : (rec.details ?? rawText)
             var payload = [
                 "title": title,
                 "detail": detail,
                 "status": "待处理",
-                "ai_source": "ai"
+                "ai_source": routing.source
             ]
-            if rec.bucket == "task" {
+            if routing.needsTaskConfirmation {
                 payload["ai_confirmation"] = "task"
                 payload["ai_confirmation_reason"] = "AI 觉得它像待办，但原文没有明确待办信号"
             }
             let result = dispatchAndCommit(
                 rawText: rawText,
                 recognizedType: type,
-                targetBucket: "inbox",
-                confidence: 0.95,
+                targetBucket: routing.targetBucket,
+                confidence: routing.confidence,
                 payload: payload,
                 moodScore: rec.mood,
                 feelingTags: rec.feelings ?? []
             )
             appendAIDebugCommit(logID: debugLogID, summary: "inbox/\(type) · \(title) · \(result)")
-        }
-    }
 
-    private func normalizedAIBucket(for rec: AIParsedRecord, rawText: String) -> String {
-        if rec.bucket == "time" { return "time" }
-        let candidates = [
-            rawText,
-            rec.title,
-            rec.details,
-            rec.eventName,
-            rec.notes
-        ]
-        .compactMap { $0 }
-        .joined(separator: "\n")
-        if rec.bucket == "task" {
-            return TaskIntentDetector.looksLikeTask(candidates) ? "task" : "note"
+        case .skip:
+            appendAIDebugCommit(logID: debugLogID, summary: "time skipped · \(routing.skipReason)")
+            return
         }
-        if rec.bucket == "note" {
-            return "note"
-        }
-        return TaskIntentDetector.looksLikeTask(candidates) ? "task" : rec.bucket
-    }
-
-    private func aiDebugAppBucket(for rec: AIParsedRecord, rawText: String) -> String {
-        let bucket = normalizedAIBucket(for: rec, rawText: rawText)
-        return bucket == "note" ? "inbox" : bucket
     }
 
     /// 本地关键词兜底
@@ -2573,37 +2575,6 @@ final class AppStore: ObservableObject {
         if raw.contains("感受") || raw.contains("情绪") || raw.contains("Emotion") { return "感受" }
         if raw.contains("梦") { return "做梦" }
         return "想法"
-    }
-
-    private func aiKindForRawText(_ raw: String) -> String {
-        if raw.contains("感恩") || raw.contains("感谢") { return "感恩" }
-        if raw.contains("梦") { return "做梦" }
-        if raw.contains("感觉") || raw.contains("感到") || raw.contains("状态") || raw.contains("丧") || raw.contains("焦虑") || raw.contains("难过") || raw.contains("开心") || raw.contains("疲惫") {
-            return "感受"
-        }
-        return "想法"
-    }
-
-    private func rawTextHasExplicitTimeRange(_ text: String) -> Bool {
-        let normalized = text
-            .replacingOccurrences(of: "：", with: ":")
-            .replacingOccurrences(of: "—", with: "-")
-            .replacingOccurrences(of: "－", with: "-")
-            .replacingOccurrences(of: "～", with: "~")
-        let clockTokenPattern = #"\d{1,2}\s*:\s*\d{1,2}|\d{1,2}\s*点(?:半|多)?|\d{1,2}\s*时(?:半|多)?"#
-        let connectorPattern = #"到|至|-|~|开始|从"#
-        let tokenCount = regexMatchCount(pattern: clockTokenPattern, in: normalized)
-        return tokenCount >= 2 && regexContains(pattern: connectorPattern, in: normalized)
-    }
-
-    private func regexContains(pattern: String, in text: String) -> Bool {
-        regexMatchCount(pattern: pattern, in: text) > 0
-    }
-
-    private func regexMatchCount(pattern: String, in text: String) -> Int {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return 0 }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        return regex.numberOfMatches(in: text, range: range)
     }
 
     private func aiDefaultBucket(for type: String) -> String {

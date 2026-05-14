@@ -75,6 +75,62 @@ final class PersonalSystemSmokeTests: XCTestCase {
         )
         XCTAssertNil(task.sourceNoteId)
         XCTAssertEqual(task.sourceExcerpt, "")
+        XCTAssertNil(task.completedAt)
+    }
+
+    func testTaskToggleRecordsAndClearsCompletionTime() {
+        let store = AppStore()
+        let title = "completion-time-\(UUID().uuidString)"
+        guard let id = store.addTask(title: title) else {
+            return XCTFail("addTask failed")
+        }
+        defer { store.removeTask(id: id) }
+
+        guard let pending = store.tasks.first(where: { $0.id == id }) else {
+            return XCTFail("task missing after add")
+        }
+        XCTAssertNil(pending.completedAt)
+
+        store.toggleTask(pending)
+        guard let completed = store.tasks.first(where: { $0.id == id }) else {
+            return XCTFail("task missing after complete")
+        }
+        XCTAssertEqual(completed.status, "已完成")
+        XCTAssertNotNil(completed.completedAt)
+
+        store.toggleTask(completed)
+        guard let reopened = store.tasks.first(where: { $0.id == id }) else {
+            return XCTFail("task missing after reopen")
+        }
+        XCTAssertEqual(reopened.status, "待办")
+        XCTAssertNil(reopened.completedAt)
+    }
+
+    func testClearCompletedTasksKeepsRecentAndPendingTasks() {
+        let store = AppStore()
+        let calendar = Calendar.current
+        let oldDate = calendar.date(byAdding: .day, value: -45, to: Date())!
+        let recentDate = calendar.date(byAdding: .day, value: -5, to: Date())!
+        let cutoff = calendar.date(byAdding: .month, value: -1, to: Date())!
+
+        let prefix = "clear-completed-\(UUID().uuidString)"
+        guard let oldID = store.addTask(title: "\(prefix)-old", status: "已完成", completedAt: oldDate),
+              let recentID = store.addTask(title: "\(prefix)-recent", status: "已完成", completedAt: recentDate),
+              let pendingID = store.addTask(title: "\(prefix)-pending") else {
+            return XCTFail("addTask failed")
+        }
+        defer {
+            store.removeTask(id: oldID)
+            store.removeTask(id: recentID)
+            store.removeTask(id: pendingID)
+        }
+
+        let removed = store.clearCompletedTasks(olderThan: cutoff)
+
+        XCTAssertGreaterThanOrEqual(removed, 1)
+        XCTAssertNil(store.tasks.first(where: { $0.id == oldID }))
+        XCTAssertNotNil(store.tasks.first(where: { $0.id == recentID }))
+        XCTAssertNotNil(store.tasks.first(where: { $0.id == pendingID }))
     }
 
     func testTaskIntentDetectorRecognizesActionableTodo() {
@@ -82,6 +138,14 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertTrue(TaskIntentDetector.looksLikeTask("待办：预约体检"))
         XCTAssertTrue(TaskIntentDetector.looksLikeTask("请帮我加入待办，明天提交报销"))
         XCTAssertTrue(TaskIntentDetector.looksLikeTask("这是我的 todo list：预约体检"))
+        XCTAssertTrue(TaskIntentDetector.looksLikeTask("帮我周五提交报销"))
+    }
+
+    func testAppUpdateVersionComparison() {
+        XCTAssertTrue(AppUpdateService.isVersion("1.5.3", newerThan: "1.5.2"))
+        XCTAssertTrue(AppUpdateService.isVersion("1.6.0", newerThan: "1.5.9"))
+        XCTAssertFalse(AppUpdateService.isVersion("1.5.2", newerThan: "1.5.2"))
+        XCTAssertFalse(AppUpdateService.isVersion("1.5.1", newerThan: "1.5.2"))
     }
 
     func testTaskIntentDetectorKeepsFeelingsAsObservation() {
@@ -117,7 +181,6 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertFalse(TaskIntentDetector.looksLikeTask("你就帮我记录在想法里头"))
         XCTAssertFalse(TaskIntentDetector.looksLikeTask("帮我记到感受：越打越虚，停不下来"))
         XCTAssertFalse(TaskIntentDetector.looksLikeTask("帮我放到随手记，今天状态又好起来了"))
-        XCTAssertFalse(TaskIntentDetector.looksLikeTask("帮我周五提交报销"))
         XCTAssertFalse(TaskIntentDetector.looksLikeTask("希望找一些更年轻有活力的团队"))
         XCTAssertFalse(TaskIntentDetector.looksLikeTask("突然发现还是不喜欢老登的团队"))
     }

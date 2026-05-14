@@ -146,6 +146,9 @@ struct TimeView: View {
                             centerSubtitle: dialName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dialCategory : dialName,
                             accent: colorForCategory(dialCategory),
                             selectionOverlapState: newDraftOverlapState,
+                            onSelectEmptyMinute: { minute in
+                                selectBlankTimeSlot(around: minute)
+                            },
                             onSelectSegment: { seg in
                                 selectedEntryID = seg.entryID
                                 dialStartMinutes = seg.startMinutes
@@ -780,6 +783,52 @@ struct TimeView: View {
         saveFromDial()
     }
 
+    private func selectBlankTimeSlot(around minute: Int) {
+        let dayEnd = 23 * 60 + 45
+        let snapped = max(0, min(snapMinute(minute), dayEnd))
+        guard !dialSegments.contains(where: { $0.startMinutes <= snapped && snapped < $0.endMinutes }) else {
+            return
+        }
+
+        selectedEntryID = nil
+        dialName = ""
+        dialNote = ""
+        showAdd = false
+        editTarget = nil
+        name = ""
+        start = ""
+        end = ""
+        extraValues = [:]
+        if dialCategory.isEmpty || !categoryOptions.contains(dialCategory) {
+            dialCategory = categoryOptions.first ?? "工作"
+        }
+
+        let sorted = dialSegments.sorted { $0.startMinutes < $1.startMinutes }
+        let previousEnd = sorted
+            .filter { $0.endMinutes <= snapped }
+            .map(\.endMinutes)
+            .max() ?? 0
+        let nextStart = sorted
+            .filter { $0.startMinutes > snapped }
+            .map(\.startMinutes)
+            .min() ?? dayEnd
+        let slotStart = max(previousEnd, snapped)
+        let preferredEnd = slotStart + 60
+        let slotEnd = min(nextStart, preferredEnd, dayEnd)
+
+        dialStartMinutes = slotStart
+        dialEndMinutes = max(slotStart + 15, slotEnd)
+        if dialEndMinutes > dayEnd {
+            dialEndMinutes = dayEnd
+            dialStartMinutes = max(previousEnd, dialEndMinutes - 60)
+        }
+    }
+
+    private func snapMinute(_ minute: Int) -> Int {
+        let step = 15
+        return Int((Double(minute) / Double(step)).rounded()) * step
+    }
+
     private func jumpToFreeSlotOnDial() {
         selectedEntryID = nil
         dialName = ""
@@ -1088,6 +1137,7 @@ private struct RadialRangePicker: View {
     let centerSubtitle: String
     let accent: Color
     let selectionOverlapState: DialSelectionOverlapState
+    let onSelectEmptyMinute: ((Int) -> Void)?
     let onSelectSegment: ((DialSegment) -> Void)?
 
     private let step = 15
@@ -1102,6 +1152,8 @@ private struct RadialRangePicker: View {
             ZStack {
                 Circle()
                     .fill(Color.white.opacity(0.88))
+                    .contentShape(Circle())
+                    .gesture(emptySlotTapGesture(center: center))
                     .overlay(
                         Circle()
                             .stroke(CreamTheme.green.opacity(0.14), lineWidth: 1)
@@ -1197,6 +1249,18 @@ private struct RadialRangePicker: View {
     }
 
     private enum DragTarget { case start, end }
+
+    private func emptySlotTapGesture(center: CGPoint) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onEnded { value in
+                guard abs(value.translation.width) < 6, abs(value.translation.height) < 6 else { return }
+                let minute = snap(minuteFromLocation(value.location, center: center))
+                guard !existingSegments.contains(where: { $0.startMinutes <= minute && minute < $0.endMinutes }) else {
+                    return
+                }
+                onSelectEmptyMinute?(minute)
+            }
+    }
 
     private var selectionRingColor: Color {
         switch selectionOverlapState {

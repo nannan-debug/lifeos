@@ -13,6 +13,8 @@ private struct AIComposerMessage: Identifiable {
 /// - 点击输入条外部空白区域可收起
 /// - AI 解析结果由 AppStore.submitAIText 路由到 time / task / inbox 三种桶
 struct GlobalAIInputBar: View {
+    static let openComposerNotification = Notification.Name("LifeOSOpenGlobalAIComposer")
+
     @EnvironmentObject var store: AppStore
 
     @State private var rawInput = ""
@@ -62,6 +64,9 @@ struct GlobalAIInputBar: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.easeInOut(duration: 0.18)) { keyboardVisible = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Self.openComposerNotification)) { _ in
+            expand()
         }
         .sheet(isPresented: $showConsent) {
             AIConsentSheet {

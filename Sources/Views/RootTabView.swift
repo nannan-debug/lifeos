@@ -46,6 +46,10 @@ struct RootTabView: View {
         }
         .onAppear {
             store.ensureLocalIdentity()
+            openCaptureFromReminderIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DailyStateReminderService.notificationName)) { _ in
+            openCaptureFromReminder()
         }
     }
 
@@ -54,6 +58,19 @@ struct RootTabView: View {
         if selectedTab == .review { return false }
         if selectedTab == .today { return store.todaySegment == "todo" }
         return true
+    }
+
+    private func openCaptureFromReminderIfNeeded() {
+        if DailyStateReminderService.consumePendingOpen() {
+            openCaptureFromReminder()
+        }
+    }
+
+    private func openCaptureFromReminder() {
+        selectedTab = .capture
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            NotificationCenter.default.post(name: GlobalAIInputBar.openComposerNotification, object: nil)
+        }
     }
 
 }

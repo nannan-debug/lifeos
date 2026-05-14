@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct PersonalSystemApp: App {
+    @UIApplicationDelegateAdaptor(DailyStateReminderNotificationDelegate.self) private var notificationDelegate
+
     var body: some Scene {
         WindowGroup {
             SplashRootView()
@@ -10,7 +12,11 @@ struct PersonalSystemApp: App {
 }
 
 private struct SplashRootView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     @State private var showingSplash = true
+    @State private var updateInfo: AppUpdateInfo?
+    @State private var didCheckUpdateThisSession = false
 
     var body: some View {
         Group {
@@ -28,6 +34,34 @@ private struct SplashRootView: View {
             }
         }
         .dynamicTypeSize(.xSmall)
+        .task {
+            await checkForAvailableUpdateIfNeeded()
+        }
+        .onChange(of: scenePhase) { phase in
+            guard phase == .active else { return }
+            Task {
+                await checkForAvailableUpdateIfNeeded()
+            }
+        }
+        .alert(item: $updateInfo) { info in
+            Alert(
+                title: Text("LifeOS 有新版本"),
+                message: Text("App Store 上已经有 \(info.version) 版本。更新后可以使用最新修复和体验改进。"),
+                primaryButton: .default(Text("去 App Store")) {
+                    openURL(info.storeURL)
+                },
+                secondaryButton: .cancel(Text("稍后"))
+            )
+        }
+    }
+
+    private func checkForAvailableUpdateIfNeeded() async {
+        guard !didCheckUpdateThisSession else { return }
+        didCheckUpdateThisSession = true
+        guard let info = await AppUpdateService.availableUpdate() else { return }
+        await MainActor.run {
+            updateInfo = info
+        }
     }
 }
 

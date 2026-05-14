@@ -14,11 +14,13 @@ enum TaskIntentDetector {
         let hasObservationSignal = containsAny(value, observationSignals)
         let hasActionSignal = containsAny(value, actionSignals)
         let hasScheduleSignal = containsAny(value, scheduleSignals)
+        let hasFutureScheduleSignal = containsAny(value, futureScheduleSignals)
         let hasNeedSignal = containsAny(value, needSignals)
 
         if hasObservationSignal && !hasNeedSignal && !hasScheduleSignal {
             return false
         }
+        if hasFutureScheduleSignal && hasActionSignal && !hasObservationSignal { return true }
         if hasScheduleSignal && hasActionSignal && hasNeedSignal { return true }
         if hasNeedSignal && (hasActionSignal || !hasObservationSignal) { return true }
         return false
@@ -43,6 +45,12 @@ enum TaskIntentDetector {
         "待会", "今天", "今晚", "明天", "后天", "下周", "周一", "周二", "周三",
         "周四", "周五", "周六", "周日", "星期一", "星期二", "星期三", "星期四",
         "星期五", "星期六", "星期日"
+    ]
+
+    private static let futureScheduleSignals = [
+        "待会", "明天", "后天", "下周", "周一", "周二", "周三",
+        "周四", "周五", "周六", "周日", "星期一", "星期二", "星期三",
+        "星期四", "星期五", "星期六", "星期日"
     ]
 
     private static let actionSignals = [

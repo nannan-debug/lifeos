@@ -36,6 +36,7 @@ struct TaskEntry: Identifiable {
     var priority: String
     var dueDate: String          // "yyyy-MM-dd" — 预定日期
     var date: String             // 创建日 / 记录归档日
+    var completedAt: Date? = nil // 完成时间；老数据可能为空
     // --- Apple Calendar 风格扩展字段 ---
     var isAllDay: Bool = true    // 全天事件默认 true
     var startTime: String = ""   // "HH:mm"，isAllDay 时为空

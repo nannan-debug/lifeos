@@ -1,6 +1,44 @@
 import SwiftUI
 import UIKit
 
+private struct CompletedTaskGroup: Identifiable {
+    let id: String
+    let title: String
+    let tasks: [TaskEntry]
+}
+
+private enum CompletedTaskClearScope: Identifiable {
+    case oneMonth
+    case sixMonths
+    case oneYear
+    case all
+
+    var id: String { title }
+
+    var title: String {
+        switch self {
+        case .oneMonth: return "超过 1 个月"
+        case .sixMonths: return "超过 6 个月"
+        case .oneYear: return "超过 1 年"
+        case .all: return "所有已完成事项"
+        }
+    }
+
+    var cutoff: Date? {
+        let calendar = Calendar.current
+        switch self {
+        case .oneMonth:
+            return calendar.date(byAdding: .month, value: -1, to: Date())
+        case .sixMonths:
+            return calendar.date(byAdding: .month, value: -6, to: Date())
+        case .oneYear:
+            return calendar.date(byAdding: .year, value: -1, to: Date())
+        case .all:
+            return nil
+        }
+    }
+}
+
 struct TodayView: View {
     @EnvironmentObject var store: AppStore
 
@@ -46,6 +84,9 @@ struct TodayView: View {
     @State private var selectedTodoID: UUID?
     @State private var editingTodoTitleID: UUID?
     @State private var editingTodoTitleText = ""
+    @State private var completedTasksExpanded = false
+    @State private var showingCompletedClearOptions = false
+    @State private var clearCompletedScope: CompletedTaskClearScope?
     @FocusState private var focusedTodoTitleID: UUID?
 
     // 编辑已有待办
@@ -99,6 +140,31 @@ struct TodayView: View {
             .sheet(item: $editingTask) { task in
                 TodoEditorSheet(mode: .edit(task: task))
                     .environmentObject(store)
+            }
+            .confirmationDialog(
+                "清除完成的待办",
+                isPresented: $showingCompletedClearOptions,
+                titleVisibility: .visible
+            ) {
+                Button("超过 1 个月") { clearCompletedScope = .oneMonth }
+                Button("超过 6 个月") { clearCompletedScope = .sixMonths }
+                Button("超过 1 年") { clearCompletedScope = .oneYear }
+                Button("所有已完成事项") { clearCompletedScope = .all }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("只会清除已完成事项，不影响还在待办里的内容。")
+            }
+            .alert(item: $clearCompletedScope) { scope in
+                let count = completedTaskCount(for: scope)
+                return Alert(
+                    title: Text("清除\(scope.title)？"),
+                    message: Text(count == 0 ? "这个范围内暂时没有可清除的完成事项。" : "将清除 \(count) 条已完成事项。这个操作不能撤销。"),
+                    primaryButton: .default(Text(count == 0 ? "好的" : "清除")) {
+                        guard count > 0 else { return }
+                        store.clearCompletedTasks(olderThan: scope.cutoff)
+                    },
+                    secondaryButton: .cancel(Text("取消"))
+                )
             }
             // ── inline 编辑：重命名打卡项
             .alert(
@@ -551,7 +617,21 @@ struct TodayView: View {
     }
 
     private var doneTasks: [TaskEntry] {
-        store.tasks.filter { $0.status == "已完成" }
+        store.tasks
+            .filter { $0.status == "已完成" }
+            .sorted { completedSortDate($0) > completedSortDate($1) }
+    }
+
+    private var completedTaskGroups: [CompletedTaskGroup] {
+        let grouped = Dictionary(grouping: doneTasks) { completionDayKey(for: $0) }
+        return grouped.map { key, tasks in
+            CompletedTaskGroup(
+                id: key,
+                title: completionGroupTitle(for: key),
+                tasks: tasks.sorted { completedSortDate($0) > completedSortDate($1) }
+            )
+        }
+        .sorted { $0.id > $1.id }
     }
 
     @ViewBuilder
@@ -612,11 +692,19 @@ struct TodayView: View {
             }
         }
 
-        // 已完成
+        // 已完成：默认折叠，需要时按完成日期展开查看。
         if !doneTasks.isEmpty {
             Section {
-                ForEach(doneTasks) { task in
-                    todoRow(task)
+                completedTasksSummaryRow
+
+                if completedTasksExpanded {
+                    ForEach(completedTaskGroups) { group in
+                        completedGroupHeader(group)
+
+                        ForEach(group.tasks) { task in
+                            completedTodoRow(task)
+                        }
+                    }
                 }
             } header: {
                 Text("已完成 · \(doneTasks.count)")
@@ -624,6 +712,82 @@ struct TodayView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var completedTasksSummaryRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    completedTasksExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: completedTasksExpanded ? "chevron.down.circle.fill" : "chevron.right.circle.fill")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(CreamTheme.green.opacity(0.82))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        completedTasksExpanded.toggle()
+                    }
+                } label: {
+                    Text(completedTasksExpanded ? "收起已完成" : "查看已完成")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+
+                if let latest = doneTasks.first {
+                    Text("最近完成：\(latest.title)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            Text("\(doneTasks.count)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color(.secondarySystemFill)))
+
+            Button("清除") {
+                showingCompletedClearOptions = true
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(CreamTheme.green)
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.75))
+        )
+        .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func completedGroupHeader(_ group: CompletedTaskGroup) -> some View {
+        Text(group.title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
@@ -725,6 +889,75 @@ struct TodayView: View {
         }
     }
 
+    private func completedTodoRow(_ task: TaskEntry) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    store.toggleTask(task)
+                }
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(task.title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .strikethrough(true, color: Color(.tertiaryLabel))
+                    .frame(minHeight: 24, alignment: .center)
+
+                if !task.detail.isEmpty {
+                    Text(task.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Text(completedMetaLine(for: task))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                editingTask = task
+            }
+
+            Button {
+                editingTask = task
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.58))
+        )
+        .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                store.removeTask(id: task.id)
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+        }
+    }
+
     private func selectTodoForInlineEditing(_ task: TaskEntry) {
         if let currentID = editingTodoTitleID,
            currentID != task.id,
@@ -757,6 +990,52 @@ struct TodayView: View {
         editingTodoTitleID = nil
         editingTodoTitleText = ""
         focusedTodoTitleID = nil
+    }
+
+    private func completedMetaLine(for task: TaskEntry) -> String {
+        guard let completedAt = task.completedAt else {
+            return "完成时间：旧记录未保存具体时间"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M/d/yy a h:mm"
+        return "完成时间：\(formatter.string(from: completedAt))"
+    }
+
+    private func completedTaskCount(for scope: CompletedTaskClearScope) -> Int {
+        guard let cutoff = scope.cutoff else { return doneTasks.count }
+        return doneTasks.filter { completedSortDate($0) < cutoff }.count
+    }
+
+    private func completedSortDate(_ task: TaskEntry) -> Date {
+        task.completedAt ?? dateFromKey(task.date) ?? .distantPast
+    }
+
+    private func completionDayKey(for task: TaskEntry) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: completedSortDate(task))
+    }
+
+    private func completionGroupTitle(for key: String) -> String {
+        guard let date = dateFromKey(key) else { return key }
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "今天" }
+        if cal.isDateInYesterday(date) { return "昨天" }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 EEEE"
+        return formatter.string(from: date)
+    }
+
+    private func dateFromKey(_ key: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: key)
     }
 
     /// 组装时间/日期元信息行（比如 "今天" 或 "4月18日 · 09:00-10:30"）
