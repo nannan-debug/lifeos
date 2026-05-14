@@ -22,19 +22,21 @@
 Sources/
   App/          # 入口 + Info.plist + Assets
   Models/       # 数据模型（Models.swift）
-  ViewModels/   # AppStore（全局状态，ObservableObject）
-  Services/     # AIParser + Secrets（Secrets.swift 已 gitignore）
+  ViewModels/   # AppStore + AIRoutingPolicy 等全局状态 / 策略
+  Services/     # AIParser + 系统服务 + Secrets（Secrets.swift 已 gitignore）
   Views/        # 所有 SwiftUI 页面
-Tests/          # 单元测试（PersonalSystemSmokeTests）
-project.yml     # XcodeGen 配置，勿手编 .xcodeproj
+Tests/          # 单元测试 + Fixtures 标准样本库
+project.yml     # XcodeGen 配置，版本号 source of truth，勿手编 .xcodeproj
 Secrets.example.swift  # Secrets 模板，真实文件不进仓库
 ```
 
 **关键文件：**
 - `Sources/ViewModels/AppStore.swift` — 全局状态，所有 @Published 数据都在这里
 - `Sources/Services/AIParser.swift` — AI 解析逻辑与 schema 定义
+- `Sources/ViewModels/AIRoutingPolicy.swift` — AI record 落库前的本地归类策略
 - `Sources/Views/RootTabView.swift` — Tab 容器
 - `project.yml` — XcodeGen 配置，改依赖/Target 时在这里改
+- `Tests/Fixtures/ai-routing-cases.json` — AI 识别回归样本库
 
 ---
 
@@ -86,15 +88,45 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 
 ---
 
+## 状态文档与交接工作流
+
+开始任何任务前按顺序读：
+
+1. `IN_PROGRESS.md`
+2. `CLAUDE.md`
+3. `AGENTS.md`
+4. `CONTRIBUTING.md`
+5. `VERSIONING.md`
+6. `LAUNCH_CHECKLIST.md`
+7. `CHANGELOG.md`
+
+接手时先汇报：当前 git 分支、工作区是否干净、最近 release/tag 状态、`IN_PROGRESS.md` 当前状态、`main` 是否包含用户指定的关键 PR。
+
+状态文档分工：
+
+- `IN_PROGRESS.md`：只记录跨多个 PR 的在飞大功能；单 PR 小改动不强行写入。
+- `CHANGELOG.md`：审核期间继续开发时，用户可见变化写入 `[Unreleased]`。
+- `LAUNCH_CHECKLIST.md`：记录 App Store 审核 / 上架真实状态，以及必须由用户手动处理的 Apple Developer / ASC 步骤。
+
+审核期间继续开发：
+
+- 从最新 `main` 新建功能分支，照常 PR。
+- 不改当前审核中版本号，不重新 Archive / Upload / Submit。
+- 不打 tag，不创建 GitHub Release；只有 ASC 显示已上架 / Ready for Distribution 后才做。
+
+---
+
 ## 版本号规范
 
 详见 `VERSIONING.md`，核心要点：
 
 - Marketing Version：`MAJOR.MINOR.PATCH`（用户可见，`CFBundleShortVersionString`）
 - Build Number：单调递增，永不回退（`CFBundleVersion`）
-- 发版：改 `Sources/App/Info.plist` → 打 annotated tag `v1.x.x` → push tag
+- `project.yml` 是版本号 source of truth；改完必须跑 `xcodegen` 同步 `Info.plist` 和 `.xcodeproj`
+- 发版 PR 只做版本号、`xcodegen` 同步、`CHANGELOG` 归档、必要的发版状态文档
+- tag / GitHub Release 只在 App Store 已上架后做，不在 Submit to App Review 时做
 
-**当前状态：** `1.0.0 (build 1)` 已上架 App Store（2026-04 首发，App ID `6763877227`）；下一个版本 `(build 2)` 准备中（视改动幅度决定是否 bump 到 `1.1.0`）。
+**当前状态以 `LAUNCH_CHECKLIST.md` 为准。**
 
 ---
 
@@ -130,6 +162,16 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 ```
 
 修改 AI schema 时，`AIParser.swift` 中的 `AIParsedRecord` struct 必须与 Cloudflare Worker 的 system prompt 保持同步。
+
+AI 落库前必须经过 `AIRoutingPolicy`。`AppStore` 负责真正写入数据，`AIRoutingPolicy` 只判断：进入哪个 bucket、是否跳过、是否需要二次确认。
+
+AI 识别规则与回归样本维护：
+
+- 产品契约在 `docs/ai-recognition-rules.md`。
+- 标准样本库在 `Tests/Fixtures/ai-routing-cases.json`。
+- 自动化测试在 `Tests/AIRoutingPolicyTests.swift`。
+- 修 AI 归类 bug 时，先把失败输入脱敏后加入样本库，再改策略。
+- 如果改了 bucket 边界、二次确认标准或样本标签，同步更新规则文档。
 
 ---
 
@@ -171,11 +213,18 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 ```bash
 # Xcode 内：Cmd+U
 # 或：
-xcodebuild test -scheme PersonalSystem -destination 'platform=iOS Simulator,name=iPhone 15'
+xcodebuild test -project PersonalSystem.xcodeproj -scheme PersonalSystem -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath .deriveddata
 ```
 
-测试文件在 `Tests/PersonalSystemSmokeTests.swift`。
-添加新 Service / 解析逻辑时，**必须补测试**。View 层不强制测试。
+测试文件在 `Tests/PersonalSystemSmokeTests.swift` 和按功能拆分的测试文件中。
+添加新 Service / 解析逻辑 / AI 路由策略时，**必须补测试**。View 层不强制测试。
+
+AI 识别回归测试流程：
+
+1. 从真实问题或调试导出中提炼脱敏输入。
+2. 加入 `Tests/Fixtures/ai-routing-cases.json`，写清 `expectedRecords`、`notes`、`tags`。
+3. 修改 `AIRoutingPolicy` 或相关解析逻辑。
+4. 跑完整单测，确认旧样本没有回归。
 
 ---
 
@@ -187,6 +236,9 @@ xcodebuild test -scheme PersonalSystem -destination 'platform=iOS Simulator,name
 - [ ] UI 改动附了截图或录屏
 - [ ] ADHD 友好原则没被破坏（见上方硬约束）
 - [ ] 新页面有空状态
+- [ ] AI 识别 / 归类改动已更新样本库和规则文档
+- [ ] 审核期间的用户可见改动已写入 `CHANGELOG.md` `[Unreleased]`
+- [ ] 发版 / 审核状态变化已更新 `LAUNCH_CHECKLIST.md`
 - [ ] commit message 符合 Conventional Commits
 - [ ] 从最新 main 拉的分支（无冲突）
 
