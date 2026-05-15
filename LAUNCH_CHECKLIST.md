@@ -7,7 +7,7 @@
 
 ## 0. 当前结论
 
-**LifeOS 1.5.2 (build 9) 已通过审核并上架；`v1.5.2` tag 和 GitHub Release 已完成。**
+**LifeOS 1.6.0 (build 10) 已通过审核并上架；`v1.6.0` tag 和 GitHub Release 已完成。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架（含 PR #2 inline CRUD + PR #7 今日页 3 项优化；build 2 提审过程中曾撤回，并入 PR #7 后重新 Submit）
@@ -18,9 +18,9 @@
 - ✅ `1.5.1 (build 8)` — 2026-05-11 上架（Apple 健康睡眠/运动同步、AI 输入框对话式补充、时间页日期切换状态清理、复盘样式与字体调整）
 - ✅ `1.5.2 (build 9)` — 2026-05-13 上架（首屏背景修复、待办识别与交互优化、时间记录删除、设置页降噪、CSV 打卡导出、第二大脑失败日志）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 / 1.5.1 / 1.5.2 均 Ready for Distribution
+- ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 / 1.5.1 / 1.5.2 / 1.6.0 均 Ready for Distribution
 
-**当前阶段：`1.5.2 (build 9)` 上架收尾已完成，等待下一个版本计划开启。**
+**当前阶段：`1.6.0 (build 10)` 上架收尾已完成，等待下一个版本计划开启。**
 
 - v1.5.0 tag / GitHub Release 已完成（[v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0)）。
 - ℹ️ v1.4.0 tag / GitHub Release 已决定跳过（历史记录不补打，见 §6.3）。
@@ -43,8 +43,8 @@
 | 主语言 | 简体中文（zh-Hans） |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
-| 已上架营销版本 | `1.5.2` (build 9) |
-| 当前 main 状态 | `1.5.2` (build 9) 已上架；`v1.5.2` tag / GitHub Release 已完成 |
+| 已上架营销版本 | `1.6.0` (build 10) |
+| 当前 main 状态 | `1.6.0` (build 10) 已上架；`v1.6.0` tag / GitHub Release 已完成 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -374,13 +374,15 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.5.2` 已 push（指向 `940579f`）。
 - ✅ GitHub Release [v1.5.2](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.2) 已发布。
 
-### 6.7 1.6.0 审核状态（已提交审核 ⏳）
+### 6.7 1.6.0 上架收尾（已完成 ✅）
 
 - ✅ 功能 PR 已合入 `main`：AI 识别治理 / 每日状态提醒 / 待办完成历史 / 时间圆盘新建交互 / App Store 更新提示（[#46](https://github.com/nannan-debug/lifeos/pull/46)）。
 - ✅ 发版 PR 已合入 `main`：`1.6.0 (build 10)` 版本号 / changelog / 本清单状态更新（[#47](https://github.com/nannan-debug/lifeos/pull/47)，merge commit `f563735`）。
 - ✅ 用户已手动 Archive / Upload 到 App Store Connect。
 - ✅ ASC 已创建 / 选择 `1.6.0` 新版本，并 Submit to App Review（2026-05-14，用户确认）。
-- ⏳ 等待 Apple 审核结果；审核通过并上架前，不打 `v1.6.0` tag，不创建 GitHub Release。
+- ✅ `1.6.0 (build 10)` 已通过审核并上架（2026-05-15，用户确认）。
+- ✅ Tag `v1.6.0` 已 push（指向 `f563735`）。
+- ✅ GitHub Release [v1.6.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.6.0) 已发布。
 
 ---
 
@@ -402,4 +404,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) / 1.5.2 (build 9, 2026-05-13) 均已在 App Store 在线。`v1.5.2` tag 和 GitHub Release 已完成；`1.6.0 (build 10)` 发版 PR #47 已合入 `main`，用户已手动 Archive / Upload / Submit to App Review（2026-05-14），当前等待 Apple 审核结果；审核通过并上架前不要打 `v1.6.0` tag 或创建 GitHub Release。**
+**LifeOS 1.0.0（2026-04 首发）/ 1.1.0 (build 3, 2026-04-30) / 1.2.0 (build 4, 2026-05-02) / 1.3.0 (build 5, 2026-05-03) / 1.4.0 (build 6, 2026-05-04) / 1.5.0 (build 7, 2026-05-07) / 1.5.1 (build 8, 2026-05-11) / 1.5.2 (build 9, 2026-05-13) / 1.6.0 (build 10, 2026-05-15) 均已在 App Store 在线。`v1.6.0` tag 和 GitHub Release 已完成；当前没有进行中的发版周期。**
