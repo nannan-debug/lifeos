@@ -55,6 +55,14 @@ final class CloudSyncController {
         engine = nil
     }
 
+    /// 用同步缓存里的记录恢复本地（无需联网）。
+    /// 用于「本地数据丢失、但同步引擎状态仍以为已同步」时自愈——调用方需确认本地确实为空，
+    /// 因为这会把缓存内容覆盖上去。
+    func restoreFromCacheIfAvailable() {
+        guard !syncedCache.isEmpty else { return }
+        dataSource?.applyCloudChanges(updated: Array(syncedCache.values), deletedRecordNames: [])
+    }
+
     /// 本地数据变更后调用：算出与云端的差异，排进上传队列。
     func pushLocalChanges() {
         guard let engine, let dataSource else { return }

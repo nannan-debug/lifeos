@@ -188,6 +188,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         publishCheckWidgetSnapshot()
         if isICloudSyncEnabled {
             cloudSync.start()
+            // 本地无数据但同步缓存有记录：用缓存自愈，覆盖「本地丢了、引擎却以为已同步」的错位。
+            if !hasMeaningfulLocalData() {
+                cloudSync.restoreFromCacheIfAvailable()
+            }
             migrateToCloudKitIfNeeded()
         }
         if sleepSyncEnabled || workoutSyncEnabled {
