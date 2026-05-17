@@ -2,7 +2,7 @@ import CloudKit
 import Foundation
 
 /// 一条待同步记录的、与 CloudKit 解耦的中间表示。
-struct SyncRecord: Equatable {
+struct SyncRecord: Codable, Equatable {
     let type: CloudKitSchema.RecordType
     let recordName: String
     let payload: Data

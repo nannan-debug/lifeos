@@ -27,10 +27,16 @@
 | PR | 内容 | 状态 |
 |---|---|---|
 | PR 1 | 安全网先行：设置页「导出全部数据」+ JSON 备份序列化器 | ✅ [#51](https://github.com/nannan-debug/lifeos/pull/51) 2026-05-17 |
-| PR 2 | CloudKit 基建：iCloud capability + 容器、Schema 常量、本地数据 ↔ CKRecord 双向转换器 + 单测（无行为变化，不含同步引擎） | 🚧 |
-| PR 3 | `CKSyncEngine` 接入 + 上行/下行同步 + 一次性迁移（迁移前自动备份）+ 切 CloudKit 为默认 + 退役 KVS | ⏳ |
+| PR 2 | CloudKit 基建：iCloud capability + 容器、Schema 常量、本地数据 ↔ CKRecord 双向转换器 + 单测 | ✅ [#52](https://github.com/nannan-debug/lifeos/pull/52) 2026-05-17 |
+| PR 3 | `CKSyncEngine` 接入 + 上行/下行同步 + 一次性迁移 + 切 CloudKit 为默认 + 退役 KVS | 🚧 |
 
-> PR 2/3 边界微调：`CKSyncEngine` 控制器与启用/迁移逻辑绑定，从 PR 2 挪到 PR 3，使 PR 2 只交付一层可单测的纯转换代码、零死代码。
+> PR 2/3 边界微调：`CKSyncEngine` 控制器与启用/迁移逻辑绑定，从 PR 2 挪到 PR 3。
+>
+> PR 3 因体量大、且 CloudKit 行为只能真机验证，拆成同一分支上的 3 个可验证阶段：
+> - **S1（本次）**：CloudKit 上行 + 一次性迁移（迁移前自动备份）。只往云端写、不动本地，零风险。最低系统提升到 iOS 17。
+> - **S2**：下行同步——把云端变更应用回本地。
+> - **S3**：退役旧 KVS 同步、切 CloudKit 为默认、收尾。
+> 每个阶段实现后真机验收，再叠下一阶段。
 
 ## 阻塞 / 待人工
 

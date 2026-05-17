@@ -962,4 +962,11 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let back = try XCTUnwrap(CloudKitRecordMapper.syncRecord(from: ck))
         XCTAssertEqual(back, original)
     }
+
+    func testSyncRecordCodableRoundtrip() throws {
+        let original = SyncRecord(type: .checkDay, recordName: "2026-05-17", payload: Data("hello".utf8))
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(SyncRecord.self, from: encoded)
+        XCTAssertEqual(decoded, original)
+    }
 }

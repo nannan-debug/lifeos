@@ -35,7 +35,7 @@ struct ReviewTimeCategorySummary: Equatable {
     let minutes: Int
 }
 
-final class AppStore: ObservableObject {
+final class AppStore: ObservableObject, CloudSyncDataSource {
     private enum ICloudSyncReason {
         case startup
         case userEnabled
@@ -100,6 +100,8 @@ final class AppStore: ObservableObject {
     /// 刚开启同步、本机为空、云端数据还没异步同步下来时为 true。
     /// 此窗口内禁止向 iCloud 推送，防止在云端数据回来前把它覆盖成空。
     private var awaitingInitialICloudPull = false
+    private let cloudKitMigratedKey = "cloudkit.migrated.v1"
+    private lazy var cloudSync = CloudSyncController(dataSource: self)
     private let healthSleepSyncEnabledKey = "healthkit.sync.sleep.enabled"
     private let healthWorkoutSyncEnabledKey = "healthkit.sync.workout.enabled"
 
@@ -180,6 +182,10 @@ final class AppStore: ObservableObject {
         loadAIDebugLogs()
         loadForSelectedDate()
         publishCheckWidgetSnapshot()
+        if isICloudSyncEnabled {
+            cloudSync.start()
+            migrateToCloudKitIfNeeded()
+        }
         if sleepSyncEnabled || workoutSyncEnabled {
             syncHealthKitNow()
         }
@@ -202,9 +208,13 @@ final class AppStore: ObservableObject {
         defaults.set(enabled, forKey: iCloudSyncEnabledKey)
         guard enabled else {
             awaitingInitialICloudPull = false
+            cloudSync.stop()
             iCloudSyncStatusText = "已关闭。数据只保存在本机。"
             return
         }
+
+        cloudSync.start()
+        migrateToCloudKitIfNeeded()
 
         if applyICloudSnapshotIfNeeded(reason: .userEnabled) {
             return
@@ -465,6 +475,50 @@ final class AppStore: ObservableObject {
 
     private func syncICloudAfterLocalChange() {
         pushICloudSnapshot(reason: .localChange)
+        if isICloudSyncEnabled {
+            cloudSync.pushLocalChanges()
+        }
+    }
+
+    // MARK: - CloudKit 同步（阶段 1：上行 + 一次性迁移）
+
+    func allCloudSyncRecords() -> [SyncRecord] {
+        let checks = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        let time = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        let tasks = defaults.array(forKey: keyTasks) as? [[String: Any]] ?? []
+        let turns = defaults.array(forKey: keyTurns) as? [[String: Any]] ?? []
+        return CloudKitRecordMapper.encode(
+            checksByDate: checks,
+            timeByDate: time,
+            tasks: tasks,
+            turns: turns,
+            brainData: defaults.data(forKey: keyBrain),
+            dailyFields: defaults.string(forKey: keyDailyFields),
+            dailyInitialized: defaults.bool(forKey: keyDailyInitialized),
+            dailyGroups: defaults.string(forKey: keyDailyGroups)
+        )
+    }
+
+    /// 首次迁移到 CloudKit：迁移前自动写一份本地备份，再把现有数据推上云。一次性。
+    private func migrateToCloudKitIfNeeded() {
+        guard !defaults.bool(forKey: cloudKitMigratedKey) else { return }
+        if hasMeaningfulLocalData() {
+            writeAutomaticBackup()
+        }
+        cloudSync.pushLocalChanges()
+        defaults.set(true, forKey: cloudKitMigratedKey)
+    }
+
+    /// 把当前完整数据写一份 JSON 备份到 App 沙盒，作为迁移前的安全网。
+    @discardableResult
+    private func writeAutomaticBackup() -> URL? {
+        guard let data = makeFullDataArchive() else { return nil }
+        let dir = (try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+        )) ?? FileManager.default.temporaryDirectory
+        let url = dir.appendingPathComponent("pre-cloudkit-backup.json")
+        try? data.write(to: url, options: .atomic)
+        return url
     }
 
     private func hasMeaningfulLocalData() -> Bool {

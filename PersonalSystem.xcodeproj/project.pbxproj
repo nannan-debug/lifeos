@@ -51,6 +51,7 @@
 		C19ACFF8ABFFB35B452B3C49 /* PersonalSystemSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */; };
 		C2010821D5C31C01EB300652 /* mascot-cat.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A74F453355CC52805ED86CD /* mascot-cat.png */; };
 		CA93AFF1B559B0B38C5DC679 /* cat-lying-none.png in Resources */ = {isa = PBXBuildFile; fileRef = 3B968B67098FCE889B4987AB /* cat-lying-none.png */; };
+		D0320620B4F0C1AFAF3B73AE /* CloudSyncController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F8857927CDD70BD40D9BF0 /* CloudSyncController.swift */; };
 		D2B9D8ACBF20D82EF04311DE /* CloudKitRecordMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C45A2425F0D3BFF4F46BC72 /* CloudKitRecordMapper.swift */; };
 		E7F784C38996BCF7DA31FB2E /* AppUpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */; };
 		EECA22D6609959135391624F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4740978737F177B45D684422 /* SettingsView.swift */; };
@@ -125,6 +126,7 @@
 		8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewHubView.swift; sourceTree = "<group>"; };
 		8C9E49D2D37FD2539D75275B /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		8DC94A1F56E8F18346B77F0B /* CheckWidgetExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = CheckWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		94F8857927CDD70BD40D9BF0 /* CloudSyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncController.swift; sourceTree = "<group>"; };
 		9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreamCalendar.swift; sourceTree = "<group>"; };
 		A97A28F42BC820CA83537FF1 /* CheckWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckWidget.swift; sourceTree = "<group>"; };
 		AA04E72F7DB31F5F8F56A605 /* DailyStateReminderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyStateReminderService.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */,
 				1C45A2425F0D3BFF4F46BC72 /* CloudKitRecordMapper.swift */,
 				E8EE8416A7C860820E996F38 /* CloudKitSchema.swift */,
+				94F8857927CDD70BD40D9BF0 /* CloudSyncController.swift */,
 				E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */,
 				AA04E72F7DB31F5F8F56A605 /* DailyStateReminderService.swift */,
 				6FFAF1862AB2EC84D861931B /* DataArchive.swift */,
@@ -457,6 +460,7 @@
 				1FA257F7D66FC66E583121FA /* CheckWidgetSnapshot.swift in Sources */,
 				D2B9D8ACBF20D82EF04311DE /* CloudKitRecordMapper.swift in Sources */,
 				8288C84BA68CBAA385E82DA9 /* CloudKitSchema.swift in Sources */,
+				D0320620B4F0C1AFAF3B73AE /* CloudSyncController.swift in Sources */,
 				59420AFF6BFE0D3477E30E51 /* CreamCalendar.swift in Sources */,
 				1BF60C73DA6FD63FF0FD1A4C /* CreamTheme.swift in Sources */,
 				018C00BDC873ECACB9D386A0 /* DailyStateReminderService.swift in Sources */,
@@ -610,7 +614,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.anna.personalsystem;
@@ -711,7 +715,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

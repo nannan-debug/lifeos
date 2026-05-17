@@ -11,7 +11,7 @@ enum CloudKitSchema {
     /// 打卡项配置是单例，用固定 recordName。
     static let dailyConfigRecordName = "daily-config.v1"
 
-    enum RecordType: String, CaseIterable {
+    enum RecordType: String, Codable, CaseIterable {
         case checkDay = "CheckDay"
         case timeEntry = "TimeEntry"
         case task = "Task"
