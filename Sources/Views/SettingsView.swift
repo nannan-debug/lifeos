@@ -8,7 +8,6 @@ struct SettingsView: View {
     @AppStorage(DailyStateReminderService.minuteKey) private var dailyReminderMinute = DailyStateReminderService.defaultMinute
 
     @State private var showDeleteConfirm = false
-    @State private var reminderStatusText = "只在本机提醒，不上传你的记录。"
 
     @State private var editingField: ProfileField?
     @State private var draftValue = ""
@@ -89,6 +88,20 @@ struct SettingsView: View {
                 }
                 Button("取消", role: .cancel) {}
             }
+            .alert("同步完成", isPresented: Binding(
+                get: { store.healthSyncCompletionMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        store.healthSyncCompletionMessage = nil
+                    }
+                }
+            )) {
+                Button("知道了") {
+                    store.healthSyncCompletionMessage = nil
+                }
+            } message: {
+                Text(store.healthSyncCompletionMessage ?? "")
+            }
             .sheet(item: $editingField) { field in
                 editProfileSheet(field)
             }
@@ -163,8 +176,20 @@ struct SettingsView: View {
             }
             .tint(CreamTheme.green)
 
+            Toggle(isOn: Binding(
+                get: { store.isWakeDreamReminderEnabled },
+                set: { store.setWakeDreamReminderEnabled($0) }
+            )) {
+                healthKitRow(
+                    icon: "cloud.moon",
+                    title: "醒后梦境提醒"
+                )
+            }
+            .tint(CreamTheme.green)
+            .disabled(!store.isHealthSleepSyncEnabled)
+
             Button {
-                store.syncHealthKitNow()
+                store.syncHealthKitNow(showCompletionAlert: true)
             } label: {
                 HStack {
                     Text("立即同步")
@@ -212,7 +237,6 @@ struct SettingsView: View {
                         scheduleDailyReminder()
                     } else {
                         DailyStateReminderService.cancel()
-                        reminderStatusText = "已关闭。你可以随时再打开。"
                     }
                 }
             )) {
@@ -239,8 +263,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("提醒")
-        } footer: {
-            Text(reminderStatusText)
         }
     }
 
@@ -260,9 +282,6 @@ struct SettingsView: View {
                 Text("每日状态提醒")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
-                Text("到点轻轻提醒你记录一下今天")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -270,16 +289,13 @@ struct SettingsView: View {
     private func scheduleDailyReminder() {
         let hour = dailyReminderHour
         let minute = dailyReminderMinute
-        reminderStatusText = "正在设置本机提醒..."
         Task {
             let granted = await DailyStateReminderService.schedule(hour: hour, minute: minute)
             await MainActor.run {
                 if granted {
                     dailyReminderEnabled = true
-                    reminderStatusText = "每天 \(String(format: "%02d:%02d", hour, minute)) 提醒。只在本机提醒，不上传你的记录。"
                 } else {
                     dailyReminderEnabled = false
-                    reminderStatusText = "没有通知权限。可以在系统设置里为 LifeOS 打开通知。"
                 }
             }
         }

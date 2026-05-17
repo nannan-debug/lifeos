@@ -65,7 +65,10 @@ struct GlobalAIInputBar: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.easeInOut(duration: 0.18)) { keyboardVisible = false }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Self.openComposerNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Self.openComposerNotification)) { notification in
+            if let prompt = notification.object as? String, !prompt.isEmpty, rawInput.isEmpty {
+                rawInput = prompt
+            }
             expand()
         }
         .sheet(isPresented: $showConsent) {

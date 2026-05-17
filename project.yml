@@ -15,7 +15,13 @@ targets:
     type: application
     platform: iOS
     sources:
-      - Sources
+      - path: Sources
+        excludes:
+          - Widgets/**
+      - Shared
+    dependencies:
+      - target: CheckWidgetExtension
+        embed: true
     info:
       path: Sources/App/Info.plist
       properties:
@@ -25,6 +31,10 @@ targets:
         UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: ai.anna.personalsystem
+            CFBundleURLSchemes:
+              - lifeos
         CFBundleDisplayName: LifeOS
         NSHealthShareUsageDescription: 用于把你授权的睡眠和运动时间同步到 LifeOS 时间记录中。
         NSHealthUpdateUsageDescription: 用于把你授权同步的健康数据转成 LifeOS 本地时间记录。
@@ -54,6 +64,30 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.anna.personalsystem.tests
         GENERATE_INFOPLIST_FILE: YES
+
+  CheckWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/Widgets/CheckWidget
+      - Shared
+    info:
+      path: Sources/Widgets/CheckWidget/Info.plist
+      properties:
+        CFBundleDisplayName: LifeOS
+        CFBundleShortVersionString: 1.6.0
+        CFBundleVersion: "10"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_NAME: CheckWidgetExtension
+        PRODUCT_BUNDLE_IDENTIFIER: ai.anna.personalsystem.CheckWidgetExtension
+        MARKETING_VERSION: 1.6.0
+        CURRENT_PROJECT_VERSION: 10
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Sources/Widgets/CheckWidget/CheckWidget.entitlements
+        DEVELOPMENT_TEAM: "355RQ5S3DW"
 
 schemes:
   PersonalSystem:

@@ -97,8 +97,11 @@ final class DailyStateReminderNotificationDelegate: NSObject, UIApplicationDeleg
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        if response.notification.request.content.userInfo["lifeosRoute"] as? String == "capture" {
+        let route = response.notification.request.content.userInfo["lifeosRoute"] as? String
+        if route == "capture" {
             DailyStateReminderService.markPendingOpen()
+        } else if route == "dream" {
+            WakeDreamReminderService.markPendingOpen()
         }
         completionHandler()
     }

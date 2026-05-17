@@ -48,8 +48,11 @@ struct RootTabView: View {
             store.ensureLocalIdentity()
             openCaptureFromReminderIfNeeded()
         }
-        .onReceive(NotificationCenter.default.publisher(for: DailyStateReminderService.notificationName)) { _ in
-            openCaptureFromReminder()
+        .onOpenURL { url in
+            handleDeepLink(url)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DailyStateReminderService.notificationName)) { notification in
+            openCaptureFromReminder(prefill: notification.object as? String)
         }
     }
 
@@ -63,13 +66,23 @@ struct RootTabView: View {
     private func openCaptureFromReminderIfNeeded() {
         if DailyStateReminderService.consumePendingOpen() {
             openCaptureFromReminder()
+        } else if let prompt = WakeDreamReminderService.consumePendingOpenPrompt() {
+            openCaptureFromReminder(prefill: prompt)
         }
     }
 
-    private func openCaptureFromReminder() {
+    private func openCaptureFromReminder(prefill: String? = nil) {
         selectedTab = .capture
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            NotificationCenter.default.post(name: GlobalAIInputBar.openComposerNotification, object: nil)
+            NotificationCenter.default.post(name: GlobalAIInputBar.openComposerNotification, object: prefill)
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "lifeos" else { return }
+        if url.host == "today", url.path == "/check" {
+            selectedTab = .today
+            store.todaySegment = "check"
         }
     }
 

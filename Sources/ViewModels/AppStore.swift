@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 struct PendingClarification {
     let originalText: String
@@ -84,7 +85,9 @@ final class AppStore: ObservableObject {
     @Published var iCloudSyncStatusText: String
     @Published var isHealthSleepSyncEnabled: Bool
     @Published var isHealthWorkoutSyncEnabled: Bool
+    @Published var isWakeDreamReminderEnabled: Bool
     @Published var healthSyncStatusText: String
+    @Published var healthSyncCompletionMessage: String? = nil
 
     /// 上一轮 AI 追问的上下文：当 AI 返回 needsClarification 时，暂存原文与 hint。
     /// 用户下次提交时自动把两段拼起来发给 AI，避免"9 点到 10 点"这种裸时间丢失上下文。
@@ -154,8 +157,13 @@ final class AppStore: ObservableObject {
         iCloudSyncStatusText = Self.defaultICloudSyncStatus(isEnabled: syncEnabled)
         let sleepSyncEnabled = defaults.bool(forKey: healthSleepSyncEnabledKey)
         let workoutSyncEnabled = defaults.bool(forKey: healthWorkoutSyncEnabledKey)
+        let wakeDreamReminderEnabled = sleepSyncEnabled && defaults.bool(forKey: WakeDreamReminderService.enabledKey)
         isHealthSleepSyncEnabled = sleepSyncEnabled
         isHealthWorkoutSyncEnabled = workoutSyncEnabled
+        isWakeDreamReminderEnabled = wakeDreamReminderEnabled
+        if !wakeDreamReminderEnabled {
+            WakeDreamReminderService.setEnabled(false)
+        }
         healthSyncStatusText = Self.defaultHealthSyncStatus(sleepEnabled: sleepSyncEnabled, workoutEnabled: workoutSyncEnabled)
         observeICloudChanges()
         if isICloudSyncEnabled {
@@ -168,6 +176,7 @@ final class AppStore: ObservableObject {
         loadAIFailureLogs()
         loadAIDebugLogs()
         loadForSelectedDate()
+        publishCheckWidgetSnapshot()
         if sleepSyncEnabled || workoutSyncEnabled {
             syncHealthKitNow()
         }
@@ -202,6 +211,9 @@ final class AppStore: ObservableObject {
     func setHealthSleepSyncEnabled(_ enabled: Bool) {
         isHealthSleepSyncEnabled = enabled
         defaults.set(enabled, forKey: healthSleepSyncEnabledKey)
+        if !enabled {
+            setWakeDreamReminderEnabled(false)
+        }
         syncHealthKitNow()
     }
 
@@ -211,11 +223,27 @@ final class AppStore: ObservableObject {
         syncHealthKitNow()
     }
 
-    func syncHealthKitNow() {
+    func setWakeDreamReminderEnabled(_ enabled: Bool) {
+        guard isHealthSleepSyncEnabled || !enabled else {
+            isWakeDreamReminderEnabled = false
+            WakeDreamReminderService.setEnabled(false)
+            return
+        }
+        isWakeDreamReminderEnabled = enabled
+        WakeDreamReminderService.setEnabled(enabled)
+        if enabled {
+            syncHealthKitNow()
+        }
+    }
+
+    func syncHealthKitNow(showCompletionAlert: Bool = false) {
         let readSleep = isHealthSleepSyncEnabled
         let readWorkouts = isHealthWorkoutSyncEnabled
         guard readSleep || readWorkouts else {
             healthSyncStatusText = Self.defaultHealthSyncStatus(sleepEnabled: false, workoutEnabled: false)
+            if showCompletionAlert {
+                healthSyncCompletionMessage = "请先开启睡眠或运动同步。"
+            }
             return
         }
 
@@ -227,12 +255,18 @@ final class AppStore: ObservableObject {
             do {
                 try await HealthKitSyncService.shared.requestAuthorization(readSleep: readSleep, readWorkouts: readWorkouts)
                 let blocks = try await HealthKitSyncService.shared.fetchTimeBlocks(readSleep: readSleep, readWorkouts: readWorkouts, since: startDate, until: endDate)
+                if readSleep {
+                    _ = await WakeDreamReminderService.scheduleIfNeeded(from: blocks)
+                }
                 await MainActor.run {
                     let imported = self.importHealthKitTimeBlocks(blocks, replacingSleepSince: readSleep ? startDate : nil, until: endDate)
                     if imported > 0 {
                         self.healthSyncStatusText = "已同步 \(imported) 条睡眠/运动记录。"
                     } else {
                         self.healthSyncStatusText = "已检查 Apple 健康，没有新的记录。"
+                    }
+                    if showCompletionAlert {
+                        self.healthSyncCompletionMessage = self.healthSyncStatusText
                     }
                 }
             } catch {
@@ -242,6 +276,9 @@ final class AppStore: ObservableObject {
                     self.isHealthWorkoutSyncEnabled = false
                     self.defaults.set(false, forKey: self.healthSleepSyncEnabledKey)
                     self.defaults.set(false, forKey: self.healthWorkoutSyncEnabledKey)
+                    if showCompletionAlert {
+                        self.healthSyncCompletionMessage = error.localizedDescription
+                    }
                 }
             }
         }
@@ -256,6 +293,7 @@ final class AppStore: ObservableObject {
         loadAIFailureLogs()
         loadAIDebugLogs()
         loadForSelectedDate()
+        publishCheckWidgetSnapshot()
     }
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
@@ -270,6 +308,7 @@ final class AppStore: ObservableObject {
         brainCards = []
         aiFailureLogs = []
         aiDebugLogs = []
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
     }
 
@@ -793,6 +832,7 @@ final class AppStore: ObservableObject {
             }
         }
         reloadFieldConfig()
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
         return true
     }
@@ -804,6 +844,7 @@ final class AppStore: ObservableObject {
         defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
         defaults.set(true, forKey: keyDailyInitialized)
         reloadFieldConfig()
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
     }
 
@@ -839,6 +880,7 @@ final class AppStore: ObservableObject {
         }
 
         reloadFieldConfig()
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
         return true
     }
@@ -903,6 +945,7 @@ final class AppStore: ObservableObject {
         groups.append(clean)
         saveGroups(groups)
         reloadFieldConfig()
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
         return true
     }
@@ -934,6 +977,7 @@ final class AppStore: ObservableObject {
         defaults.set(true, forKey: keyDailyInitialized)
 
         reloadFieldConfig()
+        publishCheckWidgetSnapshot()
         return true
     }
 
@@ -952,6 +996,7 @@ final class AppStore: ObservableObject {
         defaults.set(true, forKey: keyDailyInitialized)
 
         reloadFieldConfig()
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
     }
 
@@ -1353,7 +1398,24 @@ final class AppStore: ObservableObject {
         let day = Dictionary(uniqueKeysWithValues: checkItems.map { ($0.title, $0.done) })
         map[selectedDateKey] = day
         defaults.set(map, forKey: keyChecks)
+        publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
+    }
+
+    private func publishCheckWidgetSnapshot() {
+        let todayKey = dateKey(for: Date())
+        let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        let today = map[todayKey] ?? [:]
+        let items = currentCheckEntries().map { entry in
+            CheckWidgetItemSnapshot(
+                title: entry.title,
+                done: today[entry.title] ?? false,
+                tag: entry.tag
+            )
+        }
+        let snapshot = CheckWidgetSnapshot(dateKey: todayKey, updatedAt: Date(), items: items)
+        CheckWidgetSnapshotStore.save(snapshot)
+        WidgetCenter.shared.reloadTimelines(ofKind: "CheckWidget")
     }
 
     private func loadTimeForDate() {
@@ -1530,6 +1592,30 @@ final class AppStore: ObservableObject {
         brainCards[idx].title = cleanTitle
         brainCards[idx].content = content
         brainCards[idx].topics = topics
+        brainCards[idx].updatedAt = Date()
+        saveBrain()
+    }
+
+    @discardableResult
+    func addBrainExtension(cardId: UUID, content: String) -> UUID? {
+        guard let idx = brainCards.firstIndex(where: { $0.id == cardId }) else { return nil }
+        let cleanContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanContent.isEmpty else { return nil }
+        let now = Date()
+        let extensionNote = BrainCardExtension(
+            content: cleanContent,
+            createdAt: now,
+            updatedAt: now
+        )
+        brainCards[idx].extensions.insert(extensionNote, at: 0)
+        brainCards[idx].updatedAt = now
+        saveBrain()
+        return extensionNote.id
+    }
+
+    func removeBrainExtension(cardId: UUID, extensionId: UUID) {
+        guard let idx = brainCards.firstIndex(where: { $0.id == cardId }) else { return }
+        brainCards[idx].extensions.removeAll { $0.id == extensionId }
         brainCards[idx].updatedAt = Date()
         saveBrain()
     }

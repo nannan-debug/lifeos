@@ -18,6 +18,22 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(store.checkItems.count, 0)
     }
 
+    func testCheckWidgetSnapshotPrioritizesPendingItems() {
+        let snapshot = CheckWidgetSnapshot(
+            dateKey: "2026-05-17",
+            updatedAt: Date(),
+            items: [
+                CheckWidgetItemSnapshot(title: "吃维生素", done: true, tag: "早上"),
+                CheckWidgetItemSnapshot(title: "回忆梦境", done: false, tag: "早上"),
+                CheckWidgetItemSnapshot(title: "写日记", done: false, tag: "晚上")
+            ]
+        )
+
+        XCTAssertEqual(snapshot.completedCount, 1)
+        XCTAssertEqual(snapshot.pendingItems.map(\.title), ["回忆梦境", "写日记"])
+        XCTAssertEqual(snapshot.displayItems.map(\.title), ["回忆梦境", "写日记", "吃维生素"])
+    }
+
     // MARK: - Codable roundtrip
 
     func testBrainCardCodableRoundtrip() throws {
@@ -29,6 +45,13 @@ final class PersonalSystemSmokeTests: XCTestCase {
             topics: ["#命名", "#设计原则"],
             sources: [BrainCardSource(noteId: UUID(), excerpt: "想到一句话")],
             links: [UUID()],
+            extensions: [
+                BrainCardExtension(
+                    content: "后来想到，这也是降低未来理解成本。",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ],
             createdAt: now,
             updatedAt: now
         )
@@ -41,6 +64,28 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(decoded.sources.count, 1)
         XCTAssertEqual(decoded.sources[0].excerpt, "想到一句话")
         XCTAssertEqual(decoded.links.count, 1)
+        XCTAssertEqual(decoded.extensions.count, 1)
+        XCTAssertEqual(decoded.extensions[0].content, "后来想到，这也是降低未来理解成本。")
+    }
+
+    func testBrainCardDecodesLegacyCardWithoutExtensions() throws {
+        let json = """
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "title": "旧卡片",
+          "content": "旧版本没有延伸字段",
+          "topics": ["#想法"],
+          "sources": [],
+          "links": [],
+          "createdAt": 1710000000,
+          "updatedAt": 1710000000
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let decoded = try decoder.decode(BrainCard.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.title, "旧卡片")
+        XCTAssertEqual(decoded.extensions, [])
     }
 
     // MARK: - Backwards compat for new fields
@@ -76,6 +121,39 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertNil(task.sourceNoteId)
         XCTAssertEqual(task.sourceExcerpt, "")
         XCTAssertNil(task.completedAt)
+    }
+
+    func testWakeDreamReminderSelectsMainNightSleepEndingTodayMorning() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 8, minute: 0)
+        let nightSleep = makeHealthKitSleepBlock(
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 16, hour: 23, minute: 30),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 7, minute: 10)
+        )
+        let nap = makeHealthKitSleepBlock(
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 13, minute: 0),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 13, minute: 40)
+        )
+
+        XCTAssertEqual(
+            WakeDreamReminderService.mainNightSleepWakeDate(from: [nap, nightSleep], now: now),
+            nightSleep.endDate
+        )
+    }
+
+    func testWakeDreamReminderIgnoresNapAndPreviousDaySleep() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 15, minute: 0)
+        let previousDaySleep = makeHealthKitSleepBlock(
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 15, hour: 23, minute: 0),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 16, hour: 7, minute: 0)
+        )
+        let nap = makeHealthKitSleepBlock(
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 13, minute: 0),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 14, minute: 0)
+        )
+
+        XCTAssertNil(WakeDreamReminderService.mainNightSleepWakeDate(from: [previousDaySleep, nap], now: now))
     }
 
     func testTaskToggleRecordsAndClearsCompletionTime() {
@@ -316,6 +394,27 @@ final class PersonalSystemSmokeTests: XCTestCase {
         store.removeBrain(id: aId)
         XCTAssertFalse(store.brainCards.contains { $0.id == aId })
         XCTAssertEqual(store.brainCards.first(where: { $0.id == bId })?.links, [])
+    }
+
+    func testAddAndRemoveBrainExtension() {
+        let store = AppStore()
+        guard let cardId = store.addBrain(title: "做产品要留余地", content: "原始想法") else {
+            return XCTFail("addBrain failed")
+        }
+
+        XCTAssertNil(store.addBrainExtension(cardId: cardId, content: "   "))
+
+        guard let extensionId = store.addBrainExtension(cardId: cardId, content: "后来想到，余地也包括允许用户暂停。") else {
+            return XCTFail("addBrainExtension failed")
+        }
+
+        var card = store.brainCards.first(where: { $0.id == cardId })
+        XCTAssertEqual(card?.extensions.count, 1)
+        XCTAssertEqual(card?.extensions.first?.content, "后来想到，余地也包括允许用户暂停。")
+
+        store.removeBrainExtension(cardId: cardId, extensionId: extensionId)
+        card = store.brainCards.first(where: { $0.id == cardId })
+        XCTAssertEqual(card?.extensions, [])
     }
 
     // MARK: - Turn derivatives store API
@@ -731,5 +830,31 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(reloadedTurn?.derivatives.count, 1)
         XCTAssertEqual(reloadedTurn?.derivatives.first?.type, "brain")
         XCTAssertEqual(reloadedTurn?.derivatives.first?.targetId, targetId)
+    }
+
+    private func makeDate(
+        calendar: Calendar,
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int,
+        minute: Int
+    ) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private func makeHealthKitSleepBlock(start: Date, end: Date) -> HealthKitTimeBlock {
+        HealthKitTimeBlock(
+            sourceIdentifier: "sleep-test-\(start.timeIntervalSince1970)-\(end.timeIntervalSince1970)",
+            name: "睡觉",
+            category: "睡觉",
+            startDate: start,
+            endDate: end,
+            extra: [
+                HealthKitTimeEntryKey.source: HealthKitTimeEntryKey.sourceValue,
+                HealthKitTimeEntryKey.kind: HealthKitTimeEntryKey.kindSleep,
+                HealthKitTimeEntryKey.sourceID: UUID().uuidString
+            ]
+        )
     }
 }
