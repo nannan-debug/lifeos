@@ -80,6 +80,7 @@ struct BrainCard: Identifiable, Codable, Equatable {
     var topics: [String]             // 软聚合标签，比如 ["#命名", "#设计原则"]
     var sources: [BrainCardSource]   // 从哪些 turn 衍生而来（Review 模式自动建立）
     var links: [UUID]                // 关联的其他 BrainCard.id（用户在详情页手动建，双向）
+    var extensions: [BrainCardExtension] = [] // 后续补充的延伸思考，保留想法演化顺序
     var createdAt: Date
     var updatedAt: Date
 }
@@ -87,6 +88,40 @@ struct BrainCard: Identifiable, Codable, Equatable {
 struct BrainCardSource: Codable, Equatable {
     var noteId: UUID
     var excerpt: String              // 创建时截取的 turn 原文片段，防原 note 改后失语境
+}
+
+struct BrainCardExtension: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var content: String
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+extension BrainCard {
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case content
+        case topics
+        case sources
+        case links
+        case extensions
+        case createdAt
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decode(String.self, forKey: .title)
+        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        topics = try container.decodeIfPresent([String].self, forKey: .topics) ?? []
+        sources = try container.decodeIfPresent([BrainCardSource].self, forKey: .sources) ?? []
+        links = try container.decodeIfPresent([UUID].self, forKey: .links) ?? []
+        extensions = try container.decodeIfPresent([BrainCardExtension].self, forKey: .extensions) ?? []
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+    }
 }
 
 struct AIFailureLog: Identifiable, Codable, Equatable {

@@ -176,6 +176,11 @@ struct BrainCardWallView: View {
                         .font(.caption2)
                         .foregroundStyle(CreamTheme.green.opacity(0.85))
                 }
+                if !card.extensions.isEmpty {
+                    Text("\(card.extensions.count) 条延伸")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 if !card.sources.isEmpty {
                     Label("\(card.sources.count)", systemImage: "link")
