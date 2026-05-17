@@ -1,4 +1,4 @@
-# 当前在做：（无）
+# 当前在做：iCloud 同步迁移到 CloudKit
 
 > **目的**：大功能横跨多个 PR 时，这份文档是"在飞状态"的唯一真相。新接手的人（或断线重连的 AI）只看这一份就能继续。
 >
@@ -6,7 +6,39 @@
 
 ---
 
-当前没有跨 PR 的在飞功能。
+## 背景
+
+原 iCloud 同步把全部数据塞进 `NSUbiquitousKeyValueStore` 的单键快照，存在 1MB 静默丢弃、整包覆盖无合并、重装后开启同步可能用空数据覆盖云端等数据丢失风险。迁移到 CloudKit（逐记录同步、按 Apple ID 隔离的 private database、跨重装持久存在）以根治。
+
+## 锁定决策清单
+
+> 改动此清单前先和 Anna 对齐，不要直接改。
+
+1. **最低系统**：iOS 17+，用 `CKSyncEngine`。
+2. **同步开关**：保留设置项，**默认开**；关闭 = 仅暂停，云端数据保留，重新打开续传。
+3. **同步范围**：核心 6 类 —— 打卡、时间记录、待办、AI 对话、第二大脑、打卡项配置。AI 失败日志、遗留 inbox **不同步**。
+4. **Schema**（private database）：`CheckDay` 按日期一条；`TimeEntry` / `Task` / `Turn` / `BrainCard` 各按 UUID 一条；`DailyConfig` 打卡项配置单例。
+5. **存储模型**：本地 `UserDefaults` 仍是 App 的工作存储，`CKSyncEngine` 在旁做镜像；迁移**只读本地、永不删除本地数据**（本地始终是一份兜底）。
+6. **过渡**：首次启动一次性导入 —— 本地有数据则迁本地；本地为空则读一次旧 KVS 快照当种子。之后彻底弃用 KVS，一次性标志位守住。
+7. **安全网**：首次迁移前自动写一份完整 JSON 本地备份；设置页提供「导出全部数据」。
+
+## PR 进度表
+
+| PR | 内容 | 状态 |
+|---|---|---|
+| PR 1 | 安全网先行：设置页「导出全部数据」+ JSON 备份序列化器（不碰 CloudKit，可独立上架） | 🚧 |
+| PR 2 | CloudKit 基建：iCloud capability + 容器、record types、自定义 zone、`CKSyncEngine` 脚手架（无行为变化） | ⏳ |
+| PR 3 | 上行同步 + 一次性迁移（迁移前自动备份）+ 下行同步 + 切 CloudKit 为默认 + 退役 KVS | ⏳ |
+
+## 阻塞 / 待人工
+
+- PR 2 需先在 Apple Developer 后台注册 iCloud 容器 `iCloud.ai.anna.personalsystem`、给 App target 加 iCloud capability、重新生成描述文件（Anna 手动，可与 PR 1 并行准备）。
+
+## 关联
+
+- PR #50（交互 Widget + KVS 同步止血修复）已并入 `main`，是 CloudKit 上线前的过渡保护；CloudKit 上线后其 iCloud 同步部分被取代。
+
+---
 
 上一项已完成归档：
 

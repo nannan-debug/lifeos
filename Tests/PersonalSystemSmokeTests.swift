@@ -889,4 +889,27 @@ final class PersonalSystemSmokeTests: XCTestCase {
             ]
         )
     }
+
+    // MARK: - Data archive
+
+    func testDataArchiveEnvelopeAndBase64() throws {
+        let brain = "脑卡片".data(using: .utf8)!
+        let payload: [String: Any] = [
+            "ps.checks.byDate": ["2026-05-17": ["冥想": true]],
+            "ps.brain": brain,
+            "fields.daily.initialized": true
+        ]
+        let json = try XCTUnwrap(DataArchive.makeJSON(payload: payload, appVersion: "1.6.0"))
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: json) as? [String: Any])
+
+        XCTAssertEqual(obj["format"] as? String, "lifeos-backup")
+        XCTAssertEqual(obj["version"] as? Int, 1)
+        XCTAssertEqual(obj["base64Keys"] as? [String], ["ps.brain"])
+
+        let data = try XCTUnwrap(obj["data"] as? [String: Any])
+        XCTAssertEqual(data["ps.brain"] as? String, brain.base64EncodedString())
+        let checks = data["ps.checks.byDate"] as? [String: [String: Bool]]
+        XCTAssertEqual(checks?["2026-05-17"]?["冥想"], true)
+        XCTAssertEqual(data["fields.daily.initialized"] as? Bool, true)
+    }
 }

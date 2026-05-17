@@ -19,6 +19,7 @@
 		263067111C069AA3CD3501D0 /* TurnTypeStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BED040E4ACD1E520E36FFC0 /* TurnTypeStyle.swift */; };
 		2ADB24B66CB28A4DEE70967F /* ai-routing-cases.json in Resources */ = {isa = PBXBuildFile; fileRef = 7BC8EB2EC10B66382169FE9B /* ai-routing-cases.json */; };
 		2B9D0194685A8DF2C4A5EB3D /* cat-lay.svg in Resources */ = {isa = PBXBuildFile; fileRef = F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */; };
+		2D0B11D8F6CCD040CCB8608C /* DataArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFAF1862AB2EC84D861931B /* DataArchive.swift */; };
 		389E8685ABC1255281C3AC53 /* TaskIntentDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5713045EBC3AF36FF3FC610D /* TaskIntentDetector.swift */; };
 		3924A5752582E0C3E8EE6EF0 /* AIRoutingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FCE57B7E3FCC076ABA834FD /* AIRoutingPolicyTests.swift */; };
 		3B95585BBBD69166DAA93AC5 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */; };
@@ -110,6 +111,7 @@
 		5713045EBC3AF36FF3FC610D /* TaskIntentDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskIntentDetector.swift; sourceTree = "<group>"; };
 		5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalSystemSmokeTests.swift; sourceTree = "<group>"; };
 		5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
+		6FFAF1862AB2EC84D861931B /* DataArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataArchive.swift; sourceTree = "<group>"; };
 		70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSyncService.swift; sourceTree = "<group>"; };
 		77C4A93F0C815F1D56908E9F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -148,6 +150,7 @@
 				16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */,
 				E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */,
 				AA04E72F7DB31F5F8F56A605 /* DailyStateReminderService.swift */,
+				6FFAF1862AB2EC84D861931B /* DataArchive.swift */,
 				73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */,
 				8C9E49D2D37FD2539D75275B /* Secrets.swift */,
 				CBD0637444A64170704B6348 /* WakeDreamReminderService.swift */,
@@ -449,6 +452,7 @@
 				59420AFF6BFE0D3477E30E51 /* CreamCalendar.swift in Sources */,
 				1BF60C73DA6FD63FF0FD1A4C /* CreamTheme.swift in Sources */,
 				018C00BDC873ECACB9D386A0 /* DailyStateReminderService.swift in Sources */,
+				2D0B11D8F6CCD040CCB8608C /* DataArchive.swift in Sources */,
 				5CCA53188B3EADB00514E2DE /* ExportView.swift in Sources */,
 				0BE52857AA88AC63F2AD3350 /* GlobalAIInputBar.swift in Sources */,
 				4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */,

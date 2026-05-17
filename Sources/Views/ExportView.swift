@@ -35,6 +35,24 @@ struct ExportView: View {
             } footer: {
                 Text("导出后会弹出系统分享面板，可选择「存到 文件 / iCloud Drive」或其它目标。文件用 UTF-8 BOM 编码，中文 Excel 直接打开不乱码。")
             }
+
+            Section {
+                Button {
+                    runFullExport()
+                } label: {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "tray.and.arrow.up")
+                        Text("导出全部数据").font(.body.weight(.semibold))
+                        Spacer()
+                    }
+                }
+                .tint(CreamTheme.green)
+            } header: {
+                Text("完整备份")
+            } footer: {
+                Text("把全部打卡、时间记录、待办、AI 对话、第二大脑和打卡项配置打包成一个 JSON 文件，不受上面的时间区间限制。建议定期存到「文件 / iCloud Drive」留一份底。")
+            }
         }
         .navigationTitle("导出")
         .navigationBarTitleDisplayMode(.inline)
@@ -63,6 +81,14 @@ struct ExportView: View {
             return
         }
         Self.presentShareSheet(items: urls)
+    }
+
+    private func runFullExport() {
+        guard let url = store.exportFullDataFile() else {
+            alertMessage = "当前没有可备份的数据"
+            return
+        }
+        Self.presentShareSheet(items: [url])
     }
 
     private static func defaultStart() -> Date {

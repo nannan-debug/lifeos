@@ -2746,6 +2746,36 @@ final class AppStore: ObservableObject {
         return (timeURL, inboxURL, checkURL, nil)
     }
 
+    // MARK: - 完整数据备份
+
+    /// CloudKit 同步范围内的核心数据基础键名（不含 userId 后缀）。
+    private static let backupKeyBases = [
+        "ps.checks.byDate", "ps.time.byDate", "ps.tasks", "ps.turns",
+        "ps.brain", "fields.daily", "fields.daily.initialized", "fields.daily.groups"
+    ]
+
+    /// 把核心数据打包成带版本的 JSON 备份。返回 nil 表示当前没有可备份的数据。
+    func makeFullDataArchive() -> Data? {
+        var payload: [String: Any] = [:]
+        for base in Self.backupKeyBases {
+            if let value = defaults.object(forKey: scopedKey(base)) {
+                payload[base] = value
+            }
+        }
+        guard !payload.isEmpty else { return nil }
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return DataArchive.makeJSON(payload: payload, appVersion: appVersion)
+    }
+
+    /// 生成完整备份文件，返回可分享的临时文件 URL。
+    func exportFullDataFile() -> URL? {
+        guard let data = makeFullDataArchive() else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd-HHmm"
+        let name = "LifeOS-备份-\(f.string(from: Date())).json"
+        return try? DataArchive.writeToTemporary(data, name: name)
+    }
+
     private func buildTimeCSV(from start: Date, to end: Date) -> URL? {
         let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
