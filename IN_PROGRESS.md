@@ -26,13 +26,15 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| PR 1 | 安全网先行：设置页「导出全部数据」+ JSON 备份序列化器（不碰 CloudKit，可独立上架） | 🚧 |
-| PR 2 | CloudKit 基建：iCloud capability + 容器、record types、自定义 zone、`CKSyncEngine` 脚手架（无行为变化） | ⏳ |
-| PR 3 | 上行同步 + 一次性迁移（迁移前自动备份）+ 下行同步 + 切 CloudKit 为默认 + 退役 KVS | ⏳ |
+| PR 1 | 安全网先行：设置页「导出全部数据」+ JSON 备份序列化器 | ✅ [#51](https://github.com/nannan-debug/lifeos/pull/51) 2026-05-17 |
+| PR 2 | CloudKit 基建：iCloud capability + 容器、Schema 常量、本地数据 ↔ CKRecord 双向转换器 + 单测（无行为变化，不含同步引擎） | 🚧 |
+| PR 3 | `CKSyncEngine` 接入 + 上行/下行同步 + 一次性迁移（迁移前自动备份）+ 切 CloudKit 为默认 + 退役 KVS | ⏳ |
+
+> PR 2/3 边界微调：`CKSyncEngine` 控制器与启用/迁移逻辑绑定，从 PR 2 挪到 PR 3，使 PR 2 只交付一层可单测的纯转换代码、零死代码。
 
 ## 阻塞 / 待人工
 
-- PR 2 需先在 Apple Developer 后台注册 iCloud 容器 `iCloud.ai.anna.personalsystem`、给 App target 加 iCloud capability、重新生成描述文件（Anna 手动，可与 PR 1 并行准备）。
+- iCloud 容器 `iCloud.ai.anna.personalsystem` 已注册、App target 已加 iCloud(CloudKit) capability、构建通过（2026-05-17 完成）。
 
 ## 关联
 

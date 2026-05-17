@@ -1,3 +1,4 @@
+import CloudKit
 import XCTest
 @testable import PersonalSystem
 
@@ -911,5 +912,54 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let checks = data["ps.checks.byDate"] as? [String: [String: Bool]]
         XCTAssertEqual(checks?["2026-05-17"]?["冥想"], true)
         XCTAssertEqual(data["fields.daily.initialized"] as? Bool, true)
+    }
+
+    // MARK: - CloudKit record mapping
+
+    func testCloudKitRecordMapperRoundtrip() throws {
+        let cardCreated = Date(timeIntervalSince1970: 1000)
+        let card = BrainCard(
+            title: "命名", content: "正文", topics: ["#设计"],
+            sources: [], links: [], createdAt: cardCreated, updatedAt: cardCreated
+        )
+        let brainData = try JSONEncoder().encode([card])
+
+        let checks: [String: [String: Bool]] = ["2026-05-17": ["冥想": true, "写日记": false]]
+        let time: [String: [[String: String]]] = [
+            "2026-05-17": [["id": "t1", "name": "工作", "start": "09:00", "end": "10:00", "category": "工作"]]
+        ]
+        let tasks: [[String: Any]] = [["id": "task1", "title": "买菜", "status": "todo"]]
+        let turns: [[String: Any]] = [["id": "turn1", "rawText": "今天有点累"]]
+
+        let records = CloudKitRecordMapper.encode(
+            checksByDate: checks, timeByDate: time, tasks: tasks, turns: turns,
+            brainData: brainData, dailyFields: "冥想|默认", dailyInitialized: true, dailyGroups: "默认"
+        )
+        // 2 个打卡项合成 1 条 CheckDay + 1 time + 1 task + 1 turn + 1 brain + 1 config
+        XCTAssertEqual(records.count, 6)
+
+        let decoded = CloudKitRecordMapper.decode(records)
+        XCTAssertEqual(decoded["ps.checks.byDate"] as? [String: [String: Bool]], checks)
+        XCTAssertEqual(decoded["ps.time.byDate"] as? [String: [[String: String]]], time)
+        XCTAssertEqual(decoded["ps.tasks"] as? [[String: String]],
+                       [["id": "task1", "title": "买菜", "status": "todo"]])
+        XCTAssertEqual(decoded["ps.turns"] as? [[String: String]],
+                       [["id": "turn1", "rawText": "今天有点累"]])
+        XCTAssertEqual(decoded["fields.daily"] as? String, "冥想|默认")
+        XCTAssertEqual(decoded["fields.daily.initialized"] as? Bool, true)
+        XCTAssertEqual(decoded["fields.daily.groups"] as? String, "默认")
+
+        let decodedBrain = try JSONDecoder().decode([BrainCard].self,
+                                                    from: XCTUnwrap(decoded["ps.brain"] as? Data))
+        XCTAssertEqual(decodedBrain, [card])
+    }
+
+    func testCloudKitSyncRecordCKRecordBridge() throws {
+        let original = SyncRecord(type: .task, recordName: "task-1", payload: Data("x".utf8))
+        let ck = CloudKitRecordMapper.makeCKRecord(original, zoneID: CloudKitSchema.zoneID)
+        XCTAssertEqual(ck.recordType, "Task")
+        XCTAssertEqual(ck.recordID.recordName, "task-1")
+        let back = try XCTUnwrap(CloudKitRecordMapper.syncRecord(from: ck))
+        XCTAssertEqual(back, original)
     }
 }
