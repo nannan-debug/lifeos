@@ -6,6 +6,10 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // 测试环境隔离 iCloud 同步：关掉同步开关、清掉旧 KVS 快照，
+        // 避免 NSUbiquitousKeyValueStore / CloudKit 把数据带进或带出测试。
+        UserDefaults.standard.set(false, forKey: "icloud.sync.enabled")
+        NSUbiquitousKeyValueStore.default.removeObject(forKey: "lifeos.snapshot.v1")
         // 每个 test 开跑前清掉当前用户名下的所有 store 数据，保证测试之间独立
         AppStore().wipeCurrentUserData()
     }
@@ -961,5 +965,31 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(ck.recordID.recordName, "task-1")
         let back = try XCTUnwrap(CloudKitRecordMapper.syncRecord(from: ck))
         XCTAssertEqual(back, original)
+    }
+
+    func testSyncRecordCodableRoundtrip() throws {
+        let original = SyncRecord(type: .checkDay, recordName: "2026-05-17", payload: Data("hello".utf8))
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(SyncRecord.self, from: encoded)
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testCloudKitMergeOverlaysUpdatesAndKeepsRest() {
+        let a = SyncRecord(type: .task, recordName: "task1", payload: Data("old".utf8))
+        let b = SyncRecord(type: .turn, recordName: "turn1", payload: Data("keep".utf8))
+        let c = SyncRecord(type: .checkDay, recordName: "2026-05-17", payload: Data("day".utf8))
+        let updatedA = SyncRecord(type: .task, recordName: "task1", payload: Data("new".utf8))
+
+        let merged = CloudKitRecordMapper.merge(
+            base: [a, b, c],
+            updated: [updatedA],
+            deletedRecordNames: ["2026-05-17"]
+        )
+        let byName = Dictionary(merged.map { ($0.recordName, $0) }, uniquingKeysWith: { first, _ in first })
+
+        XCTAssertEqual(byName["task1"], updatedA)        // 同名记录被覆盖
+        XCTAssertEqual(byName["turn1"], b)               // 未涉及的记录原样保留
+        XCTAssertNil(byName["2026-05-17"])               // 删除的记录被移除
+        XCTAssertEqual(merged.count, 2)
     }
 }

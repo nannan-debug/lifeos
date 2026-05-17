@@ -7,7 +7,7 @@ configs:
 settings:
   base:
     PRODUCT_BUNDLE_IDENTIFIER: ai.anna.personalsystem
-    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
     SWIFT_VERSION: 5.9
 
 targets:
