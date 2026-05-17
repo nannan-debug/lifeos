@@ -969,4 +969,23 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let decoded = try JSONDecoder().decode(SyncRecord.self, from: encoded)
         XCTAssertEqual(decoded, original)
     }
+
+    func testCloudKitMergeOverlaysUpdatesAndKeepsRest() {
+        let a = SyncRecord(type: .task, recordName: "task1", payload: Data("old".utf8))
+        let b = SyncRecord(type: .turn, recordName: "turn1", payload: Data("keep".utf8))
+        let c = SyncRecord(type: .checkDay, recordName: "2026-05-17", payload: Data("day".utf8))
+        let updatedA = SyncRecord(type: .task, recordName: "task1", payload: Data("new".utf8))
+
+        let merged = CloudKitRecordMapper.merge(
+            base: [a, b, c],
+            updated: [updatedA],
+            deletedRecordNames: ["2026-05-17"]
+        )
+        let byName = Dictionary(merged.map { ($0.recordName, $0) }, uniquingKeysWith: { first, _ in first })
+
+        XCTAssertEqual(byName["task1"], updatedA)        // 同名记录被覆盖
+        XCTAssertEqual(byName["turn1"], b)               // 未涉及的记录原样保留
+        XCTAssertNil(byName["2026-05-17"])               // 删除的记录被移除
+        XCTAssertEqual(merged.count, 2)
+    }
 }

@@ -5,12 +5,14 @@ import Foundation
 protocol CloudSyncDataSource: AnyObject {
     /// 当前本机全部需同步的记录。
     func allCloudSyncRecords() -> [SyncRecord]
+    /// 把云端拉取到的变更应用回本地。
+    func applyCloudChanges(updated: [SyncRecord], deletedRecordNames: [String])
 }
 
 /// 基于 `CKSyncEngine` 的 CloudKit 同步控制器。
 ///
-/// 阶段 1（本 PR）：只做上行——把本地变更推送到 private database。
-/// 下行（应用云端变更回本地）与退役旧 KVS 留到后续阶段。
+/// 上行：本地变更推送到 private database。
+/// 下行：云端变更应用回本地。退役旧 KVS 留到后续阶段。
 final class CloudSyncController {
     private let container: CKContainer
     private weak var dataSource: CloudSyncDataSource?
@@ -117,8 +119,22 @@ extension CloudSyncController: CKSyncEngineDelegate {
                 syncedCache.removeValue(forKey: deleted.recordName)
             }
             saveCache()
-        case .fetchedRecordZoneChanges:
-            break // 阶段 1：暂不应用下行变更，只上传。
+        case .fetchedRecordZoneChanges(let event):
+            var updated: [SyncRecord] = []
+            for modification in event.modifications {
+                guard let record = CloudKitRecordMapper.syncRecord(from: modification.record) else { continue }
+                syncedCache[record.recordName] = record
+                updated.append(record)
+            }
+            var deletedNames: [String] = []
+            for deletion in event.deletions {
+                let name = deletion.recordID.recordName
+                syncedCache.removeValue(forKey: name)
+                deletedNames.append(name)
+            }
+            guard !updated.isEmpty || !deletedNames.isEmpty else { break }
+            saveCache()
+            dataSource?.applyCloudChanges(updated: updated, deletedRecordNames: deletedNames)
         default:
             break
         }

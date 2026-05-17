@@ -499,6 +499,24 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         )
     }
 
+    /// 把云端拉取到的变更应用回本地。只覆盖涉及的记录，不动其它本地数据。
+    func applyCloudChanges(updated: [SyncRecord], deletedRecordNames: [String]) {
+        guard !updated.isEmpty || !deletedRecordNames.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let merged = CloudKitRecordMapper.merge(
+                base: self.allCloudSyncRecords(),
+                updated: updated,
+                deletedRecordNames: deletedRecordNames
+            )
+            let localData = CloudKitRecordMapper.decode(merged)
+            for (base, value) in localData {
+                self.defaults.set(value, forKey: self.scopedKey(base))
+            }
+            self.reloadForCurrentUser()
+        }
+    }
+
     /// 首次迁移到 CloudKit：迁移前自动写一份本地备份，再把现有数据推上云。一次性。
     private func migrateToCloudKitIfNeeded() {
         guard !defaults.bool(forKey: cloudKitMigratedKey) else { return }

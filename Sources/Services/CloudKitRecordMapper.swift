@@ -140,6 +140,25 @@ enum CloudKitRecordMapper {
         return result
     }
 
+    // MARK: - 增量合并
+
+    /// 把云端拉到的 `updated` / `deletedRecordNames` 覆盖到 `base` 之上，按 recordName 去重。
+    /// 同名记录以 `updated` 为准；其余 `base` 原样保留——不会误删未涉及的本地数据。
+    static func merge(
+        base: [SyncRecord],
+        updated: [SyncRecord],
+        deletedRecordNames: [String]
+    ) -> [SyncRecord] {
+        var byName = Dictionary(base.map { ($0.recordName, $0) }, uniquingKeysWith: { first, _ in first })
+        for record in updated {
+            byName[record.recordName] = record
+        }
+        for name in deletedRecordNames {
+            byName.removeValue(forKey: name)
+        }
+        return Array(byName.values)
+    }
+
     // MARK: - SyncRecord ↔ CKRecord
 
     static func makeCKRecord(_ syncRecord: SyncRecord, zoneID: CKRecordZone.ID) -> CKRecord {
