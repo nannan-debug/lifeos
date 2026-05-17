@@ -175,7 +175,7 @@ struct DeskWidgetCard<Content: View>: View {
     }
 
     private var catOffset: CGSize {
-        family == .systemSmall ? CGSize(width: 12, height: 6) : CGSize(width: 16, height: 9)
+        family == .systemSmall ? CGSize(width: 30, height: -8) : CGSize(width: 54, height: -6)
     }
 }
 
