@@ -36,13 +36,6 @@ struct ReviewTimeCategorySummary: Equatable {
 }
 
 final class AppStore: ObservableObject, CloudSyncDataSource {
-    private enum ICloudSyncReason {
-        case startup
-        case userEnabled
-        case localChange
-        case remoteChange
-    }
-
     private struct TimeCommitResult {
         let id: UUID?
         let dateKey: String?
@@ -96,10 +89,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     private let defaults = UserDefaults.standard
     private let authUserIdKey = "auth.userId"
     private let iCloudSyncEnabledKey = "icloud.sync.enabled"
-    private let iCloudSnapshotKey = "lifeos.snapshot.v1"
-    /// 刚开启同步、本机为空、云端数据还没异步同步下来时为 true。
-    /// 此窗口内禁止向 iCloud 推送，防止在云端数据回来前把它覆盖成空。
-    private var awaitingInitialICloudPull = false
     private let cloudKitMigratedKey = "cloudkit.migrated.v1"
     private lazy var cloudSync = CloudSyncController(dataSource: self)
     private let healthSleepSyncEnabledKey = "healthkit.sync.sleep.enabled"
@@ -174,10 +163,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
             WakeDreamReminderService.setEnabled(false)
         }
         healthSyncStatusText = Self.defaultHealthSyncStatus(sleepEnabled: sleepSyncEnabled, workoutEnabled: workoutSyncEnabled)
-        observeICloudChanges()
-        if isICloudSyncEnabled {
-            applyICloudSnapshotIfNeeded(reason: .startup)
-        }
         cleanupLegacyInboxIfNeeded()
         loadTasks()
         loadTurns()
@@ -215,43 +200,20 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         isICloudSyncEnabled = enabled
         defaults.set(enabled, forKey: iCloudSyncEnabledKey)
         guard enabled else {
-            awaitingInitialICloudPull = false
             cloudSync.stop()
             iCloudSyncStatusText = "已关闭。数据只保存在本机。"
             return
         }
 
         cloudSync.start()
+        // 本机为空但同步缓存有记录：用缓存自愈。
+        if !hasMeaningfulLocalData() {
+            cloudSync.restoreFromCacheIfAvailable()
+        }
         migrateToCloudKitIfNeeded()
-
-        if applyICloudSnapshotIfNeeded(reason: .userEnabled) {
-            return
-        }
-
-        if hasMeaningfulLocalData() {
-            // 本机有数据、这次没从云端拉到：把本机数据上传即可。
-            pushICloudSnapshot(reason: .userEnabled)
-        } else {
-            // 本机为空：云端可能有数据，只是还没异步同步下来。
-            // 绝不在这时推空快照——改为请求一次同步并等待，数据到达后由变更监听补拉。
-            awaitingInitialICloudPull = true
-            iCloudSyncStatusText = "正在从 iCloud 取回数据…"
-            iCloudStore.synchronize()
-            scheduleInitialICloudPullTimeout()
-        }
-    }
-
-    private func scheduleInitialICloudPullTimeout() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
-            guard let self, self.awaitingInitialICloudPull, self.isICloudSyncEnabled else { return }
-            // 等待一段时间云端仍无数据：再尝试拉一次，仍没有就认定云端为空、恢复正常同步。
-            if !self.applyICloudSnapshotIfNeeded(reason: .remoteChange) {
-                self.awaitingInitialICloudPull = false
-                self.iCloudSyncStatusText = self.isICloudAccountAvailable
-                    ? "已开启 iCloud 同步。"
-                    : "请先在系统里登录 iCloud。"
-            }
-        }
+        iCloudSyncStatusText = isICloudAccountAvailable
+            ? "已开启。会在同一 Apple ID 的设备间同步。"
+            : "已开启。请先在系统里登录 iCloud。"
     }
 
     func setHealthSleepSyncEnabled(_ enabled: Bool) {
@@ -391,104 +353,17 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         }
     }
 
-    private var iCloudStore: NSUbiquitousKeyValueStore {
-        .default
-    }
-
     private var isICloudAccountAvailable: Bool {
         FileManager.default.ubiquityIdentityToken != nil
     }
 
-    private func observeICloudChanges() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleICloudStoreChange(_:)),
-            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: iCloudStore
-        )
-        iCloudStore.synchronize()
-    }
-
-    @objc private func handleICloudStoreChange(_ notification: Notification) {
-        guard isICloudSyncEnabled else { return }
-        let changedKeys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String]
-        guard changedKeys?.contains(iCloudSnapshotKey) ?? true else { return }
-        DispatchQueue.main.async { [weak self] in
-            _ = self?.applyICloudSnapshotIfNeeded(reason: .remoteChange)
-        }
-    }
-
-    @discardableResult
-    private func applyICloudSnapshotIfNeeded(reason: ICloudSyncReason) -> Bool {
-        guard isICloudSyncEnabled else { return false }
-        guard let snapshot = iCloudStore.dictionary(forKey: iCloudSnapshotKey),
-              let values = snapshot["values"] as? [String: Any] else {
-            iCloudSyncStatusText = isICloudAccountAvailable ? "等待第一次同步。" : "请先在系统里登录 iCloud。"
-            return false
-        }
-
-        let remoteUpdatedAt = snapshot["updatedAt"] as? Double ?? 0
-        let shouldPull: Bool
-        switch reason {
-        case .localChange:
-            shouldPull = false
-        case .startup, .remoteChange, .userEnabled:
-            // 只在本机没有任何有意义数据时才从 iCloud 拉取。
-            // 绝不能用云端快照覆盖本机已有记录——曾因此清空过用户全部数据。
-            shouldPull = !hasMeaningfulLocalData()
-        }
-
-        guard shouldPull else {
-            iCloudSyncStatusText = "已开启。本机数据优先。"
-            return false
-        }
-
-        for base in scopedDataKeyBases {
-            let key = scopedKey(base)
-            if let value = values[base] {
-                defaults.set(value, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
-        }
-        reloadForCurrentUser()
-        awaitingInitialICloudPull = false
-        iCloudSyncStatusText = remoteUpdatedAt > 0 ? "已从 iCloud 同步。" : "已开启 iCloud 同步。"
-        return true
-    }
-
-    private func pushICloudSnapshot(reason: ICloudSyncReason) {
-        guard isICloudSyncEnabled else { return }
-        // 首次拉取窗口内不推送：云端数据可能还在路上，此时推送会把它覆盖。
-        guard !awaitingInitialICloudPull else { return }
-        // 绝不把空快照推上 iCloud：否则会覆盖掉云端真实备份。宁可不同步删除，也不能清空。
-        guard hasMeaningfulLocalData() else {
-            iCloudSyncStatusText = "本机暂无数据，未推送到 iCloud。"
-            return
-        }
-        var values: [String: Any] = [:]
-        for base in scopedDataKeyBases {
-            if let value = defaults.object(forKey: scopedKey(base)) {
-                values[base] = value
-            }
-        }
-        iCloudStore.set([
-            "version": 1,
-            "updatedAt": Date().timeIntervalSince1970,
-            "values": values
-        ], forKey: iCloudSnapshotKey)
-        let ok = iCloudStore.synchronize()
-        iCloudSyncStatusText = ok ? "已同步到 iCloud。" : "等待 iCloud 可用。"
-    }
-
+    /// 本地数据变更后调用：把变更同步到 CloudKit。
     private func syncICloudAfterLocalChange() {
-        pushICloudSnapshot(reason: .localChange)
-        if isICloudSyncEnabled {
-            cloudSync.pushLocalChanges()
-        }
+        guard isICloudSyncEnabled else { return }
+        cloudSync.pushLocalChanges()
     }
 
-    // MARK: - CloudKit 同步（阶段 1：上行 + 一次性迁移）
+    // MARK: - CloudKit 同步
 
     func allCloudSyncRecords() -> [SyncRecord] {
         let checks = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
