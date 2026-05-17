@@ -97,6 +97,9 @@ final class AppStore: ObservableObject {
     private let authUserIdKey = "auth.userId"
     private let iCloudSyncEnabledKey = "icloud.sync.enabled"
     private let iCloudSnapshotKey = "lifeos.snapshot.v1"
+    /// 刚开启同步、本机为空、云端数据还没异步同步下来时为 true。
+    /// 此窗口内禁止向 iCloud 推送，防止在云端数据回来前把它覆盖成空。
+    private var awaitingInitialICloudPull = false
     private let healthSleepSyncEnabledKey = "healthkit.sync.sleep.enabled"
     private let healthWorkoutSyncEnabledKey = "healthkit.sync.workout.enabled"
 
@@ -198,13 +201,38 @@ final class AppStore: ObservableObject {
         isICloudSyncEnabled = enabled
         defaults.set(enabled, forKey: iCloudSyncEnabledKey)
         guard enabled else {
+            awaitingInitialICloudPull = false
             iCloudSyncStatusText = "已关闭。数据只保存在本机。"
             return
         }
 
-        let pulled = applyICloudSnapshotIfNeeded(reason: .userEnabled)
-        if !pulled {
+        if applyICloudSnapshotIfNeeded(reason: .userEnabled) {
+            return
+        }
+
+        if hasMeaningfulLocalData() {
+            // 本机有数据、这次没从云端拉到：把本机数据上传即可。
             pushICloudSnapshot(reason: .userEnabled)
+        } else {
+            // 本机为空：云端可能有数据，只是还没异步同步下来。
+            // 绝不在这时推空快照——改为请求一次同步并等待，数据到达后由变更监听补拉。
+            awaitingInitialICloudPull = true
+            iCloudSyncStatusText = "正在从 iCloud 取回数据…"
+            iCloudStore.synchronize()
+            scheduleInitialICloudPullTimeout()
+        }
+    }
+
+    private func scheduleInitialICloudPullTimeout() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self, self.awaitingInitialICloudPull, self.isICloudSyncEnabled else { return }
+            // 等待一段时间云端仍无数据：再尝试拉一次，仍没有就认定云端为空、恢复正常同步。
+            if !self.applyICloudSnapshotIfNeeded(reason: .remoteChange) {
+                self.awaitingInitialICloudPull = false
+                self.iCloudSyncStatusText = self.isICloudAccountAvailable
+                    ? "已开启 iCloud 同步。"
+                    : "请先在系统里登录 iCloud。"
+            }
         }
     }
 
@@ -384,12 +412,12 @@ final class AppStore: ObservableObject {
         let remoteUpdatedAt = snapshot["updatedAt"] as? Double ?? 0
         let shouldPull: Bool
         switch reason {
-        case .startup, .remoteChange:
-            shouldPull = true
-        case .userEnabled:
-            shouldPull = !hasMeaningfulLocalData()
         case .localChange:
             shouldPull = false
+        case .startup, .remoteChange, .userEnabled:
+            // 只在本机没有任何有意义数据时才从 iCloud 拉取。
+            // 绝不能用云端快照覆盖本机已有记录——曾因此清空过用户全部数据。
+            shouldPull = !hasMeaningfulLocalData()
         }
 
         guard shouldPull else {
@@ -406,12 +434,20 @@ final class AppStore: ObservableObject {
             }
         }
         reloadForCurrentUser()
+        awaitingInitialICloudPull = false
         iCloudSyncStatusText = remoteUpdatedAt > 0 ? "已从 iCloud 同步。" : "已开启 iCloud 同步。"
         return true
     }
 
     private func pushICloudSnapshot(reason: ICloudSyncReason) {
         guard isICloudSyncEnabled else { return }
+        // 首次拉取窗口内不推送：云端数据可能还在路上，此时推送会把它覆盖。
+        guard !awaitingInitialICloudPull else { return }
+        // 绝不把空快照推上 iCloud：否则会覆盖掉云端真实备份。宁可不同步删除，也不能清空。
+        guard hasMeaningfulLocalData() else {
+            iCloudSyncStatusText = "本机暂无数据，未推送到 iCloud。"
+            return
+        }
         var values: [String: Any] = [:]
         for base in scopedDataKeyBases {
             if let value = defaults.object(forKey: scopedKey(base)) {
@@ -1388,6 +1424,7 @@ final class AppStore: ObservableObject {
     }
 
     private func loadChecksForDate() {
+        mergeCheckWidgetStateIfNeeded()
         let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
         let day = map[selectedDateKey] ?? [:]
         checkItems = currentCheckEntries().map { .init(title: $0.title, done: day[$0.title] ?? false, tag: $0.tag) }
@@ -1399,6 +1436,21 @@ final class AppStore: ObservableObject {
         map[selectedDateKey] = day
         defaults.set(map, forKey: keyChecks)
         publishCheckWidgetSnapshot()
+        syncICloudAfterLocalChange()
+    }
+
+    func refreshChecksFromWidget() {
+        mergeCheckWidgetStateIfNeeded()
+        loadChecksForDate()
+        publishCheckWidgetSnapshot()
+    }
+
+    private func mergeCheckWidgetStateIfNeeded() {
+        guard let sharedChecks = CheckWidgetSnapshotStore.loadSharedChecks(userID: currentUserId) else { return }
+        let localChecks = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        guard localChecks != sharedChecks else { return }
+        defaults.set(sharedChecks, forKey: keyChecks)
+        // 从桌面小组件打的卡只写进 App Group,这里合并回本地后必须再推一次 iCloud,否则换设备看不到。
         syncICloudAfterLocalChange()
     }
 
@@ -1414,7 +1466,11 @@ final class AppStore: ObservableObject {
             )
         }
         let snapshot = CheckWidgetSnapshot(dateKey: todayKey, updatedAt: Date(), items: items)
-        CheckWidgetSnapshotStore.save(snapshot)
+        CheckWidgetSnapshotStore.saveAppContext(
+            userID: currentUserId,
+            checksByDate: map,
+            snapshot: snapshot
+        )
         WidgetCenter.shared.reloadTimelines(ofKind: "CheckWidget")
     }
 

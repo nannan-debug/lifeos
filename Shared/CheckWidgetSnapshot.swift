@@ -1,4 +1,6 @@
+import AppIntents
 import Foundation
+import WidgetKit
 
 struct CheckWidgetItemSnapshot: Codable, Equatable, Identifiable {
     var id: String { title }
@@ -35,17 +37,102 @@ struct CheckWidgetSnapshot: Codable, Equatable {
 }
 
 enum CheckWidgetSnapshotStore {
-    static func save(_ snapshot: CheckWidgetSnapshot) {
-        guard let data = try? JSONEncoder.widgetSnapshotEncoder.encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: CheckWidgetSnapshot.storageKey)
+    static let appGroupID = "group.ai.anna.personalsystem"
+    static let activeUserIDKey = "lifeos.checkWidget.activeUserId.v1"
+    static let checksKeyBase = "ps.checks.byDate"
+
+    static var sharedDefaults: UserDefaults {
+        UserDefaults(suiteName: appGroupID) ?? .standard
     }
 
-    static func load() -> CheckWidgetSnapshot {
-        guard let data = UserDefaults.standard.data(forKey: CheckWidgetSnapshot.storageKey),
+    static func checksKey(for userID: String?) -> String {
+        guard let userID, !userID.isEmpty else { return checksKeyBase }
+        return "\(checksKeyBase).\(userID)"
+    }
+
+    static func save(_ snapshot: CheckWidgetSnapshot, defaults: UserDefaults = sharedDefaults) {
+        guard let data = try? JSONEncoder.widgetSnapshotEncoder.encode(snapshot) else { return }
+        defaults.set(data, forKey: CheckWidgetSnapshot.storageKey)
+    }
+
+    static func load(defaults: UserDefaults = sharedDefaults) -> CheckWidgetSnapshot {
+        guard let data = defaults.data(forKey: CheckWidgetSnapshot.storageKey),
               let snapshot = try? JSONDecoder.widgetSnapshotDecoder.decode(CheckWidgetSnapshot.self, from: data) else {
             return .emptyToday
         }
         return snapshot
+    }
+
+    static func saveAppContext(
+        userID: String?,
+        checksByDate: [String: [String: Bool]],
+        snapshot: CheckWidgetSnapshot,
+        defaults: UserDefaults = sharedDefaults
+    ) {
+        defaults.set(userID ?? "", forKey: activeUserIDKey)
+        defaults.set(checksByDate, forKey: checksKey(for: userID))
+        save(snapshot, defaults: defaults)
+    }
+
+    static func loadSharedChecks(userID: String?, defaults: UserDefaults = sharedDefaults) -> [String: [String: Bool]]? {
+        defaults.dictionary(forKey: checksKey(for: userID)) as? [String: [String: Bool]]
+    }
+
+    @discardableResult
+    static func toggleItem(title: String, dateKey requestedDateKey: String?, defaults: UserDefaults = sharedDefaults) -> CheckWidgetSnapshot {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let snapshot = load(defaults: defaults)
+        guard !cleanTitle.isEmpty else { return snapshot }
+
+        let targetDateKey = requestedDateKey?.isEmpty == false ? requestedDateKey! : snapshot.dateKey
+        let userID = defaults.string(forKey: activeUserIDKey) ?? ""
+        let key = checksKey(for: userID)
+        var checksByDate = defaults.dictionary(forKey: key) as? [String: [String: Bool]] ?? [:]
+        var day = checksByDate[targetDateKey] ?? [:]
+        let currentValue = day[cleanTitle] ?? snapshot.items.first(where: { $0.title == cleanTitle })?.done ?? false
+        day[cleanTitle] = !currentValue
+        checksByDate[targetDateKey] = day
+        defaults.set(checksByDate, forKey: key)
+
+        let updatedItems = snapshot.items.map { item in
+            guard item.title == cleanTitle else { return item }
+            return CheckWidgetItemSnapshot(title: item.title, done: !currentValue, tag: item.tag)
+        }
+        let updatedSnapshot = CheckWidgetSnapshot(
+            dateKey: snapshot.dateKey,
+            updatedAt: Date(),
+            items: updatedItems
+        )
+        save(updatedSnapshot, defaults: defaults)
+        return updatedSnapshot
+    }
+}
+
+@available(iOS 17.0, *)
+struct ToggleCheckWidgetItemIntent: AppIntent {
+    static var title: LocalizedStringResource = "切换打卡状态"
+    static var description = IntentDescription("在桌面小组件里完成或撤销一条今日打卡。")
+
+    @Parameter(title: "打卡项")
+    var title: String
+
+    @Parameter(title: "日期")
+    var dateKey: String
+
+    init() {
+        title = ""
+        dateKey = ""
+    }
+
+    init(title: String, dateKey: String) {
+        self.title = title
+        self.dateKey = dateKey
+    }
+
+    func perform() async throws -> some IntentResult {
+        CheckWidgetSnapshotStore.toggleItem(title: title, dateKey: dateKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: "CheckWidget")
+        return .result()
     }
 }
 

@@ -34,6 +34,38 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(snapshot.displayItems.map(\.title), ["回忆梦境", "写日记", "吃维生素"])
     }
 
+    func testCheckWidgetToggleUpdatesSharedChecksAndSnapshot() {
+        let suiteName = "CheckWidgetToggleTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let snapshot = CheckWidgetSnapshot(
+            dateKey: "2026-05-17",
+            updatedAt: Date(timeIntervalSince1970: 1),
+            items: [
+                CheckWidgetItemSnapshot(title: "冥想", done: false, tag: "例行事务"),
+                CheckWidgetItemSnapshot(title: "写日记", done: true, tag: "例行事务")
+            ]
+        )
+        CheckWidgetSnapshotStore.saveAppContext(
+            userID: "dev-test",
+            checksByDate: ["2026-05-17": ["写日记": true]],
+            snapshot: snapshot,
+            defaults: defaults
+        )
+
+        let updated = CheckWidgetSnapshotStore.toggleItem(title: "冥想", dateKey: "2026-05-17", defaults: defaults)
+        let key = CheckWidgetSnapshotStore.checksKey(for: "dev-test")
+        let checks = defaults.dictionary(forKey: key) as? [String: [String: Bool]]
+
+        XCTAssertEqual(checks?["2026-05-17"]?["冥想"], true)
+        XCTAssertEqual(checks?["2026-05-17"]?["写日记"], true)
+        XCTAssertEqual(updated.items.first(where: { $0.title == "冥想" })?.done, true)
+        let reloaded = CheckWidgetSnapshotStore.load(defaults: defaults)
+        XCTAssertEqual(reloaded.dateKey, updated.dateKey)
+        XCTAssertEqual(reloaded.items, updated.items)
+    }
+
     // MARK: - Codable roundtrip
 
     func testBrainCardCodableRoundtrip() throws {
