@@ -157,6 +157,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     ]
 
     init() {
+        if defaults.object(forKey: iCloudSyncEnabledKey) == nil {
+            // 新安装默认开启 iCloud 同步；已有用户的显式选择不覆盖。
+            defaults.set(true, forKey: iCloudSyncEnabledKey)
+        }
         let syncEnabled = defaults.bool(forKey: iCloudSyncEnabledKey)
         isICloudSyncEnabled = syncEnabled
         iCloudSyncStatusText = Self.defaultICloudSyncStatus(isEnabled: syncEnabled)
@@ -513,6 +517,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
             for (base, value) in localData {
                 self.defaults.set(value, forKey: self.scopedKey(base))
             }
+            // 必须先把恢复后的打卡同步进小组件 App Group：否则下面 reloadForCurrentUser
+            // → loadChecksForDate → mergeCheckWidgetStateIfNeeded 会用重装后为空的
+            // 小组件状态，把刚从云端恢复的打卡又覆盖掉。
+            self.publishCheckWidgetSnapshot()
             self.reloadForCurrentUser()
         }
     }

@@ -64,8 +64,14 @@ final class CloudSyncController {
         for record in current where syncedCache[record.recordName] != record {
             pending.append(.saveRecord(makeRecordID(record.recordName)))
         }
-        for name in syncedCache.keys where !currentNames.contains(name) {
-            pending.append(.deleteRecord(makeRecordID(name)))
+        // 安全阀：本地内容记录为 0（只剩配置）却要删掉云端一批记录，几乎一定是
+        // 本地数据没加载好的故障态，绝不能据此把云端删空。
+        let deletions = syncedCache.keys.filter { !currentNames.contains($0) }
+        let localContentCount = current.filter { $0.type != .dailyConfig }.count
+        if localContentCount > 0 || deletions.isEmpty {
+            for name in deletions {
+                pending.append(.deleteRecord(makeRecordID(name)))
+            }
         }
         guard !pending.isEmpty else { return }
         if !didEnqueueZone {

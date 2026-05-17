@@ -6,6 +6,10 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // 测试环境隔离 iCloud 同步：关掉同步开关、清掉旧 KVS 快照，
+        // 避免 NSUbiquitousKeyValueStore / CloudKit 把数据带进或带出测试。
+        UserDefaults.standard.set(false, forKey: "icloud.sync.enabled")
+        NSUbiquitousKeyValueStore.default.removeObject(forKey: "lifeos.snapshot.v1")
         // 每个 test 开跑前清掉当前用户名下的所有 store 数据，保证测试之间独立
         AppStore().wipeCurrentUserData()
     }
