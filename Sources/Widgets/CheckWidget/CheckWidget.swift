@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import UIKit
 import WidgetKit
@@ -59,7 +60,7 @@ struct CheckWidgetSmallView: View {
                     EmptyCheckWidgetState()
                 } else {
                     ForEach(Array(snapshot.displayItems.prefix(3))) { item in
-                        DeskRow(item: item, showsTapCue: false)
+                        DeskRow(item: item, dateKey: snapshot.dateKey, showsTapCue: false)
                     }
                 }
 
@@ -84,7 +85,7 @@ struct CheckWidgetMediumView: View {
                     let groupedItems = mediumColumns
                     HStack(alignment: .top, spacing: 10) {
                         ForEach(groupedItems, id: \.title) { group in
-                            DeskGroup(title: group.title, items: group.items)
+                            DeskGroup(title: group.title, items: group.items, dateKey: snapshot.dateKey)
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             if group.title != groupedItems.last?.title {
@@ -182,12 +183,25 @@ struct WidgetCatImage: View {
     private let image: UIImage?
 
     init() {
-        if let bundledURL = Bundle.main.url(forResource: "cat-lying-none", withExtension: "png"),
-           let bundledImage = UIImage(contentsOfFile: bundledURL.path) {
-            image = bundledImage
-        } else {
-            image = UIImage(named: "CatLyingNone", in: .main, compatibleWith: nil)
+        image = Self.loadDownsampledCat(maxPixelSize: 400)
+    }
+
+    // 原图 3224×1508,解码后约 19MB,会超出 Widget 扩展约 30MB 的内存预算导致整块空白。
+    // Widget 里这只猫最多显示 104pt,缩采样到 400px 足够清晰,解码内存降到 <1MB。
+    private static func loadDownsampledCat(maxPixelSize: CGFloat) -> UIImage? {
+        guard let url = Bundle.main.url(forResource: "cat-lying-none", withExtension: "png"),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return nil
         }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 
     var body: some View {
@@ -251,6 +265,7 @@ struct DeskHeader: View {
 struct DeskGroup: View {
     let title: String
     let items: [CheckWidgetItemSnapshot]
+    let dateKey: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -268,9 +283,7 @@ struct DeskGroup: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(items) { item in
-                    Link(destination: CheckWidgetLink.todayCheck) {
-                        DeskRow(item: item, showsTapCue: true)
-                    }
+                    DeskRow(item: item, dateKey: dateKey, showsTapCue: true)
                 }
             }
         }
@@ -279,42 +292,73 @@ struct DeskGroup: View {
 
 struct DeskRow: View {
     let item: CheckWidgetItemSnapshot
+    let dateKey: String
     let showsTapCue: Bool
 
     var body: some View {
         HStack(spacing: 9) {
-            ZStack {
-                if item.done {
-                    Circle()
-                        .fill(DeskCardPalette.ink)
-                        .frame(width: 13, height: 13)
-                    Circle()
-                        .fill(DeskCardPalette.card)
-                        .frame(width: 5, height: 5)
-                } else {
-                    Circle()
-                        .stroke(DeskCardPalette.inkFaint, lineWidth: 1.2)
-                        .frame(width: 13, height: 13)
+            completionControl
+
+            Link(destination: CheckWidgetLink.todayCheck) {
+                HStack(spacing: 0) {
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(item.done ? DeskCardPalette.done : DeskCardPalette.ink)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 0)
+
+                    if showsTapCue {
+                        Circle()
+                            .fill(DeskCardPalette.accent.opacity(0.42))
+                            .frame(width: 4, height: 4)
+                    }
                 }
             }
-            .frame(width: 13, height: 13)
-
-            Text(item.title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(item.done ? DeskCardPalette.done : DeskCardPalette.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            .buttonStyle(.plain)
 
             Spacer(minLength: 0)
-
-            if showsTapCue {
-                Circle()
-                    .fill(DeskCardPalette.accent.opacity(0.42))
-                    .frame(width: 4, height: 4)
-            }
         }
         .padding(.vertical, 3)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var completionControl: some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            Button(intent: ToggleCheckWidgetItemIntent(title: item.title, dateKey: dateKey)) {
+                CompletionMark(isDone: item.done)
+            }
+            .buttonStyle(.plain)
+            .frame(width: 20, height: 20)
+            .accessibilityLabel(item.done ? "撤销\(item.title)" : "完成\(item.title)")
+        } else {
+            CompletionMark(isDone: item.done)
+                .frame(width: 20, height: 20)
+        }
+    }
+}
+
+struct CompletionMark: View {
+    let isDone: Bool
+
+    var body: some View {
+        ZStack {
+            if isDone {
+                Circle()
+                    .fill(DeskCardPalette.ink)
+                    .frame(width: 13, height: 13)
+                Circle()
+                    .fill(DeskCardPalette.card)
+                    .frame(width: 5, height: 5)
+            } else {
+                Circle()
+                    .stroke(DeskCardPalette.inkFaint, lineWidth: 1.2)
+                    .frame(width: 13, height: 13)
+            }
+        }
+        .frame(width: 20, height: 20)
     }
 }
 

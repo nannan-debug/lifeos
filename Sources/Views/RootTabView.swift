@@ -81,6 +81,7 @@ struct RootTabView: View {
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "lifeos" else { return }
         if url.host == "today", url.path == "/check" {
+            store.refreshChecksFromWidget()
             selectedTab = .today
             store.todaySegment = "check"
         }
