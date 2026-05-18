@@ -133,9 +133,7 @@ struct TimeView: View {
         return hasOverlap ? .overlap : .clear
     }
 
-    var body: some View {
-        NavigationStack {
-            List {
+    private var dialSection: some View {
                 Section("24小时圆盘（拖拽选时间段）") {
                     VStack(spacing: 16) {
                         RadialRangePicker(
@@ -343,7 +341,9 @@ struct TimeView: View {
                         if category.isEmpty || !categoryOptions.contains(category) { category = categoryOptions.first ?? "工作" }
                     }
                 }
+    }
 
+    private var entriesSection: some View {
                 Section("时间记录") {
                     ForEach(store.timeEntries) { e in
                         Button {
@@ -413,39 +413,9 @@ struct TimeView: View {
                     }
                     .onDelete(perform: store.removeTimeEntry)
                 }
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .listStyle(.insetGrouped)
-            .tint(CreamTheme.green)
-            .scrollDismissesKeyboard(.interactively)
-            .scrollContentBackground(.hidden)
-            .background(CreamTheme.glassStrong)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    if isInputFocused { isInputFocused = false }
-                }
-            )
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("完成") { isInputFocused = false }
-                        .tint(CreamTheme.green)
-                }
-            }
-            .safeAreaInset(edge: .top) {
-                timeTopDateBar
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: globalInputClearance)
-            }
-            .overlay(alignment: .top) {
-                if showCalendarOverlay {
-                    timeCalendarOverlay
-                        .transition(.opacity)
-                        .zIndex(20)
-                }
-            }
-            .sheet(isPresented: $showAdd) {
+    }
+
+    private var addEntrySheet: some View {
                 NavigationStack {
                     Form {
                         TextField(fieldName(0, "一句话描述"), text: $name)
@@ -503,6 +473,47 @@ struct TimeView: View {
                         }
                     }
                 }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                dialSection
+                entriesSection
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .listStyle(.insetGrouped)
+            .tint(CreamTheme.green)
+            .scrollDismissesKeyboard(.interactively)
+            .scrollContentBackground(.hidden)
+            .background(CreamTheme.glassStrong)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if isInputFocused { isInputFocused = false }
+                }
+            )
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") { isInputFocused = false }
+                        .tint(CreamTheme.green)
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                timeTopDateBar
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: globalInputClearance)
+            }
+            .overlay(alignment: .top) {
+                if showCalendarOverlay {
+                    timeCalendarOverlay
+                        .transition(.opacity)
+                        .zIndex(20)
+                }
+            }
+            .sheet(isPresented: $showAdd) {
+                addEntrySheet
             }
             .onAppear {
                 displayMonth = startOfMonth(for: store.selectedDate)
