@@ -44,7 +44,7 @@ gh pr create --title "feat: 感恩多事件合并为一条" --body "..."
 建议在 GitHub 仓库 Settings → Branches 开启：
 - [x] Require a pull request before merging
 - [x] Require approvals (至少 1 人)
-- [ ] Require status checks (暂无 CI，先不开)
+- [x] Require status checks（CI「iOS Build」必须通过）
 - [x] Do not allow bypassing the above settings
 
 ---
@@ -89,6 +89,15 @@ reviewer 看 PR 时重点关注：
 2. **UI 改动要配截图 / 录屏** —— SwiftUI 很多东西肉眼看才能判断
 3. **ADHD 友好原则没被破坏** —— 参考 `PRODUCT_BRIEF.md` 第九章硬约束
 4. **新页面有空状态** —— 别让用户看到冷冰冰的白屏
+
+---
+
+## CI 与本地构建
+
+- 仓库有 GitHub Actions「iOS Build」，每个 PR 自动跑模拟器构建。
+- **CI 固定用 Xcode 16.4。** 本地若用更新版本的 Xcode，「本地编译通过」**不代表「CI 通过」**——尤其 `unable to type-check in reasonable time` 这类错误对编译器版本敏感。
+- 改动较大的 SwiftUI View、或调整部署目标 / 依赖后，**务必等 CI 结果再合并**，别只信本地。
+- CI 红灯时不要合并；`main` 必须保持 CI 绿灯。
 
 ---
 

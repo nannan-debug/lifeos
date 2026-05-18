@@ -28,7 +28,7 @@
 |---|---|---|
 | PR 1 | 安全网先行：设置页「导出全部数据」+ JSON 备份序列化器 | ✅ [#51](https://github.com/nannan-debug/lifeos/pull/51) 2026-05-17 |
 | PR 2 | CloudKit 基建：iCloud capability + 容器、Schema 常量、本地数据 ↔ CKRecord 双向转换器 + 单测 | ✅ [#52](https://github.com/nannan-debug/lifeos/pull/52) 2026-05-17 |
-| PR 3 | `CKSyncEngine` 接入 + 上行/下行同步 + 一次性迁移 + 切 CloudKit 为默认 + 退役 KVS | 🚧 |
+| PR 3 | `CKSyncEngine` 接入 + 上行/下行同步 + 一次性迁移 + 切 CloudKit 为默认 + 退役 KVS | ✅ [#53](https://github.com/nannan-debug/lifeos/pull/53) 2026-05-18 |
 
 > PR 2/3 边界微调：`CKSyncEngine` 控制器与启用/迁移逻辑绑定，从 PR 2 挪到 PR 3。
 >
@@ -37,6 +37,9 @@
 > - **S2** ✅：下行同步——云端变更增量应用回本地。真机验过（删除重装能完整恢复）。
 > - **S3** ✅：退役旧 KVS 同步、切 CloudKit 默认开启、收尾。
 > 每个阶段实现后真机验收，再叠下一阶段。
+>
+> ✅ 三个 PR 全部合入 `main`，已随 `1.7.0 (build 11)` 于 2026-05-18 提交 App 审核。
+> **上架后**把本节归档到 `docs/archived-features/cloudkit-sync-migration.md`，并清空本文件。
 
 ## 阻塞 / 待人工
 
