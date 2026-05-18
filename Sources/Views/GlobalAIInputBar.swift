@@ -7,6 +7,11 @@ private struct AIComposerMessage: Identifiable {
     let isUser: Bool
 }
 
+private enum ComposerMode: String, CaseIterable {
+    case chat = "聊天"
+    case parse = "拆解"
+}
+
 /// 全局 AI 输入框 —— 类似 Notion 的浮动按钮
 /// - 折叠态：右下角一个圆形 `+` 按钮，小猫趴在按钮左上方
 /// - 展开态：底部完整输入条，带 ⚡ 快捷本地 & ↑ AI 拆解 两个按钮；小猫趴在输入条右上方
@@ -27,6 +32,8 @@ struct GlobalAIInputBar: View {
     // AI 首次使用同意弹窗
     @State private var showConsent = false
     @State private var pendingAIText: String? = nil
+    @State private var pendingMode: ComposerMode = .parse
+    @State private var composerMode: ComposerMode = .chat
     @State private var submittedPromptPreview: String? = nil
     @State private var submittedSupplementPreview: String? = nil
     @State private var composerMessages: [AIComposerMessage] = []
@@ -75,8 +82,7 @@ struct GlobalAIInputBar: View {
             AIConsentSheet {
                 // 用户同意后继续之前暂存的 AI 调用
                 if let text = pendingAIText {
-                    preparePreviewForAISubmission(text)
-                    store.submitAIText(effectiveAIText(for: text))
+                    submitAcceptedAI(text, mode: pendingMode)
                     rawInput = ""
                     pendingAIText = nil
                 }
@@ -140,7 +146,7 @@ struct GlobalAIInputBar: View {
 
     private var expandedBar: some View {
         let hasText = !rawInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let isLoading = store.isAILoading
+        let isLoading = composerMode == .chat ? store.isAgentLoading : store.isAILoading
         let canSend = hasText && !isLoading
         let promptPreview = store.pendingClarification?.originalText ?? submittedPromptPreview
         let hint = store.pendingClarification?.hint
@@ -148,17 +154,30 @@ struct GlobalAIInputBar: View {
         let hasPendingContext = promptPreview != nil || assistantMessage != nil
         let placeholder = hasPendingContext
         ? "补充一句就好..."
-        : "说点什么…（AI 自动归类到待办/时间/随记）"
+        : (composerMode == .chat ? "和猫聊聊…它会先问清楚，再建议保存" : "说点什么…（AI 自动归类到待办/时间/随记）")
 
         return VStack(alignment: .leading, spacing: 9) {
-            ForEach(displayedComposerMessages(promptPreview: promptPreview)) { message in
-                dialogueLine(label: message.label, text: message.text, isUser: message.isUser)
-            }
+            modePicker
 
-            if let assistantMessage {
-                dialogueLine(label: "猫", text: assistantMessage, isUser: false, canDismiss: true)
-            } else if isLoading {
-                dialogueLine(label: "猫", text: "正在识别...", isUser: false)
+            if composerMode == .chat {
+                agentConversationPreview
+                if store.isAgentLoading {
+                    dialogueLine(label: "猫", text: "我在想怎么接这句话...", isUser: false)
+                }
+                if let msg = store.agentErrorMessage {
+                    dialogueLine(label: "猫", text: msg, isUser: false, canDismiss: true)
+                }
+                agentActionCards
+            } else {
+                ForEach(displayedComposerMessages(promptPreview: promptPreview)) { message in
+                    dialogueLine(label: message.label, text: message.text, isUser: message.isUser)
+                }
+
+                if let assistantMessage {
+                    dialogueLine(label: "猫", text: assistantMessage, isUser: false, canDismiss: true)
+                } else if isLoading {
+                    dialogueLine(label: "猫", text: "正在识别...", isUser: false)
+                }
             }
 
             HStack(alignment: .center, spacing: 8) {
@@ -187,7 +206,7 @@ struct GlobalAIInputBar: View {
                         .disabled(isLoading)
                         .frame(minHeight: 28, alignment: .center)
                         .onSubmit {
-                            if canSend { submitAI() }
+                            if canSend { submitPrimary() }
                         }
 
                     if isLoading {
@@ -197,28 +216,30 @@ struct GlobalAIInputBar: View {
                             .tint(CreamTheme.green)
                             .frame(width: 28, height: 28)
                     } else {
-                        // ⚡ 快捷本地
-                        Button {
-                            submitLocal()
-                        } label: {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(hasText ? Color(red: 0.85, green: 0.65, blue: 0.25) : .secondary.opacity(0.4))
-                                .frame(width: 28, height: 28)
-                                .background(
-                                    Circle().fill(
-                                        hasText
-                                        ? Color(red: 0.99, green: 0.93, blue: 0.80)
-                                        : Color.gray.opacity(0.12)
+                        if composerMode == .parse {
+                            // ⚡ 快捷本地
+                            Button {
+                                submitLocal()
+                            } label: {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(hasText ? Color(red: 0.85, green: 0.65, blue: 0.25) : .secondary.opacity(0.4))
+                                    .frame(width: 28, height: 28)
+                                    .background(
+                                        Circle().fill(
+                                            hasText
+                                            ? Color(red: 0.99, green: 0.93, blue: 0.80)
+                                            : Color.gray.opacity(0.12)
+                                        )
                                     )
-                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!hasText)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!hasText)
 
-                        // ↑ AI 拆解
+                        // ↑ AI 发送
                         Button {
-                            submitAI()
+                            submitPrimary()
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 14, weight: .bold))
@@ -266,6 +287,7 @@ struct GlobalAIInputBar: View {
             if canDismiss {
                 Button {
                     store.aiDebugMessage = nil
+                    store.agentErrorMessage = nil
                     store.pendingClarification = nil
                     clearAIPreview()
                 } label: {
@@ -278,6 +300,131 @@ struct GlobalAIInputBar: View {
             }
         }
         .padding(.bottom, 2)
+    }
+
+    private var modePicker: some View {
+        HStack(spacing: 6) {
+            ForEach(ComposerMode.allCases, id: \.self) { mode in
+                Button {
+                    composerMode = mode
+                    if mode == .chat {
+                        clearAIPreview()
+                    }
+                } label: {
+                    Text(mode.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(composerMode == mode ? .white : CreamTheme.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule().fill(composerMode == mode ? CreamTheme.green : CreamTheme.green.opacity(0.11))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+            if composerMode == .chat, !store.agentSession.messages.isEmpty {
+                Button {
+                    store.clearAgentChat()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var agentConversationPreview: some View {
+        let messages = store.agentSession.messages.suffix(4)
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(messages)) { message in
+                dialogueLine(
+                    label: message.role == "user" ? "我" : "猫",
+                    text: message.content,
+                    isUser: message.role == "user"
+                )
+            }
+        }
+    }
+
+    private var agentActionCards: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(store.agentSession.pendingActions) { action in
+                agentActionCard(action)
+            }
+        }
+    }
+
+    private func agentActionCard(_ action: AgentActionDraft) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(actionLabel(for: action.kind), systemImage: actionIcon(for: action.kind))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CreamTheme.green)
+                Spacer()
+                Button {
+                    store.dismissAgentAction(id: action.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            Text(action.title.isEmpty ? action.detail : action.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary.opacity(0.82))
+                .lineLimit(2)
+            if !action.detail.isEmpty, action.detail != action.title {
+                Text(action.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            if !action.reason.isEmpty {
+                Text(action.reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Button {
+                if let err = store.confirmAgentAction(id: action.id) {
+                    store.agentErrorMessage = err
+                }
+            } label: {
+                Label("保存", systemImage: "checkmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(CreamTheme.green))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(CreamTheme.green.opacity(0.08))
+        )
+    }
+
+    private func actionLabel(for kind: AgentActionKind) -> String {
+        switch kind {
+        case .inbox: return "建议存随手记"
+        case .task: return "建议存待办"
+        case .time: return "建议存时间"
+        }
+    }
+
+    private func actionIcon(for kind: AgentActionKind) -> String {
+        switch kind {
+        case .inbox: return "square.and.pencil"
+        case .task: return "checklist"
+        case .time: return "clock"
+        }
     }
 
     // MARK: - Debug banner（失败/澄清提示）
@@ -326,18 +473,50 @@ struct GlobalAIInputBar: View {
     }
 
     // MARK: - Submit actions
+    private func submitPrimary() {
+        switch composerMode {
+        case .chat:
+            submitAgent()
+        case .parse:
+            submitAI()
+        }
+    }
+
+    private func submitAgent() {
+        let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if !AIConsent.hasAccepted {
+            pendingAIText = text
+            pendingMode = .chat
+            showConsent = true
+            return
+        }
+        store.submitAgentText(text)
+        rawInput = ""
+    }
+
     private func submitAI() {
         let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         // 首次使用前弹出同意书，暂存输入待同意后继续
         if !AIConsent.hasAccepted {
             pendingAIText = text
+            pendingMode = .parse
             showConsent = true
             return
         }
-        preparePreviewForAISubmission(text)
-        store.submitAIText(effectiveAIText(for: text))
+        submitAcceptedAI(text, mode: .parse)
         rawInput = ""
+    }
+
+    private func submitAcceptedAI(_ text: String, mode: ComposerMode) {
+        switch mode {
+        case .chat:
+            store.submitAgentText(text)
+        case .parse:
+            preparePreviewForAISubmission(text)
+            store.submitAIText(effectiveAIText(for: text))
+        }
     }
 
     private func submitLocal() {
