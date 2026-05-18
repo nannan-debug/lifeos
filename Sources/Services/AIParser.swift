@@ -58,6 +58,11 @@ private struct AITitleResponse: Decodable {
     let suggestion: String?
 }
 
+struct AgentChatRequestMessage: Encodable, Equatable {
+    let role: String
+    let content: String
+}
+
 enum AIParseError: Error, LocalizedError {
     case badURL
     case network(String)
@@ -150,6 +155,65 @@ enum AIParser {
             return AIParseResponse(
                 records: decoded.records,
                 needsClarification: decoded.needsClarification,
+                rawBody: String(data: data, encoding: .utf8) ?? "<binary>"
+            )
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary>"
+            throw AIParseError.decoding("\(error.localizedDescription) · raw=\(raw.prefix(200))")
+        }
+    }
+
+    static func chat(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String
+    ) async throws -> AgentChatResponse {
+        var req = URLRequest(url: workerURL)
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
+
+        let body: [String: Any] = [
+            "mode": "chat",
+            "input": input,
+            "messages": messages.map { ["role": $0.role, "content": $0.content] },
+            "contextSummary": contextSummary,
+            "currentDate": currentDate,
+            "currentTime": currentTime
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw AIParseError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIParseError.network("no http response")
+        }
+
+        if http.statusCode == 401 {
+            throw AIParseError.unauthorized
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIParseError.serverError(http.statusCode, body)
+        }
+
+        guard !data.isEmpty else { throw AIParseError.empty }
+
+        do {
+            let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
+            return AgentChatResponse(
+                reply: decoded.reply,
+                followUpQuestion: decoded.followUpQuestion,
+                actionSuggestions: decoded.actionSuggestions,
                 rawBody: String(data: data, encoding: .utf8) ?? "<binary>"
             )
         } catch {

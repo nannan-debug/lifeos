@@ -212,6 +212,86 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertNil(WakeDreamReminderService.reminderDate(for: wake, now: now))
     }
 
+    func testAgentChatResponseDecodesOptionalFields() throws {
+        let data = #"{"reply":"我在。"}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
+
+        XCTAssertEqual(decoded.reply, "我在。")
+        XCTAssertNil(decoded.followUpQuestion)
+        XCTAssertTrue(decoded.actionSuggestions.isEmpty)
+    }
+
+    func testAgentContextBuilderUsesRecentSummaries() {
+        let now = Date()
+        let turns = (0..<10).map {
+            ConversationTurn(
+                id: UUID(),
+                createdAt: now,
+                rawText: "想法 \($0)",
+                recognizedType: "想法",
+                targetBucket: "inbox",
+                confidence: 0.9,
+                status: "committed",
+                payload: [:],
+                fixHint: "",
+                moodScore: nil,
+                feelingTags: [],
+                reviewStatus: "pending"
+            )
+        }
+        let summary = AgentOrchestrator.makeContextSummary(
+            turns: turns,
+            tasks: [TaskEntry(title: "提交材料", detail: "", status: "待办", priority: "", dueDate: "2026-05-19", date: "2026-05-18")],
+            timeEntries: [TimeEntry(name: "散步", start: "09:00", end: "10:00", category: "运动")],
+            checks: [DailyCheckItem(title: "回忆梦境", done: false, tag: "早上")]
+        )
+
+        XCTAssertTrue(summary.contains("近期随手记"))
+        XCTAssertTrue(summary.contains("当前待办"))
+        XCTAssertTrue(summary.contains("今天时间记录"))
+        XCTAssertTrue(summary.contains("今日打卡"))
+        XCTAssertTrue(summary.contains("想法 7"))
+        XCTAssertFalse(summary.contains("想法 8"))
+    }
+
+    func testAgentChatSessionPersistsAcrossReload() throws {
+        let defaults = UserDefaults.standard
+        let uid = "agent-test-\(UUID().uuidString)"
+        defaults.set(uid, forKey: "auth.userId")
+        defer {
+            defaults.removeObject(forKey: "ps.agent.chat.\(uid)")
+            defaults.removeObject(forKey: "auth.userId")
+        }
+
+        let session = AgentChatSession(
+            messages: [AgentChatMessage(role: "user", content: "今天有点乱")],
+            pendingActions: [],
+            updatedAt: Date()
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        defaults.set(try encoder.encode(session), forKey: "ps.agent.chat.\(uid)")
+
+        let store = AppStore()
+        XCTAssertEqual(store.agentSession.messages.first?.content, "今天有点乱")
+    }
+
+    func testAgentActionConfirmationSavesInboxTaskAndTime() {
+        let store = AppStore()
+        let inbox = AgentActionDraft(kind: .inbox, title: "面试目标", detail: "确定下面试目标", confidence: 0.8, reason: "适合先存成想法")
+        let task = AgentActionDraft(kind: .task, title: "提交材料", detail: "明天提交材料", date: "2026-05-19", confidence: 0.85, reason: "有明确动作")
+        let time = AgentActionDraft(kind: .time, title: "散步", detail: "今天散步", date: store.selectedDateKey, startTime: "09:00", endTime: "10:00", confidence: 0.9, reason: "有明确时间段")
+        store.agentSession.pendingActions = [inbox, task, time]
+
+        XCTAssertNil(store.confirmAgentAction(id: inbox.id))
+        XCTAssertNil(store.confirmAgentAction(id: task.id))
+        XCTAssertNil(store.confirmAgentAction(id: time.id))
+
+        XCTAssertTrue(store.turns.contains { $0.rawText == "确定下面试目标" && $0.targetBucket == "inbox" })
+        XCTAssertTrue(store.tasks.contains { $0.title == "提交材料" })
+        XCTAssertTrue(store.timeEntries.contains { $0.name == "散步" && $0.start == "09:00" && $0.end == "10:00" })
+    }
+
     func testTaskToggleRecordsAndClearsCompletionTime() {
         let store = AppStore()
         let title = "completion-time-\(UUID().uuidString)"

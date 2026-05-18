@@ -67,6 +67,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     @Published var brainCards: [BrainCard] = []
     @Published var aiFailureLogs: [AIFailureLog] = []
     @Published var aiDebugLogs: [AIDebugLog] = []
+    @Published var agentSession: AgentChatSession = AgentChatSession()
+    @Published var isAgentLoading: Bool = false
+    @Published var agentErrorMessage: String? = nil
 
     // MARK: - AI dispatch state (全局输入框用)
     @Published var isAILoading: Bool = false
@@ -101,6 +104,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         "ps.turns",
         "ps.brain",
         "ps.ai.failures",
+        "ps.agent.chat",
         "fields.daily",
         "fields.daily.initialized",
         "fields.daily.groups",
@@ -125,6 +129,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     private var keyBrain: String { scopedKey("ps.brain") }
     private var keyAIFailures: String { scopedKey("ps.ai.failures") }
     private var keyAIDebugLogs: String { scopedKey("ps.ai.debug.logs") }
+    private var keyAgentChat: String { scopedKey("ps.agent.chat") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
@@ -169,6 +174,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         loadBrain()
         loadAIFailureLogs()
         loadAIDebugLogs()
+        loadAgentChat()
         loadForSelectedDate()
         publishCheckWidgetSnapshot()
         if isICloudSyncEnabled {
@@ -300,6 +306,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         loadBrain()
         loadAIFailureLogs()
         loadAIDebugLogs()
+        loadAgentChat()
         loadForSelectedDate()
         publishCheckWidgetSnapshot()
     }
@@ -307,6 +314,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
         [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyAIDebugLogs, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
+        defaults.removeObject(forKey: keyAgentChat)
         // 旧版本随手记镜像（已废弃）一并兜底清掉
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
         checkItems = []
@@ -316,6 +324,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         brainCards = []
         aiFailureLogs = []
         aiDebugLogs = []
+        agentSession = AgentChatSession()
         publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
     }
@@ -1762,6 +1771,171 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         encoder.dateEncodingStrategy = .secondsSince1970
         guard let data = try? encoder.encode(aiDebugLogs) else { return }
         defaults.set(data, forKey: keyAIDebugLogs)
+    }
+
+    // MARK: - Agent chat
+
+    private func loadAgentChat() {
+        guard let data = defaults.data(forKey: keyAgentChat) else {
+            agentSession = AgentChatSession()
+            return
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        agentSession = (try? decoder.decode(AgentChatSession.self, from: data)) ?? AgentChatSession()
+    }
+
+    private func saveAgentChat() {
+        agentSession.updatedAt = Date()
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(agentSession) else { return }
+        defaults.set(data, forKey: keyAgentChat)
+    }
+
+    func clearAgentChat() {
+        agentSession = AgentChatSession()
+        agentErrorMessage = nil
+        defaults.removeObject(forKey: keyAgentChat)
+    }
+
+    func submitAgentText(_ text: String) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+
+        let request = AgentOrchestrator.makeRequest(
+            input: clean,
+            session: agentSession,
+            turns: turns,
+            tasks: tasks,
+            timeEntries: timeEntries,
+            checks: checkItems
+        )
+        agentSession.messages.append(AgentChatMessage(role: "user", content: clean))
+        saveAgentChat()
+        isAgentLoading = true
+        agentErrorMessage = nil
+        let today = AIParser.isoDate()
+        let now = AIParser.isoTime()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let response = try await AIParser.chat(
+                    input: request.input,
+                    messages: request.messages,
+                    contextSummary: request.contextSummary,
+                    currentDate: today,
+                    currentTime: now
+                )
+                await MainActor.run {
+                    self.receiveAgentResponse(response)
+                }
+            } catch {
+                await MainActor.run {
+                    self.agentErrorMessage = "对话服务暂时没有接上，我先用本地方式陪你。"
+                    self.receiveAgentResponse(AgentOrchestrator.fallbackResponse(for: clean))
+                }
+            }
+        }
+    }
+
+    private func receiveAgentResponse(_ response: AgentChatResponse) {
+        isAgentLoading = false
+        let pieces = [response.reply, response.followUpQuestion]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let content = pieces.joined(separator: "\n\n")
+        if !content.isEmpty {
+            agentSession.messages.append(AgentChatMessage(role: "assistant", content: content))
+        }
+        agentSession.pendingActions.append(contentsOf: response.actionSuggestions.filter {
+            !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !$0.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })
+        saveAgentChat()
+    }
+
+    @discardableResult
+    func confirmAgentAction(id: UUID) -> String? {
+        guard let action = agentSession.pendingActions.first(where: { $0.id == id }) else {
+            return "建议不存在"
+        }
+
+        let result: String?
+        switch action.kind {
+        case .inbox:
+            result = commitAgentInboxAction(action)
+        case .task:
+            result = commitAgentTaskAction(action)
+        case .time:
+            result = commitAgentTimeAction(action)
+        }
+
+        if result == nil {
+            agentSession.pendingActions.removeAll { $0.id == id }
+            saveAgentChat()
+        }
+        return result
+    }
+
+    func dismissAgentAction(id: UUID) {
+        agentSession.pendingActions.removeAll { $0.id == id }
+        saveAgentChat()
+    }
+
+    private func commitAgentInboxAction(_ action: AgentActionDraft) -> String? {
+        guard let id = addTurnDraft(
+            rawText: action.detail.isEmpty ? action.title : action.detail,
+            recognizedType: "想法",
+            targetBucket: "inbox",
+            confidence: action.confidence,
+            payload: [
+                "title": action.title.isEmpty ? aiFallbackTitle(action.detail) : action.title,
+                "detail": action.detail,
+                "status": "待处理",
+                "ai_source": "agent"
+            ]
+        ) else { return "内容为空，未保存" }
+        return commitTurn(id: id)
+    }
+
+    private func commitAgentTaskAction(_ action: AgentActionDraft) -> String? {
+        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return "待办标题为空" }
+        _ = addTask(
+            title: title,
+            detail: action.detail,
+            dueDate: action.date ?? "",
+            date: selectedDateKey,
+            isAllDay: (action.startTime ?? "").isEmpty,
+            startTime: action.startTime ?? "",
+            endTime: action.endTime ?? ""
+        )
+        return nil
+    }
+
+    private func commitAgentTimeAction(_ action: AgentActionDraft) -> String? {
+        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = action.startTime ?? ""
+        let end = action.endTime ?? ""
+        guard !start.isEmpty, !end.isEmpty else { return "时间记录缺少开始/结束时间" }
+        guard let id = addTurnDraft(
+            rawText: action.detail.isEmpty ? title : action.detail,
+            recognizedType: "时间记录",
+            targetBucket: "time",
+            confidence: action.confidence,
+            payload: [
+                "name": title.isEmpty ? "时间记录" : title,
+                "start": start,
+                "end": end,
+                "category": "其他",
+                "note": action.detail,
+                "date": action.date ?? selectedDateKey,
+                "ai_source": "agent"
+            ]
+        ) else { return "内容为空，未保存" }
+        return commitTurn(id: id)
     }
 
     private func aiDebugRecordSummary(_ rec: AIParsedRecord, rawText: String) -> String {
