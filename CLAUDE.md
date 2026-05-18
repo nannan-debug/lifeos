@@ -9,8 +9,8 @@
 **LifeOS** 是一款为 ADHD 人群设计的「人生观察系统」。
 核心理念：低摩擦记录 + 可视化回看，帮助用户看清自己的生活，而非"优化"自己。
 
-- 技术栈：SwiftUI · Swift 5.9 · iOS 16+ · XcodeGen
-- 数据存储：本地 `UserDefaults`（按 `userId` 分库）
+- 技术栈：SwiftUI · Swift 5.9 · iOS 17+ · XcodeGen
+- 数据存储：本地 `UserDefaults`（按 `userId` 分库）+ CloudKit 同步（private database，`CKSyncEngine`）
 - AI 后端：Cloudflare Worker (`ai.dogdada.com`) + DeepSeek LLM
 - 仓库：`github.com/nannan-debug/lifeos`
 
@@ -251,6 +251,15 @@ AI 识别回归测试流程：
 - **不要向 AI 后端发送用户的私人内容作为日志**：隐私红线
 - **不要添加第三方 analytics/tracking SDK**：免费无内购，不收集行为数据
 - **不要绕过 PR review 直接 push main**
+
+## 数据安全红线
+
+LifeOS 的数据是本地优先存储，删 App 即清空本机数据。曾因忽视这一点导致用户数据丢失，以下为硬规则：
+
+- **不要为排查构建 / 签名问题而删除 App**：必须先用设置页「导出全部数据」或确认 CloudKit 已同步，再删。
+- **不要用存有真实个人数据的设备 / 账号做开发调试**：用模拟器或测试账号；真机验证前先确认数据已备份。
+- **抹机 / 删除 App / reset 等破坏性操作前，先确认有一份已验证的备份。**
+- 涉及 iCloud / CloudKit 同步逻辑改动时，绝不能让「本机为空」反向覆盖、清空云端数据。
 
 ---
 
