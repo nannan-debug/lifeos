@@ -180,7 +180,10 @@ struct QuickCaptureView: View {
                 }
             }
             .onChange(of: displayMonth) { _ in refreshCalendarMarkers() }
-            .onChange(of: store.turns.count) { _ in refreshCalendarMarkers() }
+            .onChange(of: store.turns.count) { _ in
+                refreshCalendarMarkers()
+                focusFreshInboxTurnIfNeeded()
+            }
             .overlay(alignment: .top) {
                 if showCalendarOverlay {
                     quickCaptureCalendarOverlay
@@ -362,6 +365,17 @@ struct QuickCaptureView: View {
                         }
                     }
                 }
+    }
+
+    private func focusFreshInboxTurnIfNeeded() {
+        guard let newest = store.turns.max(by: { $0.createdAt < $1.createdAt }),
+              newest.targetBucket == "inbox",
+              Date().timeIntervalSince(newest.createdAt) <= 10,
+              !calendar.isDate(previewDate, inSameDayAs: newest.createdAt) else {
+            return
+        }
+        previewDate = newest.createdAt
+        displayMonth = startOfMonth(for: newest.createdAt)
     }
 
     // MARK: - Edit Sheet

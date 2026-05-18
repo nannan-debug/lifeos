@@ -20,7 +20,7 @@
 - ✅ App ID：`6763877227`
 - ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 / 1.5.1 / 1.5.2 / 1.6.0 均 Ready for Distribution
 
-**当前阶段：`1.7.0 (build 11)` 发版准备中 —— 代码已合入 `main`、CI 通过，待 Archive / Upload / 提审。**
+**当前阶段：`1.7.0 (build 11)` 已提交 App 审核，正在等待审核结果。**
 
 - 本次内容：桌面小组件「今日打卡」交互、设置页「导出全部数据」、iCloud 同步迁移到 CloudKit、第二大脑「延伸思考」、醒后梦境提醒。
 - ⚠️ 最低系统从 iOS 16 提升到 **iOS 17**，仍在 iOS 16 的用户收不到本次更新。
@@ -386,6 +386,13 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ `1.6.0 (build 10)` 已通过审核并上架（2026-05-15，用户确认）。
 - ✅ Tag `v1.6.0` 已 push（指向 `f563735`）。
 - ✅ GitHub Release [v1.6.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.6.0) 已发布。
+
+### 6.8 1.7.0 审核中
+
+- ✅ 发版 PR 已合入 `main`：`1.7.0 (build 11)` 版本号 / changelog / 本清单状态更新（[#56](https://github.com/nannan-debug/lifeos/pull/56)）。
+- ✅ 用户已手动 Archive / Upload 到 App Store Connect。
+- ✅ ASC 已创建 / 选择 `1.7.0` 新版本，并 Submit to App Review（2026-05-18，用户确认）。
+- ⏳ 当前等待 Apple 审核结果；不要打 `v1.7.0` tag，不要创建 GitHub Release。
 
 ---
 

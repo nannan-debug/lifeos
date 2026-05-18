@@ -19,13 +19,13 @@ GitHub：github.com/nannan-debug/lifeos
 开始任何任务前，请按顺序读完这些文件，并在回复里确认你已理解：
 
 1. IN_PROGRESS.md      — 当前在飞的大功能（如有）。**有内容则你接的就是这个，不要另起炉灶**
-2. CLAUDE.md           — 工作规范 / ADHD 友好硬约束（红线）
+2. CLAUDE.md           — 工作规范 （红线）
 3. AGENTS.md           — 主动沉淀规则（合 main 时是否要更新 CHANGELOG / IN_PROGRESS / LAUNCH_CHECKLIST）
 4. CONTRIBUTING.md     — 分支命名 / commit 规范
 5. VERSIONING.md       — 版本号约定（注意：project.yml 是 source of truth，不是 Info.plist）
 6. LAUNCH_CHECKLIST.md — 当前上架状态 + 发版 SOP（重点看 §4.8 审核期间开发策略）
 7. CHANGELOG.md        — 版本变更历史（按需，发版相关时看）
-8. PRODUCT_BRIEF.md    — 产品背景与 ADHD 友好设计原则（按需）
+8. PRODUCT_BRIEF.md    — 产品背景（按需）
 
 读完后用 5 行向我汇报：
 （1）当前线上版本号 + ASC 审核状态
@@ -41,7 +41,6 @@ GitHub：github.com/nannan-debug/lifeos
 - 改完代码必须提醒我 commit，不要自己 commit
 - 不要碰 Secrets.swift / .env / 任何凭证
 - DEVELOPMENT_TEAM 必须保持 355RQ5S3DW
-- ADHD 友好原则：不准 streak / 完成率审判 / "你已经 X 天没打开" / 高饱和警告色
 - 任何想动 IN_PROGRESS.md "锁定决策清单" 的内容 → 先停下来问我，不要直接改
 - 用户可见的代码改动必须顺手更新 CHANGELOG.md [Unreleased]（AGENTS.md 强制）
 
