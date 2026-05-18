@@ -44,6 +44,7 @@ GitHub：github.com/nannan-debug/lifeos
 - ADHD 友好原则：不准 streak / 完成率审判 / "你已经 X 天没打开" / 高饱和警告色
 - 任何想动 IN_PROGRESS.md "锁定决策清单" 的内容 → 先停下来问我，不要直接改
 - 用户可见的代码改动必须顺手更新 CHANGELOG.md [Unreleased]（AGENTS.md 强制）
+- 数据安全红线：不要为排查问题删 App、不要用存真实数据的设备/账号调试、破坏性操作（删除/抹机/reset）前先确认有已验证的备份、同步逻辑不得让"本机为空"反向覆盖云端（详见 CLAUDE.md「数据安全红线」）
 
 工作流（每个 PR 一轮）：
 1. 我告诉你做什么（接 IN_PROGRESS 下一个 PR / 新功能 / 修 bug / 发版）
@@ -51,7 +52,7 @@ GitHub：github.com/nannan-debug/lifeos
 3. 如果是 IN_PROGRESS 在飞功能，先把对应 PR 行标 🚧（commit 时一起进 PR）
 4. 你开新分支（type/short-name 见 CONTRIBUTING.md）
 5. 写代码 → 跑测试 → 给我看 diff
-6. 我满意后你 push 分支 + 开 PR（PR 描述含 Test plan）
+6. 我满意后你 push 分支 + 开 PR（PR 描述含 Test plan）；PR 会自动跑 CI「iOS Build」——CI 固定用 Xcode 16.4，本地构建通过不等于 CI 通过，CI 红灯别合并
 7. 用户可见的改动你顺手更新 CHANGELOG.md [Unreleased]
 8. 我自己 review → squash merge → 删分支
 9. 合后你把 IN_PROGRESS 进度表对应 PR 标 ✅ + 填 PR 链接 + 日期（开下一个 PR 时一并做）
