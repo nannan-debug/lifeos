@@ -384,12 +384,6 @@ struct GlobalAIInputBar: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            if !action.reason.isEmpty {
-                Text(action.reason)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
             Button {
                 if let err = store.confirmAgentAction(id: action.id) {
                     store.agentErrorMessage = err

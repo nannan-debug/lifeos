@@ -1849,11 +1849,57 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         if !content.isEmpty {
             agentSession.messages.append(AgentChatMessage(role: "assistant", content: content))
         }
-        agentSession.pendingActions.append(contentsOf: response.actionSuggestions.filter {
-            !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            !$0.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
+        mergeAgentActionSuggestions(response.actionSuggestions)
         saveAgentChat()
+    }
+
+    func mergeAgentActionSuggestions(_ suggestions: [AgentActionDraft]) {
+        for action in suggestions where hasAgentActionContent(action) {
+            if let existingIndex = agentSession.pendingActions.firstIndex(where: { isSameAgentActionIntent($0, action) }) {
+                if agentActionCompletenessScore(action) >= agentActionCompletenessScore(agentSession.pendingActions[existingIndex]) {
+                    agentSession.pendingActions[existingIndex] = action
+                }
+            } else {
+                agentSession.pendingActions.append(action)
+            }
+        }
+    }
+
+    private func hasAgentActionContent(_ action: AgentActionDraft) -> Bool {
+        !action.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !action.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func isSameAgentActionIntent(_ lhs: AgentActionDraft, _ rhs: AgentActionDraft) -> Bool {
+        guard lhs.kind == rhs.kind else { return false }
+        let lhsTitle = normalizedAgentActionText(lhs.title)
+        let rhsTitle = normalizedAgentActionText(rhs.title)
+        if !lhsTitle.isEmpty, lhsTitle == rhsTitle { return true }
+
+        let lhsDetail = normalizedAgentActionText(lhs.detail)
+        let rhsDetail = normalizedAgentActionText(rhs.detail)
+        return !lhsDetail.isEmpty && lhsDetail == rhsDetail
+    }
+
+    private func normalizedAgentActionText(_ text: String) -> String {
+        text
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "　", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func agentActionCompletenessScore(_ action: AgentActionDraft) -> Int {
+        [
+            action.title,
+            action.detail,
+            action.date ?? "",
+            action.startTime ?? "",
+            action.endTime ?? "",
+            action.reason
+        ].reduce(0) { score, value in
+            score + (value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
+        }
     }
 
     @discardableResult
