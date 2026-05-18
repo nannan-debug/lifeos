@@ -1,7 +1,7 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-05-11
+> 最后更新：2026-05-18
 
 ---
 
@@ -20,7 +20,10 @@
 - ✅ App ID：`6763877227`
 - ✅ App Store Connect 状态：1.0.0 / 1.1.0 / 1.2.0 / 1.3.0 / 1.4.0 / 1.5.0 / 1.5.1 / 1.5.2 / 1.6.0 均 Ready for Distribution
 
-**当前阶段：`1.6.0 (build 10)` 上架收尾已完成，等待下一个版本计划开启。**
+**当前阶段：`1.7.0 (build 11)` 发版准备中 —— 代码已合入 `main`、CI 通过，待 Archive / Upload / 提审。**
+
+- 本次内容：桌面小组件「今日打卡」交互、设置页「导出全部数据」、iCloud 同步迁移到 CloudKit、第二大脑「延伸思考」、醒后梦境提醒。
+- ⚠️ 最低系统从 iOS 16 提升到 **iOS 17**，仍在 iOS 16 的用户收不到本次更新。
 
 - v1.5.0 tag / GitHub Release 已完成（[v1.5.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.5.0)）。
 - ℹ️ v1.4.0 tag / GitHub Release 已决定跳过（历史记录不补打，见 §6.3）。
@@ -37,7 +40,7 @@
 | 产品名 | **LifeOS** |
 | App Store 显示名 | `LifeOS` |
 | Bundle ID | `ai.anna.personalsystem` |
-| iOS 最低支持 | iOS 16.0 |
+| iOS 最低支持 | iOS 17.0 |
 | Swift 版本 | 5.9 |
 | Xcode project | XcodeGen 生成（源头是 `project.yml`） |
 | 主语言 | 简体中文（zh-Hans） |
