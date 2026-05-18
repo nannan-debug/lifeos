@@ -17,6 +17,7 @@
 		23CE8BA3F6D48B6C953A8B29 /* BrainCardEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D64187D17902AB6CDBE0CB90 /* BrainCardEditorSheet.swift */; };
 		257999BBA159C9066609056B /* AIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 229491345B70D21BB0902CB5 /* AIParser.swift */; };
 		263067111C069AA3CD3501D0 /* TurnTypeStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BED040E4ACD1E520E36FFC0 /* TurnTypeStyle.swift */; };
+		2874582AED10DCD404B5C280 /* AgentOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430AB77324DB2A31B0516400 /* AgentOrchestrator.swift */; };
 		2ADB24B66CB28A4DEE70967F /* ai-routing-cases.json in Resources */ = {isa = PBXBuildFile; fileRef = 7BC8EB2EC10B66382169FE9B /* ai-routing-cases.json */; };
 		2B9D0194685A8DF2C4A5EB3D /* cat-lay.svg in Resources */ = {isa = PBXBuildFile; fileRef = F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */; };
 		2D0B11D8F6CCD040CCB8608C /* DataArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFAF1862AB2EC84D861931B /* DataArchive.swift */; };
@@ -106,6 +107,7 @@
 		36385E1762B561F298163F27 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		3B968B67098FCE889B4987AB /* cat-lying-none.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "cat-lying-none.png"; sourceTree = "<group>"; };
 		3BEDD8E7925F1E7FC43C0876 /* AIRoutingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRoutingPolicy.swift; sourceTree = "<group>"; };
+		430AB77324DB2A31B0516400 /* AgentOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrchestrator.swift; sourceTree = "<group>"; };
 		4590EECCF8FD6F4EC701C99B /* PersonalSystemTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PersonalSystemTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4740978737F177B45D684422 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		48EFF892D5B0946268586336 /* PersonalSystem.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PersonalSystem.entitlements; sourceTree = "<group>"; };
@@ -152,6 +154,7 @@
 		1D4D04C4520C793DD37BF0BE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				430AB77324DB2A31B0516400 /* AgentOrchestrator.swift */,
 				229491345B70D21BB0902CB5 /* AIParser.swift */,
 				16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */,
 				1C45A2425F0D3BFF4F46BC72 /* CloudKitRecordMapper.swift */,
@@ -451,6 +454,7 @@
 				60672086424D747B8429C3B8 /* AIConsentSheet.swift in Sources */,
 				257999BBA159C9066609056B /* AIParser.swift in Sources */,
 				BC226063FC2A9473CA38D585 /* AIRoutingPolicy.swift in Sources */,
+				2874582AED10DCD404B5C280 /* AgentOrchestrator.swift in Sources */,
 				3B95585BBBD69166DAA93AC5 /* AppStore.swift in Sources */,
 				E7F784C38996BCF7DA31FB2E /* AppUpdateService.swift in Sources */,
 				74F5A5797CBFA7BF85650474 /* BrainCardDetailView.swift in Sources */,

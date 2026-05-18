@@ -65,6 +65,121 @@ struct ConversationTurn: Identifiable {
     var derivatives: [TurnDerivative] = []
 }
 
+enum AgentActionKind: String, Codable, Equatable {
+    case inbox
+    case task
+    case time
+}
+
+struct AgentActionDraft: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var kind: AgentActionKind
+    var title: String
+    var detail: String
+    var date: String?
+    var startTime: String?
+    var endTime: String?
+    var confidence: Double
+    var reason: String
+    var createdAt: Date = Date()
+
+    init(
+        id: UUID = UUID(),
+        kind: AgentActionKind,
+        title: String,
+        detail: String,
+        date: String? = nil,
+        startTime: String? = nil,
+        endTime: String? = nil,
+        confidence: Double,
+        reason: String,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.date = date
+        self.startTime = startTime
+        self.endTime = endTime
+        self.confidence = confidence
+        self.reason = reason
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case title
+        case detail
+        case date
+        case startTime
+        case endTime
+        case confidence
+        case reason
+        case createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        kind = (try? c.decode(AgentActionKind.self, forKey: .kind)) ?? .inbox
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
+        detail = (try? c.decode(String.self, forKey: .detail)) ?? ""
+        date = try? c.decodeIfPresent(String.self, forKey: .date)
+        startTime = try? c.decodeIfPresent(String.self, forKey: .startTime)
+        endTime = try? c.decodeIfPresent(String.self, forKey: .endTime)
+        confidence = (try? c.decode(Double.self, forKey: .confidence)) ?? 0.6
+        reason = (try? c.decode(String.self, forKey: .reason)) ?? ""
+        createdAt = (try? c.decode(Date.self, forKey: .createdAt)) ?? Date()
+    }
+}
+
+struct AgentChatMessage: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var role: String            // user / assistant
+    var content: String
+    var createdAt: Date = Date()
+}
+
+struct AgentChatSession: Codable, Equatable {
+    var id: UUID = UUID()
+    var messages: [AgentChatMessage] = []
+    var pendingActions: [AgentActionDraft] = []
+    var updatedAt: Date = Date()
+}
+
+struct AgentChatResponse: Decodable, Equatable {
+    var reply: String
+    var followUpQuestion: String?
+    var actionSuggestions: [AgentActionDraft]
+    var rawBody: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case reply
+        case followUpQuestion
+        case actionSuggestions
+        case actions
+    }
+
+    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], rawBody: String? = nil) {
+        self.reply = reply
+        self.followUpQuestion = followUpQuestion
+        self.actionSuggestions = actionSuggestions
+        self.rawBody = rawBody
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reply = (try? c.decode(String.self, forKey: .reply)) ?? ""
+        followUpQuestion = try? c.decodeIfPresent(String.self, forKey: .followUpQuestion)
+        actionSuggestions = (try? c.decode([AgentActionDraft].self, forKey: .actionSuggestions))
+            ?? (try? c.decode([AgentActionDraft].self, forKey: .actions))
+            ?? []
+        rawBody = nil
+    }
+}
+
 /// 一条 ConversationTurn 通过 Review 模式衍生出的下游产物（ToDo 或第二大脑卡片）。
 struct TurnDerivative: Codable, Equatable {
     var type: String          // "todo" | "brain"
