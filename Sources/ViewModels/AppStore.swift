@@ -2617,7 +2617,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         feelingTags: [String] = []
     ) -> String {
         guard !isRecentDuplicateTurn(rawText: rawText, recognizedType: recognizedType, targetBucket: targetBucket, payload: payload) else {
-            aiDebugMessage = nil
+            aiDebugMessage = "刚刚已经记过这条了，随手记里保留第一条。"
             return "跳过：最近 180 秒内已有同类重复记录"
         }
         guard let id = addTurnDraft(

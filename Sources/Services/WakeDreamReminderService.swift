@@ -10,6 +10,8 @@ enum WakeDreamReminderService {
     private static let calendar = Calendar.current
     private static let minimumNightSleepDuration: TimeInterval = 3 * 60 * 60
     private static let reminderDelay: TimeInterval = 2 * 60
+    private static let lateReminderGraceWindow: TimeInterval = 4 * 60 * 60
+    private static let immediateReminderDelay: TimeInterval = 5
 
     static let composerPrompt = "做梦："
 
@@ -33,8 +35,7 @@ enum WakeDreamReminderService {
             return false
         }
 
-        let reminderDate = wakeDate.addingTimeInterval(reminderDelay)
-        guard reminderDate > now else {
+        guard let reminderDate = reminderDate(for: wakeDate, now: now) else {
             return false
         }
 
@@ -105,6 +106,22 @@ enum WakeDreamReminderService {
             }
             .first?
             .endDate
+    }
+
+    static func reminderDate(for wakeDate: Date, now: Date = Date()) -> Date? {
+        let preferredDate = wakeDate.addingTimeInterval(reminderDelay)
+        if preferredDate > now {
+            return preferredDate
+        }
+
+        guard calendar.isDate(wakeDate, inSameDayAs: now),
+              now.timeIntervalSince(wakeDate) <= lateReminderGraceWindow else {
+            return nil
+        }
+
+        let hour = calendar.component(.hour, from: now)
+        guard hour < 12 else { return nil }
+        return now.addingTimeInterval(immediateReminderDelay)
     }
 
     private static func requestIdentifier(for dayKey: String) -> String {

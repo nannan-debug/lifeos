@@ -193,6 +193,25 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertNil(WakeDreamReminderService.mainNightSleepWakeDate(from: [previousDaySleep, nap], now: now))
     }
 
+    func testWakeDreamReminderSchedulesSoonWhenSyncHappensAfterWake() {
+        let calendar = Calendar(identifier: .gregorian)
+        let wake = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 7, minute: 10)
+        let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 9, minute: 0)
+
+        XCTAssertEqual(
+            WakeDreamReminderService.reminderDate(for: wake, now: now),
+            now.addingTimeInterval(5)
+        )
+    }
+
+    func testWakeDreamReminderSkipsLateAfternoonSync() {
+        let calendar = Calendar(identifier: .gregorian)
+        let wake = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 7, minute: 10)
+        let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 13, minute: 0)
+
+        XCTAssertNil(WakeDreamReminderService.reminderDate(for: wake, now: now))
+    }
+
     func testTaskToggleRecordsAndClearsCompletionTime() {
         let store = AppStore()
         let title = "completion-time-\(UUID().uuidString)"
