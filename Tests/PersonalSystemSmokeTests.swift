@@ -292,6 +292,34 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertTrue(store.timeEntries.contains { $0.name == "散步" && $0.start == "09:00" && $0.end == "10:00" })
     }
 
+    func testAgentActionSuggestionsReplaceLessCompleteDuplicate() {
+        let store = AppStore()
+        let vagueTask = AgentActionDraft(
+            kind: .task,
+            title: "提交材料",
+            detail: "明天提醒提交材料",
+            date: "2026-05-19",
+            confidence: 0.7,
+            reason: "用户提到提醒"
+        )
+        let timedTask = AgentActionDraft(
+            kind: .task,
+            title: "提交材料",
+            detail: "明天 10 点提醒提交材料",
+            date: "2026-05-19",
+            startTime: "10:00",
+            confidence: 0.9,
+            reason: "用户补充了时间"
+        )
+
+        store.mergeAgentActionSuggestions([vagueTask])
+        store.mergeAgentActionSuggestions([timedTask])
+
+        XCTAssertEqual(store.agentSession.pendingActions.count, 1)
+        XCTAssertEqual(store.agentSession.pendingActions.first?.detail, "明天 10 点提醒提交材料")
+        XCTAssertEqual(store.agentSession.pendingActions.first?.startTime, "10:00")
+    }
+
     func testTaskToggleRecordsAndClearsCompletionTime() {
         let store = AppStore()
         let title = "completion-time-\(UUID().uuidString)"
