@@ -26,6 +26,7 @@ enum AgentOrchestrator {
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
+        memories: [AgentMemory] = [],
         trigger: AgentTrigger = .userMessage
     ) -> Request {
         let recentMessages = session.messages.suffix(8).map {
@@ -38,7 +39,8 @@ enum AgentOrchestrator {
                 turns: turns,
                 tasks: tasks,
                 timeEntries: timeEntries,
-                checks: checks
+                checks: checks,
+                memories: memories
             ),
             trigger: trigger
         )
@@ -48,7 +50,8 @@ enum AgentOrchestrator {
         turns: [ConversationTurn],
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
-        checks: [DailyCheckItem]
+        checks: [DailyCheckItem],
+        memories: [AgentMemory] = []
     ) -> String {
         var sections: [String] = []
 
@@ -78,6 +81,11 @@ enum AgentOrchestrator {
         }
         if !checkState.isEmpty {
             sections.append("今日打卡：\n" + checkState.joined(separator: "\n"))
+        }
+
+        let memoryLines = memories.prefix(10).map { "- \($0.content)" }
+        if !memoryLines.isEmpty {
+            sections.append("历史记忆：\n" + memoryLines.joined(separator: "\n"))
         }
 
         if sections.isEmpty {

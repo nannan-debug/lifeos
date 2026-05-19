@@ -43,6 +43,12 @@ enum TurnTypeStyle {
         }
     }
 
+    static func displayTitle(for turn: ConversationTurn) -> String? {
+        guard turn.targetBucket != "time" else { return nil }
+        let title = turn.payload["title"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? nil : title
+    }
+
     /// 卡片正文文本：优先 payload.detail（AI 拆解后的精炼版本），回退 rawText
     static func displayText(for turn: ConversationTurn) -> String {
         if turn.targetBucket == "time" {

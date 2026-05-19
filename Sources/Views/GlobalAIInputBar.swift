@@ -15,6 +15,7 @@ struct GlobalAIInputBar: View {
     @FocusState private var inputFocused: Bool
 
     @State private var keyboardVisible = false
+    @State private var chatMode = false
 
     // AI 首次使用同意弹窗
     @State private var showConsent = false
@@ -102,13 +103,35 @@ struct GlobalAIInputBar: View {
         let hasText = !rawInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let isLoading = store.isAgentLoading
         let canSend = hasText && !isLoading
-        let placeholder = "和猫说点什么…记录或闲聊都可以"
+        let placeholder = chatMode ? "和猫聊聊..." : "快速记录..."
 
         return VStack(alignment: .leading, spacing: 9) {
-            // 顶部工具栏：清空对话按钮
+            // 顶部工具栏：模式切换 + 清空对话
             HStack(spacing: 6) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { chatMode.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: chatMode ? "bubble.left.and.bubble.right.fill" : "bolt.fill")
+                            .font(.caption2)
+                        Text(chatMode ? "对话" : "快录")
+                            .font(.caption2.weight(.medium))
+                    }
+                    .foregroundStyle(chatMode ? CreamTheme.green : Color(red: 0.85, green: 0.65, blue: 0.25))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule().fill(
+                            chatMode
+                            ? CreamTheme.green.opacity(0.12)
+                            : Color(red: 0.99, green: 0.93, blue: 0.80)
+                        )
+                    )
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
-                if !store.agentSession.messages.isEmpty {
+                if chatMode && !store.agentSession.messages.isEmpty {
                     Button {
                         store.clearAgentChat()
                     } label: {
@@ -121,9 +144,23 @@ struct GlobalAIInputBar: View {
                 }
             }
 
-            agentConversationPreview
+            if chatMode {
+                agentConversationPreview
+            }
+            if let memStatus = store.agentMemoryStatus {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain.head.profile")
+                        .font(.caption2)
+                        .foregroundStyle(CreamTheme.green)
+                    Text(memStatus)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+                .transition(.opacity)
+            }
             if store.isAgentLoading {
-                dialogueLine(label: "猫", text: "我在想怎么接这句话...", isUser: false)
+                dialogueLine(label: "猫", text: chatMode ? "我在想怎么接这句话..." : "正在分析...", isUser: false)
             }
             if let msg = store.agentErrorMessage {
                 dialogueLine(label: "猫", text: msg, isUser: false, canDismiss: true)
@@ -355,7 +392,11 @@ struct GlobalAIInputBar: View {
             showConsent = true
             return
         }
-        store.submitAgentText(text)
+        if chatMode {
+            store.submitAgentText(text)
+        } else {
+            store.submitQuickText(text)
+        }
         rawInput = ""
     }
 
