@@ -93,6 +93,7 @@ struct QuickCaptureView: View {
     @EnvironmentObject var store: AppStore
 
     @State private var editingTurnID: UUID?
+    @State private var editingTitle = ""
     @State private var editingText = ""
     @State private var editingType = "想法"
     @State private var previewDate = Date()
@@ -269,6 +270,11 @@ struct QuickCaptureView: View {
                                     .clipShape(Capsule())
                                 }
 
+                                if let title = TurnTypeStyle.displayTitle(for: turn) {
+                                    Text(title)
+                                        .font(.subheadline.weight(.medium))
+                                }
+
                                 Text(TurnTypeStyle.displayText(for: turn))
                                     .font(.subheadline)
 
@@ -419,6 +425,9 @@ struct QuickCaptureView: View {
     private var editSheet: some View {
         NavigationStack {
             Form {
+                Section("标题") {
+                    TextField("简短主题", text: $editingTitle)
+                }
                 Section("内容") {
                     TextField("文本内容", text: $editingText, axis: .vertical)
                         .lineLimit(3...8)
@@ -451,7 +460,8 @@ struct QuickCaptureView: View {
                             id: id,
                             recognizedType: editingType,
                             targetBucket: "inbox",
-                            text: editingText
+                            text: editingText,
+                            title: editingTitle
                         )
                         if let err {
                             errorMessage = err
@@ -740,6 +750,7 @@ struct QuickCaptureView: View {
     private func beginEdit(_ turn: ConversationTurn) {
         editingTurnID = turn.id
         editingType = intentOptions.contains(turn.recognizedType) ? turn.recognizedType : "想法"
+        editingTitle = TurnTypeStyle.displayTitle(for: turn) ?? ""
         editingText = TurnTypeStyle.displayText(for: turn)
     }
 

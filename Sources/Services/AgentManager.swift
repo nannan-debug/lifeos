@@ -14,12 +14,17 @@ final class AgentManager: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published var debugLogs: [AgentChatDebugLog] = []
+    @Published var memories: [AgentMemory] = []
+    @Published var memoryStatus: String? = nil
 
     private weak var writer: AgentDataWriter?
     private let client: AIClient
     private let defaults = UserDefaults.standard
     private var keyChat: String
     private var keyDebugLogs: String
+    private var keyMemories: String
+
+    static let maxMemories = 15
 
     init(writer: AgentDataWriter, userIdSuffix: String, client: AIClient = DefaultAIClient()) {
         self.writer = writer
@@ -27,8 +32,10 @@ final class AgentManager: ObservableObject {
         let base = userIdSuffix.isEmpty ? "" : ".\(userIdSuffix)"
         self.keyChat = "ps.agent.chat\(base)"
         self.keyDebugLogs = "ps.agent.debug.logs\(base)"
+        self.keyMemories = "ps.agent.memories\(base)"
         loadSession()
         loadDebugLogs()
+        loadMemories()
     }
 
     // MARK: - 重新绑定 writer（AppStore init 后设置）
@@ -43,8 +50,10 @@ final class AgentManager: ObservableObject {
         let base = suffix.isEmpty ? "" : ".\(suffix)"
         keyChat = "ps.agent.chat\(base)"
         keyDebugLogs = "ps.agent.debug.logs\(base)"
+        keyMemories = "ps.agent.memories\(base)"
         loadSession()
         loadDebugLogs()
+        loadMemories()
     }
 
     // MARK: - Send message
@@ -65,8 +74,10 @@ final class AgentManager: ObservableObject {
             turns: turns,
             tasks: tasks,
             timeEntries: timeEntries,
-            checks: checks
+            checks: checks,
+            memories: memories
         )
+        markMemoriesUsed()
         session.messages.append(AgentChatMessage(role: "user", content: clean))
         saveSession()
         isLoading = true
@@ -111,6 +122,48 @@ final class AgentManager: ObservableObject {
                         mergedActions: mergedActions,
                         errorMessage: error.localizedDescription
                     )
+                }
+            }
+        }
+    }
+
+    // MARK: - Quick send (lightweight single-turn)
+
+    func quickSend(text: String) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+
+        isLoading = true
+        errorMessage = nil
+        let today = AIParser.isoDate()
+        let now = AIParser.isoTime()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let response = try await self.client.quick(
+                    input: clean,
+                    currentDate: today,
+                    currentTime: now
+                )
+                await MainActor.run {
+                    self.isLoading = false
+                    let actions = response.actionSuggestions.filter { self.hasContent($0) }
+                    for action in actions {
+                        if !self.session.pendingActions.contains(where: { self.isSameIntent($0, action) }) {
+                            self.session.pendingActions.append(action)
+                        }
+                    }
+                    if let fq = response.followUpQuestion?.trimmingCharacters(in: .whitespacesAndNewlines), !fq.isEmpty {
+                        self.session.messages.append(AgentChatMessage(role: "user", content: clean))
+                        self.session.messages.append(AgentChatMessage(role: "assistant", content: fq))
+                    }
+                    self.saveSession()
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.errorMessage = "快录失败，请重试。"
                 }
             }
         }
@@ -181,14 +234,83 @@ final class AgentManager: ObservableObject {
     }
 
     func clearChat() {
+        let messagesToExtract = session.messages
         session = AgentChatSession()
         errorMessage = nil
         defaults.removeObject(forKey: keyChat)
+
+        if messagesToExtract.count >= 4 {
+            memoryStatus = "正在提取记忆..."
+            Task { [weak self] in
+                await self?.extractMemories(from: messagesToExtract)
+            }
+        }
     }
 
     func clearDebugLogs() {
         debugLogs = []
         defaults.removeObject(forKey: keyDebugLogs)
+    }
+
+    // MARK: - Memory management
+
+    func addMemory(content: String, category: String = "fact", source: String = "user") {
+        let clean = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        if memories.contains(where: { $0.content == clean }) { return }
+        memories.append(AgentMemory(content: clean, category: category, source: source))
+        trimMemories()
+        saveMemories()
+    }
+
+    func removeMemory(id: UUID) {
+        memories.removeAll { $0.id == id }
+        saveMemories()
+    }
+
+    func markMemoriesUsed() {
+        let now = Date()
+        for i in memories.indices {
+            memories[i].lastUsedAt = now
+        }
+        saveMemories()
+    }
+
+    private func trimMemories() {
+        guard memories.count > Self.maxMemories else { return }
+        memories.sort { $0.lastUsedAt > $1.lastUsedAt }
+        memories = Array(memories.prefix(Self.maxMemories))
+    }
+
+    private func extractMemories(from messages: [AgentChatMessage]) async {
+        do {
+            let extracted = try await AIParser.extractMemories(
+                messages: messages.map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
+            )
+            await MainActor.run {
+                var added = 0
+                for item in extracted {
+                    if !self.memories.contains(where: { $0.content == item.content }) {
+                        self.memories.append(AgentMemory(
+                            content: item.content,
+                            category: item.category,
+                            source: "auto"
+                        ))
+                        added += 1
+                    }
+                }
+                self.trimMemories()
+                self.saveMemories()
+                self.memoryStatus = added > 0 ? "已记住 \(added) 条新信息" : nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    self.memoryStatus = nil
+                }
+            }
+        } catch {
+            await MainActor.run {
+                self.memoryStatus = nil
+            }
+        }
     }
 
     // MARK: - Commit actions → AppStore
@@ -400,6 +522,23 @@ final class AgentManager: ObservableObject {
         encoder.dateEncodingStrategy = .secondsSince1970
         guard let data = try? encoder.encode(debugLogs) else { return }
         defaults.set(data, forKey: keyDebugLogs)
+    }
+
+    private func loadMemories() {
+        guard let data = defaults.data(forKey: keyMemories) else {
+            memories = []
+            return
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        memories = (try? decoder.decode([AgentMemory].self, from: data)) ?? []
+    }
+
+    private func saveMemories() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(memories) else { return }
+        defaults.set(data, forKey: keyMemories)
     }
 
     private func recordDebugLog(

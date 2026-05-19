@@ -175,6 +175,15 @@ struct AgentChatSession: Codable, Equatable {
     var updatedAt: Date = Date()
 }
 
+struct AgentMemory: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var content: String
+    var category: String       // fact / preference / summary
+    var createdAt: Date = Date()
+    var lastUsedAt: Date = Date()
+    var source: String = "auto" // auto / user
+}
+
 struct AgentChatResponse: Decodable, Equatable {
     var reply: String
     var followUpQuestion: String?

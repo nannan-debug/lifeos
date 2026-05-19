@@ -8,6 +8,12 @@ protocol AIClient {
         currentDate: String,
         currentTime: String
     ) async throws -> AgentChatResponse
+
+    func quick(
+        input: String,
+        currentDate: String,
+        currentTime: String
+    ) async throws -> AgentChatResponse
 }
 
 struct DefaultAIClient: AIClient {
@@ -22,6 +28,18 @@ struct DefaultAIClient: AIClient {
             input: input,
             messages: messages,
             contextSummary: contextSummary,
+            currentDate: currentDate,
+            currentTime: currentTime
+        )
+    }
+
+    func quick(
+        input: String,
+        currentDate: String,
+        currentTime: String
+    ) async throws -> AgentChatResponse {
+        try await AIParser.quick(
+            input: input,
             currentDate: currentDate,
             currentTime: currentTime
         )
