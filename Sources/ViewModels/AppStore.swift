@@ -1,10 +1,6 @@
+import Combine
 import Foundation
 import WidgetKit
-
-struct PendingClarification {
-    let originalText: String
-    let hint: String
-}
 
 struct ReviewCheckHabitSummary: Equatable {
     let title: String
@@ -35,7 +31,7 @@ struct ReviewTimeCategorySummary: Equatable {
     let minutes: Int
 }
 
-final class AppStore: ObservableObject, CloudSyncDataSource {
+final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private struct TimeCommitResult {
         let id: UUID?
         let dateKey: String?
@@ -66,14 +62,18 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     @Published var turns: [ConversationTurn] = []
     @Published var brainCards: [BrainCard] = []
     @Published var aiFailureLogs: [AIFailureLog] = []
-    @Published var aiDebugLogs: [AIDebugLog] = []
-    @Published var agentSession: AgentChatSession = AgentChatSession()
-    @Published var isAgentLoading: Bool = false
-    @Published var agentErrorMessage: String? = nil
+    /// Agent 对话管理器：独立持有 session、loading、error 和 debug logs。
+    /// Views 通过 store.agent.xxx 访问，或通过下方兼容属性访问。
+    @Published var agent: AgentManager!
+    private var agentCancellable: AnyCancellable?
 
-    // MARK: - AI dispatch state (全局输入框用)
-    @Published var isAILoading: Bool = false
-    @Published var aiDebugMessage: String? = nil
+    var agentSession: AgentChatSession { agent.session }
+    var isAgentLoading: Bool { agent.isLoading }
+    var agentErrorMessage: String? {
+        get { agent.errorMessage }
+        set { agent.errorMessage = newValue }
+    }
+    var agentDebugLogs: [AgentChatDebugLog] { agent.debugLogs }
 
     // TodayView 当前 segment（"check" / "todo"），供 RootTabView 控制 AI 输入框可见性
     @Published var todaySegment: String = "check"
@@ -84,10 +84,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     @Published var isWakeDreamReminderEnabled: Bool
     @Published var healthSyncStatusText: String
     @Published var healthSyncCompletionMessage: String? = nil
-
-    /// 上一轮 AI 追问的上下文：当 AI 返回 needsClarification 时，暂存原文与 hint。
-    /// 用户下次提交时自动把两段拼起来发给 AI，避免"9 点到 10 点"这种裸时间丢失上下文。
-    @Published var pendingClarification: PendingClarification? = nil
 
     private let defaults = UserDefaults.standard
     private let authUserIdKey = "auth.userId"
@@ -104,6 +100,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         "ps.turns",
         "ps.brain",
         "ps.ai.failures",
+        "ps.agent.debug.logs",
         "ps.agent.chat",
         "fields.daily",
         "fields.daily.initialized",
@@ -128,8 +125,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
     private var keyTurns: String { scopedKey("ps.turns") }
     private var keyBrain: String { scopedKey("ps.brain") }
     private var keyAIFailures: String { scopedKey("ps.ai.failures") }
-    private var keyAIDebugLogs: String { scopedKey("ps.ai.debug.logs") }
-    private var keyAgentChat: String { scopedKey("ps.agent.chat") }
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
@@ -173,8 +168,11 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         loadTurns()
         loadBrain()
         loadAIFailureLogs()
-        loadAIDebugLogs()
-        loadAgentChat()
+        let uid = defaults.string(forKey: authUserIdKey) ?? ""
+        agent = AgentManager(writer: self, userIdSuffix: uid)
+        agentCancellable = agent.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         loadForSelectedDate()
         publishCheckWidgetSnapshot()
         if isICloudSyncEnabled {
@@ -305,17 +303,14 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         loadTurns()
         loadBrain()
         loadAIFailureLogs()
-        loadAIDebugLogs()
-        loadAgentChat()
+        agent.reloadForUser(suffix: currentUserId ?? "")
         loadForSelectedDate()
         publishCheckWidgetSnapshot()
     }
 
     /// 清空当前用户的所有数据（用于注销账户）。不影响其他用户。
     func wipeCurrentUserData() {
-        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyAIDebugLogs, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
-        defaults.removeObject(forKey: keyAgentChat)
-        // 旧版本随手记镜像（已废弃）一并兜底清掉
+        [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
         checkItems = []
         timeEntries = []
@@ -323,8 +318,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         turns = []
         brainCards = []
         aiFailureLogs = []
-        aiDebugLogs = []
-        agentSession = AgentChatSession()
+        agent.clearChat()
+        agent.clearDebugLogs()
         publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
     }
@@ -1712,252 +1707,32 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         defaults.set(data, forKey: keyAIFailures)
     }
 
-    @discardableResult
-    private func recordAIDebugLog(
-        input: String,
-        currentDate: String,
-        currentTime: String,
-        rawResponse: String?,
-        records: [AIParsedRecord],
-        needsClarification: String?,
-        errorMessage: String = ""
-    ) -> UUID {
-        let log = AIDebugLog(
-            createdAt: Date(),
-            input: input.trimmingCharacters(in: .whitespacesAndNewlines),
-            currentDate: currentDate,
-            currentTime: currentTime,
-            rawResponse: rawResponse ?? "",
-            needsClarification: needsClarification ?? "",
-            recordsSummary: records.map { aiDebugRecordSummary($0, rawText: input) },
-            commitSummary: [],
-            errorMessage: errorMessage
-        )
-        aiDebugLogs.insert(log, at: 0)
-        trimAndSaveAIDebugLogs()
-        return log.id
-    }
+    // MARK: - Agent chat (delegated to AgentManager)
 
-    private func appendAIDebugCommit(logID: UUID?, summary: String) {
-        guard let logID, let idx = aiDebugLogs.firstIndex(where: { $0.id == logID }) else { return }
-        aiDebugLogs[idx].commitSummary.append(summary)
-        trimAndSaveAIDebugLogs()
-    }
-
-    func clearAIDebugLogs() {
-        aiDebugLogs = []
-        defaults.removeObject(forKey: keyAIDebugLogs)
-    }
-
-    private func loadAIDebugLogs() {
-        guard let data = defaults.data(forKey: keyAIDebugLogs) else {
-            aiDebugLogs = []
-            return
-        }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .secondsSince1970
-        aiDebugLogs = (try? decoder.decode([AIDebugLog].self, from: data)) ?? []
-    }
-
-    private func trimAndSaveAIDebugLogs() {
-        if aiDebugLogs.count > 20 {
-            aiDebugLogs = Array(aiDebugLogs.prefix(20))
-        }
-        saveAIDebugLogs()
-    }
-
-    private func saveAIDebugLogs() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .secondsSince1970
-        guard let data = try? encoder.encode(aiDebugLogs) else { return }
-        defaults.set(data, forKey: keyAIDebugLogs)
-    }
-
-    // MARK: - Agent chat
-
-    private func loadAgentChat() {
-        guard let data = defaults.data(forKey: keyAgentChat) else {
-            agentSession = AgentChatSession()
-            return
-        }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .secondsSince1970
-        agentSession = (try? decoder.decode(AgentChatSession.self, from: data)) ?? AgentChatSession()
-    }
-
-    private func saveAgentChat() {
-        agentSession.updatedAt = Date()
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .secondsSince1970
-        guard let data = try? encoder.encode(agentSession) else { return }
-        defaults.set(data, forKey: keyAgentChat)
-    }
-
-    func clearAgentChat() {
-        agentSession = AgentChatSession()
-        agentErrorMessage = nil
-        defaults.removeObject(forKey: keyAgentChat)
-    }
+    func clearAgentDebugLogs() { agent.clearDebugLogs() }
+    func clearAgentChat() { agent.clearChat() }
 
     func submitAgentText(_ text: String) {
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
-
-        let request = AgentOrchestrator.makeRequest(
-            input: clean,
-            session: agentSession,
-            turns: turns,
-            tasks: tasks,
-            timeEntries: timeEntries,
-            checks: checkItems
-        )
-        agentSession.messages.append(AgentChatMessage(role: "user", content: clean))
-        saveAgentChat()
-        isAgentLoading = true
-        agentErrorMessage = nil
-        let today = AIParser.isoDate()
-        let now = AIParser.isoTime()
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let response = try await AIParser.chat(
-                    input: request.input,
-                    messages: request.messages,
-                    contextSummary: request.contextSummary,
-                    currentDate: today,
-                    currentTime: now
-                )
-                await MainActor.run {
-                    self.receiveAgentResponse(response)
-                }
-            } catch {
-                await MainActor.run {
-                    self.agentErrorMessage = "对话服务暂时没有接上，我先用本地方式陪你。"
-                    self.receiveAgentResponse(AgentOrchestrator.fallbackResponse(for: clean))
-                }
-            }
-        }
+        agent.send(text: text, turns: turns, tasks: tasks, timeEntries: timeEntries, checks: checkItems)
     }
 
-    private func receiveAgentResponse(_ response: AgentChatResponse) {
-        isAgentLoading = false
-        let pieces = [response.reply, response.followUpQuestion]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let content = pieces.joined(separator: "\n\n")
-        if !content.isEmpty {
-            agentSession.messages.append(AgentChatMessage(role: "assistant", content: content))
-        }
-        agentSession.pendingActions.append(contentsOf: response.actionSuggestions.filter {
-            !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            !$0.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
-        saveAgentChat()
+    func agentActionSuggestionsToMerge(from response: AgentChatResponse) -> [AgentActionDraft] {
+        agent.actionSuggestionsToMerge(from: response)
+    }
+
+    func mergeAgentActionSuggestions(_ suggestions: [AgentActionDraft]) {
+        agent.mergeActionSuggestions(suggestions)
     }
 
     @discardableResult
     func confirmAgentAction(id: UUID) -> String? {
-        guard let action = agentSession.pendingActions.first(where: { $0.id == id }) else {
-            return "建议不存在"
-        }
-
-        let result: String?
-        switch action.kind {
-        case .inbox:
-            result = commitAgentInboxAction(action)
-        case .task:
-            result = commitAgentTaskAction(action)
-        case .time:
-            result = commitAgentTimeAction(action)
-        }
-
-        if result == nil {
-            agentSession.pendingActions.removeAll { $0.id == id }
-            saveAgentChat()
-        }
-        return result
+        agent.confirmAction(id: id)
     }
 
     func dismissAgentAction(id: UUID) {
-        agentSession.pendingActions.removeAll { $0.id == id }
-        saveAgentChat()
+        agent.dismissAction(id: id)
     }
 
-    private func commitAgentInboxAction(_ action: AgentActionDraft) -> String? {
-        guard let id = addTurnDraft(
-            rawText: action.detail.isEmpty ? action.title : action.detail,
-            recognizedType: "想法",
-            targetBucket: "inbox",
-            confidence: action.confidence,
-            payload: [
-                "title": action.title.isEmpty ? aiFallbackTitle(action.detail) : action.title,
-                "detail": action.detail,
-                "status": "待处理",
-                "ai_source": "agent"
-            ]
-        ) else { return "内容为空，未保存" }
-        return commitTurn(id: id)
-    }
-
-    private func commitAgentTaskAction(_ action: AgentActionDraft) -> String? {
-        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return "待办标题为空" }
-        _ = addTask(
-            title: title,
-            detail: action.detail,
-            dueDate: action.date ?? "",
-            date: selectedDateKey,
-            isAllDay: (action.startTime ?? "").isEmpty,
-            startTime: action.startTime ?? "",
-            endTime: action.endTime ?? ""
-        )
-        return nil
-    }
-
-    private func commitAgentTimeAction(_ action: AgentActionDraft) -> String? {
-        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let start = action.startTime ?? ""
-        let end = action.endTime ?? ""
-        guard !start.isEmpty, !end.isEmpty else { return "时间记录缺少开始/结束时间" }
-        guard let id = addTurnDraft(
-            rawText: action.detail.isEmpty ? title : action.detail,
-            recognizedType: "时间记录",
-            targetBucket: "time",
-            confidence: action.confidence,
-            payload: [
-                "name": title.isEmpty ? "时间记录" : title,
-                "start": start,
-                "end": end,
-                "category": "其他",
-                "note": action.detail,
-                "date": action.date ?? selectedDateKey,
-                "ai_source": "agent"
-            ]
-        ) else { return "内容为空，未保存" }
-        return commitTurn(id: id)
-    }
-
-    private func aiDebugRecordSummary(_ rec: AIParsedRecord, rawText: String) -> String {
-        let appBucket = AIRoutingPolicy.appBucket(for: rec, rawText: rawText)
-        let title = rec.eventName ?? rec.title ?? ""
-        let type = rec.type ?? rec.module ?? ""
-        let date = rec.date ?? ""
-        let start = rec.startTime ?? ""
-        let end = rec.endTime ?? ""
-        let detail = rec.details ?? rec.notes ?? ""
-        return [
-            "aiBucket=\(rec.bucket)",
-            appBucket == rec.bucket ? "" : "appBucket=\(appBucket)",
-            title.isEmpty ? "" : "title=\(title)",
-            type.isEmpty ? "" : "type=\(type)",
-            date.isEmpty ? "" : "date=\(date)",
-            start.isEmpty && end.isEmpty ? "" : "time=\(start)-\(end)",
-            detail.isEmpty ? "" : "detail=\(detail)"
-        ]
-        .filter { !$0.isEmpty }
-        .joined(separator: " · ")
-    }
 
     private func encodeDerivatives(_ arr: [TurnDerivative]) -> String {
         let encoder = JSONEncoder()
@@ -2485,235 +2260,12 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         return value
     }
 
-    // MARK: - AI Dispatch Pipeline
-    // 全局 AI 输入框调用这些方法；原本住在 QuickCaptureView 的私有实现搬进来。
+    // MARK: - Local dispatch (⚡ 按钮)
 
-    /// 入口：AI 优先，失败降级本地关键词。调用方只需传原文。
-    func submitAIText(_ text: String) {
-        let cleanInput = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanInput.isEmpty else { return }
-
-        // 如果上一轮是追问等澄清，把原文 + 这次的补充拼起来再发，保留上下文
-        let pending = pendingClarification
-        let effectiveText: String
-        if let p = pending {
-            effectiveText = "\(p.originalText)\n补充：\(cleanInput)"
-        } else {
-            effectiveText = cleanInput
-        }
-
-        isAILoading = true
-        aiDebugMessage = nil
-
-        let today = AIParser.isoDate()
-        let now = AIParser.isoTime()
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let resp = try await AIParser.parse(text: effectiveText, currentDate: today, currentTime: now)
-                await MainActor.run {
-                    self.isAILoading = false
-                    let debugLogID = self.recordAIDebugLog(
-                        input: effectiveText,
-                        currentDate: today,
-                        currentTime: now,
-                        rawResponse: resp.rawBody,
-                        records: resp.records,
-                        needsClarification: resp.needsClarification
-                    )
-                    if resp.records.isEmpty {
-                        if let hint = resp.needsClarification {
-                            // 保存上下文，等用户补充后再次提交时合并
-                            self.pendingClarification = PendingClarification(
-                                originalText: effectiveText,
-                                hint: hint
-                            )
-                            self.aiDebugMessage = "还差一点：\(hint)"
-                            self.appendAIDebugCommit(logID: debugLogID, summary: "needsClarification=\(hint)")
-                        } else {
-                            self.pendingClarification = nil
-                            self.aiDebugMessage = "AI 未识别内容 · 已走本地兜底"
-                            self.dispatchLocalFallback(effectiveText, markSource: "local")
-                            self.appendAIDebugCommit(logID: debugLogID, summary: "AI 无 records，已走本地兜底")
-                        }
-                        return
-                    }
-                    // 解析成功：清掉追问上下文
-                    self.pendingClarification = nil
-                    // 感恩/感受：同一次输入 AI 拆成了多条的话，合并成一条保留在同一 turn 里
-                    // （"今天感恩 A，感恩 B，感恩 C" 不应该变成 3 条独立记录）
-                    let mergedRecords = self.mergeSameTypeNoteRecords(resp.records)
-                    for rec in mergedRecords {
-                        self.commitAIRecord(rec, rawText: effectiveText, debugLogID: debugLogID)
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self.isAILoading = false
-                    self.aiDebugMessage = "AI 调用失败：\(error.localizedDescription.prefix(80)) · 已走本地兜底"
-                    let debugLogID = self.recordAIDebugLog(
-                        input: effectiveText,
-                        currentDate: today,
-                        currentTime: now,
-                        rawResponse: nil,
-                        records: [],
-                        needsClarification: nil,
-                        errorMessage: error.localizedDescription
-                    )
-                    self.dispatchLocalFallback(effectiveText, markSource: "local")
-                    self.appendAIDebugCommit(logID: debugLogID, summary: "AI 调用失败，已走本地兜底：\(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
-    /// 快捷：跳过 AI，直接本地关键词入库（⚡️ 按钮）
     func submitLocalOnly(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
-        aiDebugMessage = nil
         dispatchLocalFallback(clean, markSource: "local")
-    }
-
-    /// AI 偶尔会把一次说出的多件感恩/感受拆成多条独立 record。
-    /// 这里按 type 归并：同一种 note（感恩/感受），details 用换行拼接，只保留一条。
-    /// 想法 / 做梦 / 时间 / 待办 不合并（它们各自独立才对）。
-    private func mergeSameTypeNoteRecords(_ records: [AIParsedRecord]) -> [AIParsedRecord] {
-        guard records.count > 1 else { return records }
-
-        let mergeableTypes: Set<String> = ["感恩", "感受"]
-        var result: [AIParsedRecord] = []
-        var mergeIndex: [String: Int] = [:]  // type -> 在 result 中的索引
-
-        for rec in records {
-            let isNote = rec.bucket != "time" && rec.bucket != "task"
-            let type = rec.type ?? ""
-            guard isNote, mergeableTypes.contains(type) else {
-                result.append(rec)
-                continue
-            }
-            if let idx = mergeIndex[type] {
-                // 合并：details 拼接（每条前加短横线，便于阅读）
-                let prev = result[idx]
-                let prevDetail = prev.details ?? ""
-                let newDetail = rec.details ?? ""
-                let joined: String = {
-                    let a = prevDetail.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let b = newDetail.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if a.isEmpty { return b }
-                    if b.isEmpty { return a }
-                    // 已经是列表就直接追加；否则两段都加 "- " 变成列表
-                    if a.contains("\n- ") || a.hasPrefix("- ") {
-                        return a + "\n- " + b
-                    }
-                    return "- " + a + "\n- " + b
-                }()
-                // 合并 feelings（去重保序）
-                var feelings = prev.feelings ?? []
-                for f in (rec.feelings ?? []) where !feelings.contains(f) {
-                    feelings.append(f)
-                }
-                result[idx] = AIParsedRecord(
-                    bucket: prev.bucket,
-                    eventName: prev.eventName,
-                    module: prev.module,
-                    startTime: prev.startTime,
-                    endTime: prev.endTime,
-                    notes: prev.notes,
-                    type: prev.type,
-                    title: prev.title,
-                    details: joined,
-                    mood: prev.mood ?? rec.mood,
-                    feelings: feelings,
-                    date: prev.date ?? rec.date
-                )
-            } else {
-                mergeIndex[type] = result.count
-                result.append(rec)
-            }
-        }
-        return result
-    }
-
-    /// 把一条 AI 返回的 record 按 bucket 落库
-    private func commitAIRecord(_ rec: AIParsedRecord, rawText: String, debugLogID: UUID? = nil) {
-        let routing = AIRoutingPolicy.decision(for: rec, rawText: rawText)
-        switch routing.action {
-        case .time:
-            let start = rec.startTime ?? ""
-            let end = rec.endTime ?? ""
-            let category = rec.module ?? "✨ 其他"
-            let rawName = rec.eventName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let name = rawName.isEmpty ? category : rawName
-            let note = rec.notes ?? ""
-            let result = dispatchAndCommit(
-                rawText: rawText,
-                recognizedType: routing.recognizedType,
-                targetBucket: routing.targetBucket,
-                confidence: routing.confidence,
-                payload: [
-                    "name": name, "start": start, "end": end,
-                    "category": category, "note": note,
-                    "date": rec.date ?? "",
-                    "ai_source": routing.source
-                ]
-            )
-            let dateSummary = normalizedAIRecordDateKey(rec.date) ?? selectedDateKey
-            appendAIDebugCommit(logID: debugLogID, summary: "time · \(dateSummary) · \(name) · \(start)-\(end) · \(result)")
-
-        case .task:
-            let title = rec.title?.isEmpty == false ? rec.title! : (rec.eventName ?? aiFallbackTitle(rawText))
-            let detail = rec.details ?? rec.notes ?? ""
-            let start = rec.startTime ?? ""
-            let end = rec.endTime ?? ""
-            let result = dispatchAndCommit(
-                rawText: rawText,
-                recognizedType: routing.recognizedType,
-                targetBucket: routing.targetBucket,
-                confidence: routing.confidence,
-                payload: [
-                    "title": title,
-                    "detail": detail,
-                    "status": "待办",
-                    "dueDate": rec.date ?? "",
-                    "isAllDay": start.isEmpty ? "1" : "0",
-                    "startTime": start,
-                    "endTime": end,
-                    "ai_source": routing.source
-                ]
-            )
-            appendAIDebugCommit(logID: debugLogID, summary: "task · \(title) · \(result)")
-
-        case .inbox:
-            let type = routing.recognizedType
-            let title = rec.title?.isEmpty == false ? rec.title! : aiFallbackTitle(rawText)
-            let detail = type == "感受" ? rawText : (rec.details ?? rawText)
-            var payload = [
-                "title": title,
-                "detail": detail,
-                "status": "待处理",
-                "ai_source": routing.source
-            ]
-            if routing.needsTaskConfirmation {
-                payload["ai_confirmation"] = "task"
-                payload["ai_confirmation_reason"] = "AI 觉得它像待办，但原文没有明确待办信号"
-            }
-            let result = dispatchAndCommit(
-                rawText: rawText,
-                recognizedType: type,
-                targetBucket: routing.targetBucket,
-                confidence: routing.confidence,
-                payload: payload,
-                moodScore: rec.mood,
-                feelingTags: rec.feelings ?? []
-            )
-            appendAIDebugCommit(logID: debugLogID, summary: "inbox/\(type) · \(title) · \(result)")
-
-        case .skip:
-            appendAIDebugCommit(logID: debugLogID, summary: "time skipped · \(routing.skipReason)")
-            return
-        }
     }
 
     /// 本地关键词兜底
@@ -2779,7 +2331,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         )
     }
 
-    /// addTurnDraft + commitTurn 的薄包装，失败写入 aiDebugMessage
     @discardableResult
     private func dispatchAndCommit(
         rawText: String,
@@ -2791,7 +2342,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
         feelingTags: [String] = []
     ) -> String {
         guard !isRecentDuplicateTurn(rawText: rawText, recognizedType: recognizedType, targetBucket: targetBucket, payload: payload) else {
-            aiDebugMessage = "刚刚已经记过这条了，随手记里保留第一条。"
             return "跳过：最近 180 秒内已有同类重复记录"
         }
         guard let id = addTurnDraft(
@@ -2806,7 +2356,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource {
             feelingTags: feelingTags
         ) else { return "跳过：原文为空，未创建 turn" }
         if let err = commitTurn(id: id) {
-            aiDebugMessage = err
             return "失败：\(err)"
         }
         return "已提交 turn=\(id.uuidString)"

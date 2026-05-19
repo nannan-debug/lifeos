@@ -280,8 +280,8 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let store = AppStore()
         let inbox = AgentActionDraft(kind: .inbox, title: "面试目标", detail: "确定下面试目标", confidence: 0.8, reason: "适合先存成想法")
         let task = AgentActionDraft(kind: .task, title: "提交材料", detail: "明天提交材料", date: "2026-05-19", confidence: 0.85, reason: "有明确动作")
-        let time = AgentActionDraft(kind: .time, title: "散步", detail: "今天散步", date: store.selectedDateKey, startTime: "09:00", endTime: "10:00", confidence: 0.9, reason: "有明确时间段")
-        store.agentSession.pendingActions = [inbox, task, time]
+        let time = AgentActionDraft(kind: .time, module: "运动", title: "散步", detail: "今天散步", date: store.selectedDateKey, startTime: "09:00", endTime: "10:00", confidence: 0.9, reason: "有明确时间段")
+        store.agent.session.pendingActions = [inbox, task, time]
 
         XCTAssertNil(store.confirmAgentAction(id: inbox.id))
         XCTAssertNil(store.confirmAgentAction(id: task.id))
@@ -289,7 +289,165 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
         XCTAssertTrue(store.turns.contains { $0.rawText == "确定下面试目标" && $0.targetBucket == "inbox" })
         XCTAssertTrue(store.tasks.contains { $0.title == "提交材料" })
-        XCTAssertTrue(store.timeEntries.contains { $0.name == "散步" && $0.start == "09:00" && $0.end == "10:00" })
+        XCTAssertTrue(store.timeEntries.contains { $0.name == "散步" && $0.start == "09:00" && $0.end == "10:00" && $0.category == "运动" })
+    }
+
+    func testAgentInboxActionSavesDreamType() {
+        let store = AppStore()
+        let dream = AgentActionDraft(
+            kind: .inbox,
+            inboxType: "做梦",
+            mood: 2,
+            feelings: ["困惑", "焦虑"],
+            title: "梦见父亲纠缠，自己逃避",
+            detail: "梦到父亲来找我，我一直避开，不想见他。梦里还有好多人，像一个大型 cosplay 现场。",
+            confidence: 0.9,
+            reason: "梦境记录"
+        )
+        store.agent.session.pendingActions = [dream]
+
+        XCTAssertNil(store.confirmAgentAction(id: dream.id))
+
+        XCTAssertTrue(store.turns.contains {
+            $0.rawText.contains("梦到父亲来找我") &&
+            $0.targetBucket == "inbox" &&
+            $0.recognizedType == "做梦" &&
+            $0.moodScore == 2 &&
+            $0.feelingTags == ["困惑", "焦虑"]
+        })
+    }
+
+    func testAgentInboxActionInfersDreamTypeFromContent() {
+        let store = AppStore()
+        let dream = AgentActionDraft(
+            kind: .inbox,
+            title: "梦见父亲纠缠",
+            detail: "梦到父亲来找我，我一直避开。",
+            confidence: 0.9,
+            reason: "梦境记录"
+        )
+        store.agent.session.pendingActions = [dream]
+
+        XCTAssertNil(store.confirmAgentAction(id: dream.id))
+
+        XCTAssertTrue(store.turns.contains { $0.recognizedType == "做梦" && $0.rawText.contains("梦到父亲") })
+    }
+
+    func testAgentActionSuggestionsReplaceLessCompleteDuplicate() {
+        let store = AppStore()
+        let vagueTask = AgentActionDraft(
+            kind: .task,
+            title: "提交材料",
+            detail: "明天提醒提交材料",
+            date: "2026-05-19",
+            confidence: 0.7,
+            reason: "用户提到提醒"
+        )
+        let timedTask = AgentActionDraft(
+            kind: .task,
+            title: "提交材料",
+            detail: "明天 10 点提醒提交材料",
+            date: "2026-05-19",
+            startTime: "10:00",
+            confidence: 0.9,
+            reason: "用户补充了时间"
+        )
+
+        store.mergeAgentActionSuggestions([vagueTask])
+        store.mergeAgentActionSuggestions([timedTask])
+
+        XCTAssertEqual(store.agent.session.pendingActions.count, 1)
+        XCTAssertEqual(store.agent.session.pendingActions.first?.detail, "明天 10 点提醒提交材料")
+        XCTAssertEqual(store.agent.session.pendingActions.first?.startTime, "10:00")
+    }
+
+    func testAgentActionSuggestionsAreSuppressedWhenFollowUpIsPresent() {
+        let store = AppStore()
+        let prematureTask = AgentActionDraft(
+            kind: .task,
+            title: "提交材料",
+            detail: "明天提醒提交材料",
+            date: "2026-05-19",
+            confidence: 0.7,
+            reason: "还需要补充时间"
+        )
+        let response = AgentChatResponse(
+            reply: "好的，明天提醒你提交材料。",
+            followUpQuestion: "你希望明天几点收到提醒？",
+            actionSuggestions: [prematureTask]
+        )
+
+        XCTAssertTrue(store.agentActionSuggestionsToMerge(from: response).isEmpty)
+    }
+
+    func testAgentChatDebugLogCodableRoundtrip() throws {
+        let log = AgentChatDebugLog(
+            createdAt: Date(),
+            input: "明天提醒我提交材料",
+            currentDate: "2026-05-18",
+            currentTime: "20:40",
+            personaSummary: "温柔少问",
+            userSummary: "用户在测试 Agent",
+            contextSummary: "暂无近期 LifeOS 记录。",
+            messagesSummary: ["user: 明天提醒我提交材料"],
+            reply: "好的，明天几点提醒？",
+            followUpQuestion: "你希望明天几点收到提醒？",
+            actionSuggestionsSummary: ["kind=task ; title=提交材料"],
+            mergedActionSummary: [],
+            rawResponse: #"{"reply":"好的"}"#,
+            errorMessage: ""
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        let data = try encoder.encode(log)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let decoded = try decoder.decode(AgentChatDebugLog.self, from: data)
+
+        XCTAssertEqual(decoded.input, log.input)
+        XCTAssertEqual(decoded.personaSummary, "温柔少问")
+        XCTAssertEqual(decoded.actionSuggestionsSummary, ["kind=task ; title=提交材料"])
+    }
+
+    func testAgentChatResponseDecodesDebugPayload() throws {
+        let data = """
+        {
+          "reply": "好的",
+          "followUpQuestion": null,
+          "actionSuggestions": [
+            {
+              "kind": "inbox",
+              "inboxType": "做梦",
+              "mood": 2,
+              "feelings": ["困惑", "焦虑"],
+              "title": "梦境记录",
+              "detail": "梦到很多人",
+              "confidence": 0.9,
+              "reason": "梦境记录"
+            }
+          ],
+          "debug": {
+            "persona": "猫猫伙伴",
+            "userProfile": "用户正在测试",
+            "policy": "少追问",
+            "messagesUsed": [{"role": "user", "content": "明天提醒我提交材料"}],
+            "contextSummary": "暂无近期记录",
+            "rawModelOutput": "{\\"reply\\":\\"好的\\"}",
+            "suppressedActionsReason": "followUpQuestion_present"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
+
+        XCTAssertEqual(decoded.debug?.persona, "猫猫伙伴")
+        XCTAssertEqual(decoded.debug?.userProfile, "用户正在测试")
+        XCTAssertEqual(decoded.debug?.messagesUsed?.first?.content, "明天提醒我提交材料")
+        XCTAssertEqual(decoded.debug?.suppressedActionsReason, "followUpQuestion_present")
+        XCTAssertEqual(decoded.actionSuggestions.first?.inboxType, "做梦")
+        XCTAssertEqual(decoded.actionSuggestions.first?.mood, 2)
+        XCTAssertEqual(decoded.actionSuggestions.first?.feelings, ["困惑", "焦虑"])
     }
 
     func testTaskToggleRecordsAndClearsCompletionTime() {
@@ -1090,5 +1248,72 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(byName["turn1"], b)               // 未涉及的记录原样保留
         XCTAssertNil(byName["2026-05-17"])               // 删除的记录被移除
         XCTAssertEqual(merged.count, 2)
+    }
+
+    // MARK: - Agent mock tests
+
+    func testAgentHandlesChatNetworkError() {
+        let store = AppStore()
+        let mock = MockAIClient(result: .failure(AIParseError.network("timeout")))
+        store.agent = AgentManager(writer: store, userIdSuffix: "", client: mock)
+
+        store.submitAgentText("hello")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertFalse(store.isAgentLoading)
+        XCTAssertNotNil(store.agentErrorMessage)
+        XCTAssertTrue(store.agentSession.pendingActions.isEmpty)
+    }
+
+    func testAgentHandlesEmptyReply() {
+        let response = AgentChatResponse(reply: "", followUpQuestion: nil, actionSuggestions: [])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: "", client: mock)
+
+        store.submitAgentText("hello")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertFalse(store.isAgentLoading)
+        XCTAssertNil(store.agentErrorMessage)
+        XCTAssertEqual(store.agentSession.messages.count, 1)
+        XCTAssertEqual(store.agentSession.messages.first?.role, "user")
+    }
+
+    func testAgentHandlesMalformedActions() {
+        let badAction = AgentActionDraft(kind: .inbox, title: "", detail: "", confidence: 0.5, reason: "")
+        let response = AgentChatResponse(reply: "ok", followUpQuestion: nil, actionSuggestions: [badAction])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: "", client: mock)
+
+        store.submitAgentText("记录一下")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertFalse(store.isAgentLoading)
+        XCTAssertTrue(store.agentSession.pendingActions.isEmpty)
+    }
+}
+
+// MARK: - Mock
+
+private final class MockAIClient: AIClient {
+    let result: Result<AgentChatResponse, Error>
+
+    init(result: Result<AgentChatResponse, Error>) {
+        self.result = result
+    }
+
+    func chat(input: String, messages: [AgentChatRequestMessage], contextSummary: String, currentDate: String, currentTime: String) async throws -> AgentChatResponse {
+        switch result {
+        case .success(let response): return response
+        case .failure(let error): throw error
+        }
     }
 }

@@ -47,14 +47,14 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
-                        AIDebugLogListView()
+                        AgentDebugLogListView()
                             .environmentObject(store)
                     } label: {
                         HStack(spacing: 12) {
                             ZStack {
                                 Circle()
                                     .fill(CreamTheme.green.opacity(0.12))
-                                Image(systemName: "stethoscope")
+                                Image(systemName: "bubble.left.and.text.bubble.right")
                                     .font(.system(size: 17, weight: .semibold))
                                     .symbolRenderingMode(.hierarchical)
                                     .foregroundStyle(CreamTheme.green)
@@ -62,10 +62,10 @@ struct SettingsView: View {
                             .frame(width: 36, height: 36)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("AI 调试记录")
+                                Text("AI 聊天调试")
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(CreamTheme.text)
-                                Text("仅本机保存最近 20 条")
+                                Text("导出猫猫对话请求与返回")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -388,118 +388,70 @@ private enum ProfileField: String, Identifiable {
     }
 }
 
-private struct AIDebugLogListView: View {
+private struct AgentDebugLogListView: View {
     @EnvironmentObject var store: AppStore
     @State private var showClearConfirm = false
-    @State private var isSelecting = false
-    @State private var selectedLogIDs: Set<UUID> = []
-    @State private var batchExportFileURL: URL?
+    @State private var exportFileURL: URL?
 
     var body: some View {
         List {
             Section {
-                if store.aiDebugLogs.isEmpty {
-                    Text("还没有 AI 调试记录")
+                if store.agentDebugLogs.isEmpty {
+                    Text("还没有 AI 聊天调试记录")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(store.aiDebugLogs) { log in
-                        if isSelecting {
-                            Button {
-                                toggleSelection(for: log)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    selectionIcon(for: log)
-                                    logRow(log)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            NavigationLink {
-                                AIDebugLogDetailView(log: log)
-                            } label: {
-                                logRow(log)
-                            }
+                    ForEach(store.agentDebugLogs) { log in
+                        NavigationLink {
+                            AgentDebugLogDetailView(log: log)
+                        } label: {
+                            logRow(log)
                         }
                     }
                 }
             } header: {
-                Text(isSelecting ? "已选择 \(selectedLogIDs.count) 条" : "最近记录")
+                Text("最近记录")
             } footer: {
-                Text("包含原始输入和 AI 返回内容，只保存在当前设备。")
+                Text("包含聊天历史摘要、人格设定、用户信息、上下文摘要、AI 原始返回和最终进入卡片队列的建议，仅本机保存。")
             }
         }
-        .navigationTitle("AI 调试记录")
+        .navigationTitle("AI 聊天调试")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                if !store.aiDebugLogs.isEmpty {
-                    Button(isSelecting ? "取消" : "选择") {
-                        setSelectionMode(!isSelecting)
-                    }
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                if isSelecting {
-                    if let batchExportFileURL, !selectedLogIDs.isEmpty {
-                        ShareLink(item: batchExportFileURL) {
-                            Text("导出")
-                        }
-                    } else {
-                        Button("导出") {}
-                            .disabled(true)
+                if let exportFileURL, !store.agentDebugLogs.isEmpty {
+                    ShareLink(item: exportFileURL) {
+                        Text("导出")
                     }
                 } else {
-                    Button("清空") { showClearConfirm = true }
-                        .disabled(store.aiDebugLogs.isEmpty)
+                    Button("导出") {}
+                        .disabled(true)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("清空") { showClearConfirm = true }
+                    .disabled(store.agentDebugLogs.isEmpty)
+            }
         }
-        .confirmationDialog("清空本机 AI 调试记录？", isPresented: $showClearConfirm, titleVisibility: .visible) {
+        .confirmationDialog("清空本机 AI 聊天调试记录？", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("清空", role: .destructive) {
-                store.clearAIDebugLogs()
-                setSelectionMode(false)
+                store.clearAgentDebugLogs()
+                refreshExportFile()
             }
             Button("取消", role: .cancel) {}
         }
-        .onChange(of: selectedLogIDs) { _ in
-            refreshBatchExportFile()
-        }
-        .onChange(of: store.aiDebugLogs) { logs in
-            selectedLogIDs = selectedLogIDs.intersection(Set(logs.map(\.id)))
-            refreshBatchExportFile()
-        }
+        .onAppear { refreshExportFile() }
+        .onChange(of: store.agentDebugLogs) { _ in refreshExportFile() }
         .listStyle(.insetGrouped)
         .tint(CreamTheme.green)
         .scrollContentBackground(.hidden)
         .background(CreamTheme.glassStrong)
     }
 
-    private var selectedLogs: [AIDebugLog] {
-        store.aiDebugLogs.filter { selectedLogIDs.contains($0.id) }
+    private func refreshExportFile() {
+        exportFileURL = AgentDebugLogMarkdownExporter.makeFile(for: store.agentDebugLogs)
     }
 
-    private func setSelectionMode(_ enabled: Bool) {
-        isSelecting = enabled
-        if !enabled {
-            selectedLogIDs = []
-            batchExportFileURL = nil
-        }
-    }
-
-    private func toggleSelection(for log: AIDebugLog) {
-        if selectedLogIDs.contains(log.id) {
-            selectedLogIDs.remove(log.id)
-        } else {
-            selectedLogIDs.insert(log.id)
-        }
-    }
-
-    private func refreshBatchExportFile() {
-        batchExportFileURL = AIDebugLogMarkdownExporter.makeFile(for: selectedLogs)
-    }
-
-    private func logRow(_ log: AIDebugLog) -> some View {
+    private func logRow(_ log: AgentChatDebugLog) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(log.input)
                 .font(.body.weight(.semibold))
@@ -507,7 +459,8 @@ private struct AIDebugLogListView: View {
                 .lineLimit(2)
             HStack(spacing: 8) {
                 Text(log.createdAt, style: .time)
-                Text("\(log.recordsSummary.count) records")
+                Text("\(log.actionSuggestionsSummary.count) suggested")
+                Text("\(log.mergedActionSummary.count) merged")
                 if !log.errorMessage.isEmpty {
                     Text("失败")
                 }
@@ -517,17 +470,10 @@ private struct AIDebugLogListView: View {
         }
         .padding(.vertical, 4)
     }
-
-    private func selectionIcon(for log: AIDebugLog) -> some View {
-        Image(systemName: selectedLogIDs.contains(log.id) ? "checkmark.circle.fill" : "circle")
-            .font(.system(size: 22, weight: .semibold))
-            .foregroundStyle(selectedLogIDs.contains(log.id) ? CreamTheme.green : .secondary)
-            .frame(width: 28, height: 28)
-    }
 }
 
-private struct AIDebugLogDetailView: View {
-    let log: AIDebugLog
+private struct AgentDebugLogDetailView: View {
+    let log: AgentChatDebugLog
     @State private var exportFileURL: URL?
 
     var body: some View {
@@ -537,11 +483,14 @@ private struct AIDebugLogDetailView: View {
                 "currentDate=\(log.currentDate)",
                 "currentTime=\(log.currentTime)"
             ])
-            detailSection("AI records", rows: emptyFallback(log.recordsSummary))
-            detailSection("App commit", rows: emptyFallback(log.commitSummary))
-            if !log.needsClarification.isEmpty {
-                detailSection("追问", rows: [log.needsClarification])
-            }
+            detailSection("猫猫人格", rows: [log.personaSummary.isEmpty ? "无" : log.personaSummary])
+            detailSection("用户信息", rows: [log.userSummary.isEmpty ? "无" : log.userSummary])
+            detailSection("聊天历史", rows: emptyFallback(log.messagesSummary))
+            detailSection("LifeOS 上下文", rows: [log.contextSummary.isEmpty ? "无" : log.contextSummary])
+            detailSection("回复", rows: [log.reply])
+            detailSection("追问", rows: [log.followUpQuestion.isEmpty ? "无" : log.followUpQuestion])
+            detailSection("AI 建议", rows: emptyFallback(log.actionSuggestionsSummary))
+            detailSection("进入卡片队列", rows: emptyFallback(log.mergedActionSummary))
             if !log.errorMessage.isEmpty {
                 detailSection("错误", rows: [log.errorMessage])
             }
@@ -562,16 +511,12 @@ private struct AIDebugLogDetailView: View {
             }
         }
         .onAppear {
-            exportFileURL = makeMarkdownExportFile()
+            exportFileURL = AgentDebugLogMarkdownExporter.makeFile(for: [log])
         }
         .listStyle(.insetGrouped)
         .tint(CreamTheme.green)
         .scrollContentBackground(.hidden)
         .background(CreamTheme.glassStrong)
-    }
-
-    private func makeMarkdownExportFile() -> URL? {
-        AIDebugLogMarkdownExporter.makeFile(for: [log])
     }
 
     private func detailSection(_ title: String, rows: [String]) -> some View {
@@ -589,14 +534,14 @@ private struct AIDebugLogDetailView: View {
     }
 }
 
-private enum AIDebugLogMarkdownExporter {
-    static func makeFile(for logs: [AIDebugLog]) -> URL? {
+private enum AgentDebugLogMarkdownExporter {
+    static func makeFile(for logs: [AgentChatDebugLog]) -> URL? {
         guard !logs.isEmpty else { return nil }
         let filename: String
         if logs.count == 1, let log = logs.first {
-            filename = "lifeos-ai-debug-\(filenameTimestamp.string(from: log.createdAt)).md"
+            filename = "lifeos-agent-debug-\(filenameTimestamp.string(from: log.createdAt)).md"
         } else {
-            filename = "lifeos-ai-debug-\(filenameTimestamp.string(from: Date()))-\(logs.count).md"
+            filename = "lifeos-agent-debug-\(filenameTimestamp.string(from: Date()))-\(logs.count).md"
         }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         do {
@@ -607,18 +552,23 @@ private enum AIDebugLogMarkdownExporter {
         }
     }
 
-    static func markdown(for logs: [AIDebugLog]) -> String {
+    private static let filenameTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private static func markdown(for logs: [AgentChatDebugLog]) -> String {
         guard !logs.isEmpty else { return "" }
         if logs.count == 1, let log = logs.first {
             return """
-            # LifeOS AI Debug Log
+            # LifeOS Agent Debug Log
 
             \(markdownBody(for: log, headingLevel: 2))
             """
         }
-
         return """
-        # LifeOS AI Debug Logs
+        # LifeOS Agent Debug Logs
 
         - Exported At: \(Date().formatted(date: .complete, time: .complete))
         - Count: \(logs.count)
@@ -627,13 +577,7 @@ private enum AIDebugLogMarkdownExporter {
         """
     }
 
-    private static let filenameTimestamp: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter
-    }()
-
-    private static func markdownBody(for log: AIDebugLog, headingLevel: Int) -> String {
+    private static func markdownBody(for log: AgentChatDebugLog, headingLevel: Int) -> String {
         let h = String(repeating: "#", count: headingLevel)
         let childH = String(repeating: "#", count: headingLevel + 1)
         return """
@@ -646,14 +590,29 @@ private enum AIDebugLogMarkdownExporter {
         \(childH) Input
         \(log.input)
 
-        \(childH) AI Records
-        \(joined(log.recordsSummary))
+        \(childH) Agent Persona
+        \(log.personaSummary.isEmpty ? "无" : log.personaSummary)
 
-        \(childH) App Commit
-        \(joined(log.commitSummary))
+        \(childH) User Summary
+        \(log.userSummary.isEmpty ? "无" : log.userSummary)
 
-        \(childH) Needs Clarification
-        \(log.needsClarification.isEmpty ? "无" : log.needsClarification)
+        \(childH) Messages Sent
+        \(joined(log.messagesSummary))
+
+        \(childH) Context Summary
+        \(log.contextSummary.isEmpty ? "无" : log.contextSummary)
+
+        \(childH) Reply
+        \(log.reply)
+
+        \(childH) Follow-up Question
+        \(log.followUpQuestion.isEmpty ? "无" : log.followUpQuestion)
+
+        \(childH) AI Action Suggestions
+        \(joined(log.actionSuggestionsSummary))
+
+        \(childH) Merged Into Pending Cards
+        \(joined(log.mergedActionSummary))
 
         \(childH) Error
         \(log.errorMessage.isEmpty ? "无" : log.errorMessage)

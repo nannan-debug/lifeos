@@ -74,6 +74,10 @@ enum AgentActionKind: String, Codable, Equatable {
 struct AgentActionDraft: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var kind: AgentActionKind
+    var inboxType: String?
+    var mood: Int?
+    var feelings: [String]
+    var module: String?
     var title: String
     var detail: String
     var date: String?
@@ -86,6 +90,10 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
     init(
         id: UUID = UUID(),
         kind: AgentActionKind,
+        inboxType: String? = nil,
+        mood: Int? = nil,
+        feelings: [String] = [],
+        module: String? = nil,
         title: String,
         detail: String,
         date: String? = nil,
@@ -97,6 +105,10 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
     ) {
         self.id = id
         self.kind = kind
+        self.inboxType = inboxType
+        self.mood = mood
+        self.feelings = feelings
+        self.module = module
         self.title = title
         self.detail = detail
         self.date = date
@@ -110,6 +122,10 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case id
         case kind
+        case inboxType
+        case mood
+        case feelings
+        case module
         case title
         case detail
         case date
@@ -120,10 +136,20 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
         case createdAt
     }
 
+    private enum AlternateCodingKeys: String, CodingKey {
+        case type
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let alternate = try decoder.container(keyedBy: AlternateCodingKeys.self)
         id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
         kind = (try? c.decode(AgentActionKind.self, forKey: .kind)) ?? .inbox
+        inboxType = (try? c.decodeIfPresent(String.self, forKey: .inboxType))
+            ?? (try? alternate.decodeIfPresent(String.self, forKey: .type))
+        mood = try? c.decodeIfPresent(Int.self, forKey: .mood)
+        feelings = (try? c.decodeIfPresent([String].self, forKey: .feelings)) ?? []
+        module = try? c.decodeIfPresent(String.self, forKey: .module)
         title = (try? c.decode(String.self, forKey: .title)) ?? ""
         detail = (try? c.decode(String.self, forKey: .detail)) ?? ""
         date = try? c.decodeIfPresent(String.self, forKey: .date)
@@ -153,6 +179,7 @@ struct AgentChatResponse: Decodable, Equatable {
     var reply: String
     var followUpQuestion: String?
     var actionSuggestions: [AgentActionDraft]
+    var debug: AgentChatDebugPayload?
     var rawBody: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -160,12 +187,14 @@ struct AgentChatResponse: Decodable, Equatable {
         case followUpQuestion
         case actionSuggestions
         case actions
+        case debug
     }
 
-    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], rawBody: String? = nil) {
+    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], debug: AgentChatDebugPayload? = nil, rawBody: String? = nil) {
         self.reply = reply
         self.followUpQuestion = followUpQuestion
         self.actionSuggestions = actionSuggestions
+        self.debug = debug
         self.rawBody = rawBody
     }
 
@@ -176,8 +205,19 @@ struct AgentChatResponse: Decodable, Equatable {
         actionSuggestions = (try? c.decode([AgentActionDraft].self, forKey: .actionSuggestions))
             ?? (try? c.decode([AgentActionDraft].self, forKey: .actions))
             ?? []
+        debug = try? c.decodeIfPresent(AgentChatDebugPayload.self, forKey: .debug)
         rawBody = nil
     }
+}
+
+struct AgentChatDebugPayload: Codable, Equatable {
+    var persona: String?
+    var userProfile: String?
+    var policy: String?
+    var messagesUsed: [AgentChatRequestMessage]?
+    var contextSummary: String?
+    var rawModelOutput: String?
+    var suppressedActionsReason: String?
 }
 
 /// 一条 ConversationTurn 通过 Review 模式衍生出的下游产物（ToDo 或第二大脑卡片）。
@@ -248,15 +288,20 @@ struct AIFailureLog: Identifiable, Codable, Equatable {
     var message: String
 }
 
-struct AIDebugLog: Identifiable, Codable, Equatable {
+struct AgentChatDebugLog: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var createdAt: Date
     var input: String
     var currentDate: String
     var currentTime: String
+    var personaSummary: String
+    var userSummary: String
+    var contextSummary: String
+    var messagesSummary: [String]
+    var reply: String
+    var followUpQuestion: String
+    var actionSuggestionsSummary: [String]
+    var mergedActionSummary: [String]
     var rawResponse: String
-    var needsClarification: String
-    var recordsSummary: [String]
-    var commitSummary: [String]
     var errorMessage: String
 }
