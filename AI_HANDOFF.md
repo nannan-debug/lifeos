@@ -37,11 +37,11 @@ GitHub：github.com/nannan-debug/lifeos
 - 不要 bump main 上的版本号（如果有审核中的 build，bump 会破坏当前提审）
 - 不要替我决定 patch vs minor 版本（要发版时先问）
 - 不要替我跑 Archive / Upload / Submit（这些必须我手动在 Xcode/ASC 里点）
-- 改完代码必须提醒我 commit，不要自己 commit
 - 不要碰 Secrets.swift / .env / 任何凭证
 - DEVELOPMENT_TEAM 必须保持 355RQ5S3DW
 - 任何想动 IN_PROGRESS.md "锁定决策清单" 的内容 → 先停下来问我，不要直接改
 - 用户可见的代码改动必须顺手更新 CHANGELOG.md [Unreleased]（AGENTS.md 强制）
+- 修改 Agent prompt / action schema 时，Worker 和 iOS 端必须同步，改完 Worker 需部署
 
 工作流（每个 PR 一轮）：
 1. 我告诉你做什么（接 IN_PROGRESS 下一个 PR / 新功能 / 修 bug / 发版）
@@ -79,8 +79,9 @@ GitHub：github.com/nannan-debug/lifeos
 
 - **任务描述越具体越好**：
   - ❌ 模糊：「加一个反思功能」
-  - ✅ 具体：「加 DBT 行为链分析 + 自我觉察档案 Tab，按 PRD §6 / IN_PROGRESS.md 锁定决策清单的'V3 候选'范围，从 grill-me 拷问开始」
-- **大功能先 grill-me 再写代码**：跨多个 PR 的功能，先用 `/grill-me` 把范围 / 决策 / PR 拆分敲死，沉淀到 `IN_PROGRESS.md`，再让 AI（或换一个 AI）执行
+  - ✅ 具体：「Agent 对话模式加上情绪追踪功能，按 CLAUDE.md 友好原则设计，从 grill-me 拷问开始」
+- **大功能先 grill-me 再写代码**：跨多个 PR 的功能，先把范围 / 决策 / PR 拆分敲死，沉淀到 `IN_PROGRESS.md`，再让 AI（或换一个 AI）执行
+- **Agent prompt 实验用 Python 脚本**：`python3 scripts/agent_lab.py` 可快速测试 prompt 效果（30 秒反馈），不需要 Xcode rebuild
 - **超过一周没用的 session 别复用**：上下文容易漂移，新开一个干净 session 用这个模板更安全
 - **想发新版时**：上面"发版"场景的开场白即可，AI 会读 LAUNCH_CHECKLIST §4 SOP 引导你
 - **遇到 AI 跑偏 / 决策模糊时**：用 `/grill-me` 重新对齐——比 "你想清楚再回答" 这种泛指令有效得多
