@@ -185,6 +185,11 @@ struct ReviewSessionView: View {
                     typeChip(turn.recognizedType)
                 }
 
+                if let title = TurnTypeStyle.displayTitle(for: turn) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                }
+
                 Text(TurnTypeStyle.displayText(for: turn))
                     .font(.subheadline)
 

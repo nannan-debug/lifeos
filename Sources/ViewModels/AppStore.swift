@@ -74,6 +74,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         set { agent.errorMessage = newValue }
     }
     var agentDebugLogs: [AgentChatDebugLog] { agent.debugLogs }
+    var agentMemories: [AgentMemory] { agent.memories }
+    var agentMemoryStatus: String? { agent.memoryStatus }
+    func addAgentMemory(content: String) { agent.addMemory(content: content) }
+    func removeAgentMemory(id: UUID) { agent.removeMemory(id: id) }
 
     // TodayView 当前 segment（"check" / "todo"），供 RootTabView 控制 AI 输入框可见性
     @Published var todaySegment: String = "check"
@@ -1228,7 +1232,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
 
     @discardableResult
-    func reviseCommittedTurn(id: UUID, recognizedType: String, targetBucket: String, text: String) -> String? {
+    func reviseCommittedTurn(id: UUID, recognizedType: String, targetBucket: String, text: String, title: String? = nil) -> String? {
         guard let idx = turns.firstIndex(where: { $0.id == id }) else { return "记录不存在" }
         let wasCommitted = turns[idx].status == "committed"
 
@@ -1241,6 +1245,12 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
         updateTurnClassification(id: id, recognizedType: recognizedType, targetBucket: targetBucket)
         updateTurnContent(id: id, text: text)
+
+        if let title {
+            if let i = turns.firstIndex(where: { $0.id == id }) {
+                turns[i].payload["title"] = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
 
         if wasCommitted {
             return commitTurn(id: id)
@@ -1714,6 +1724,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
     func submitAgentText(_ text: String) {
         agent.send(text: text, turns: turns, tasks: tasks, timeEntries: timeEntries, checks: checkItems)
+    }
+
+    func submitQuickText(_ text: String) {
+        agent.quickSend(text: text)
     }
 
     func agentActionSuggestionsToMerge(from response: AgentChatResponse) -> [AgentActionDraft] {

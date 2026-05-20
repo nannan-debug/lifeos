@@ -1316,4 +1316,11 @@ private final class MockAIClient: AIClient {
         case .failure(let error): throw error
         }
     }
+
+    func quick(input: String, currentDate: String, currentTime: String) async throws -> AgentChatResponse {
+        switch result {
+        case .success(let response): return response
+        case .failure(let error): throw error
+        }
+    }
 }

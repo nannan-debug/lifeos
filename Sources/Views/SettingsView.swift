@@ -71,6 +71,32 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    NavigationLink {
+                        AgentMemoryListView()
+                            .environmentObject(store)
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.purple.opacity(0.12))
+                                Image(systemName: "brain.head.profile")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.purple)
+                            }
+                            .frame(width: 36, height: 36)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Agent 记忆")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(CreamTheme.text)
+                                Text("\(store.agentMemories.count) 条记忆")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 Section {
@@ -385,6 +411,66 @@ private enum ProfileField: String, Identifiable {
         switch self {
         case .nickname: return "昵称"
         }
+    }
+}
+
+private struct AgentMemoryListView: View {
+    @EnvironmentObject var store: AppStore
+    @State private var newMemoryText = ""
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    TextField("手动添加一条记忆", text: $newMemoryText)
+                        .textFieldStyle(.plain)
+                    Button {
+                        store.addAgentMemory(content: newMemoryText)
+                        newMemoryText = ""
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(CreamTheme.green)
+                    }
+                    .disabled(newMemoryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+
+            Section {
+                if store.agentMemories.isEmpty {
+                    Text("还没有记忆")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.agentMemories) { memory in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(memory.content)
+                                .font(.subheadline)
+                            HStack(spacing: 8) {
+                                Text(memory.category)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.purple.opacity(0.1)))
+                                    .foregroundStyle(.purple)
+                                Text(memory.source == "auto" ? "自动提取" : "手动添加")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(memory.createdAt, style: .date)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            store.removeAgentMemory(id: store.agentMemories[index].id)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Agent 记忆")
     }
 }
 

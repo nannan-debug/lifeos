@@ -70,6 +70,56 @@ enum AIParser {
         }
     }
 
+    // MARK: - Quick (lightweight single-turn)
+
+    static func quick(
+        input: String,
+        currentDate: String,
+        currentTime: String
+    ) async throws -> AgentChatResponse {
+        let body: [String: Any] = [
+            "mode": "quick",
+            "input": input,
+            "currentDate": currentDate,
+            "currentTime": currentTime
+        ]
+        let data = try await postWorker(body: body)
+        do {
+            let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
+            return AgentChatResponse(
+                reply: decoded.reply,
+                followUpQuestion: decoded.followUpQuestion,
+                actionSuggestions: decoded.actionSuggestions,
+                debug: decoded.debug,
+                rawBody: String(data: data, encoding: .utf8) ?? "<binary>"
+            )
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary>"
+            throw AIParseError.decoding("\(error.localizedDescription) · raw=\(raw.prefix(200))")
+        }
+    }
+
+    // MARK: - Utility: extract memories
+
+    struct ExtractedMemory: Decodable {
+        let content: String
+        let category: String
+    }
+
+    static func extractMemories(messages: [AgentChatRequestMessage]) async throws -> [ExtractedMemory] {
+        let body: [String: Any] = [
+            "mode": "utility",
+            "task": "extract_memories",
+            "messages": messages.map { ["role": $0.role, "content": $0.content] }
+        ]
+        let data = try await postWorker(body: body)
+        struct MemoryResponse: Decodable {
+            let result: [ExtractedMemory]
+        }
+        let wrapper = try JSONDecoder().decode(MemoryResponse.self, from: data)
+        return wrapper.result
+    }
+
     // MARK: - Utility: suggest topics
 
     static func suggestTopics(title: String, content: String) async throws -> [String] {
