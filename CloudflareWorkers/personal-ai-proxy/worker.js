@@ -255,7 +255,7 @@ async function handleChat(body, provider, apiKey) {
 
   if (!input) return jsonError(400, "empty_input");
 
-  const history = Array.isArray(body.messages)
+  const rawHistory = Array.isArray(body.messages)
     ? body.messages
         .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .slice(-6)
@@ -264,6 +264,21 @@ async function handleChat(body, provider, apiKey) {
           content: m.content.slice(0, 800),
         }))
     : [];
+
+  // 确保 user/assistant 交替，避免连续同角色消息导致 DeepSeek 返回空
+  const history = [];
+  for (const m of rawHistory) {
+    if (history.length > 0 && history[history.length - 1].role === m.role) {
+      // 同角色连续：合并内容而不是产生连续同角色消息
+      history[history.length - 1].content += "\n" + m.content;
+    } else {
+      history.push({ ...m });
+    }
+  }
+  // 最后一条如果是 user，去掉（因为当前 input 会作为新 user 消息追加）
+  if (history.length > 0 && history[history.length - 1].role === "user") {
+    history.pop();
+  }
 
   const effectiveContext = history.length === 0 ? (contextSummary || "无") : "（已在首轮提供）";
 
