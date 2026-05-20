@@ -10,7 +10,7 @@
 核心理念：低摩擦记录 + 可视化回看，帮助用户看清自己的生活，而非"优化"自己。
 
 - 技术栈：SwiftUI · Swift 5.9 · iOS 17+ · XcodeGen
-- 数据存储：本地 `UserDefaults`（按 `userId` 分库）+ CloudKit 同步（private database，`CKSyncEngine`）
+- 数据存储：本地 `UserDefaults`（按 `userId` 分库）+ Agent 对话文件（Application Support）+ CloudKit 同步（private database，`CKSyncEngine`）
 - AI 后端：Cloudflare Worker (`ai.dogdada.com`) + DeepSeek LLM
 - 仓库：`github.com/nannan-debug/lifeos`
 
@@ -147,7 +147,8 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 | `TaskEntry` | 待办任务（含优先级/截止时间） |
 | `TimeEntry` | 时间块记录（起止时间 + 类别） |
 | `ConversationTurn` | 随手记（想法/感受/感恩/做梦，含 payload 字典存标题等元数据） |
-| `AgentChatSession` | Agent 对话会话（消息历史 + pending action cards） |
+| `AgentChatSession` | 当前 Agent 对话会话兼容结构（消息历史 + pending action cards） |
+| `AgentChatThread` | Agent 多会话历史（每个 thread 一个 JSON 文件，UserDefaults 只存索引） |
 | `AgentMemory` | 跨会话记忆（content/category/lastUsedAt，上限 15 条） |
 | `AgentActionDraft` | Agent 建议的 action card（inbox/task/time 三种） |
 
@@ -161,20 +162,20 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 
 ```
 用户输入
-  → GlobalAIInputBar（快录/对话模式手动切换）
+  → GlobalAIInputBar（FAB 打开全屏对话窗，快录/对话模式手动切换）
   ├─ ⚡ 本地快录：纯本地关键词解析，不走网络
   ├─ ↑ AI 快录（默认）：单轮 → AIParser.quick() → Worker handleQuick
   │   不带历史、不带 contextSummary、不带 memory
   │   max_tokens: 500, temperature: 0.3
   └─ 💬 对话模式（手动切换）：多轮 → AgentManager.send() → Worker handleChat
-      带历史（最近 8 轮）+ contextSummary + memory（最多 10 条）
+      带当前会话历史（最近 8 轮）+ contextSummary + memory（最多 10 条）
 
 Worker 返回 → AgentChatResponse（reply + actionSuggestions）
-  → action cards 展示在输入栏上方，用户确认后写入数据桶
+  → action cards 展示在全屏对话窗内，用户确认后写入数据桶
 ```
 
 **核心流程文件：**
-- `GlobalAIInputBar` → `AppStore.submitQuickText()` 或 `submitAgentText()`
+- `GlobalAIInputBar` → fullScreenCover 对话窗 → `AppStore.submitQuickText()` 或 `submitAgentText()`
 - `AgentManager.quickSend()` / `send()` → `AIClient.quick()` / `chat()`
 - `AgentOrchestrator.makeContextSummary()` 拼接上下文（随手记带标题 + 待办 + 时间 + 打卡 + memory）
 - `AgentManager.mergeActionSuggestions()` 管理 action card 去重与替换
@@ -182,11 +183,16 @@ Worker 返回 → AgentChatResponse（reply + actionSuggestions）
 
 **Memory 系统：**
 - 仅对话模式使用，快录模式不涉及
-- 清空对话时自动提取（≥4 条消息触发，调 Worker `extract_memories` utility）
+- 新建对话 / 关闭全屏面板 / 清空对话时自动提取（≥4 条消息触发，调 Worker `extract_memories` utility）
 - 每次最多提取 3 条，每条 ≤60 字，分 fact/preference/summary 三类
 - 总上限 15 条，按 `lastUsedAt` LRU 淘汰
-- 对话模式首轮随 contextSummary 注入（Worker 只在 history 为空时发 system prompt）
+- 对话模式首轮随 contextSummary 注入（Worker 只在当前 thread history 为空时发 system prompt）
 - 设置页可手动查看/添加/删除 memory
+
+**Agent 对话持久化：**
+- `UserDefaults` 只保存 `ps.agent.threads.index.*`、`ps.agent.threads.current.*`、memory/debug 等轻量状态。
+- 每个对话 thread 存在 `Application Support/agent-threads/<userId>/<threadId>.json`，上限 30 个，超出自动删除最旧的非当前会话。
+- 旧版 `ps.agent.chat.*` 首次启动会迁移为一个 thread；迁移后新写入只走文件存储。
 
 **Worker 端点（`CloudflareWorkers/personal-ai-proxy/worker.js`）：**
 - `mode: "chat"` → 多轮对话，完整 system prompt + 历史

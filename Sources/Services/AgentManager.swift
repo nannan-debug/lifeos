@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Protocol: Agent 落库需要 AppStore 提供的写入能力
-
 protocol AgentDataWriter: AnyObject {
     var selectedDateKey: String { get }
     func addTurnDraft(rawText: String, recognizedType: String, targetBucket: String, confidence: Double, payload: [String: String], status: String, fixHint: String, moodScore: Int?, feelingTags: [String]) -> UUID?
@@ -11,6 +9,8 @@ protocol AgentDataWriter: AnyObject {
 
 final class AgentManager: ObservableObject {
     @Published var session: AgentChatSession = AgentChatSession()
+    @Published var threadIndex: [AgentChatThreadIndexItem] = []
+    @Published var currentThreadID: UUID?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published var debugLogs: [AgentChatDebugLog] = []
@@ -19,44 +19,66 @@ final class AgentManager: ObservableObject {
 
     private weak var writer: AgentDataWriter?
     private let client: AIClient
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let fileManager: FileManager
+    private var userSuffix: String
     private var keyChat: String
+    private var keyThreadIndex: String
+    private var keyCurrentThreadID: String
     private var keyDebugLogs: String
     private var keyMemories: String
+    private var threadDirectory: URL
 
     static let maxMemories = 15
+    static let maxThreads = 30
 
-    init(writer: AgentDataWriter, userIdSuffix: String, client: AIClient = DefaultAIClient()) {
+    init(
+        writer: AgentDataWriter,
+        userIdSuffix: String,
+        client: AIClient = DefaultAIClient(),
+        defaults: UserDefaults = .standard,
+        fileManager: FileManager = .default
+    ) {
         self.writer = writer
         self.client = client
-        let base = userIdSuffix.isEmpty ? "" : ".\(userIdSuffix)"
-        self.keyChat = "ps.agent.chat\(base)"
-        self.keyDebugLogs = "ps.agent.debug.logs\(base)"
-        self.keyMemories = "ps.agent.memories\(base)"
-        loadSession()
+        self.defaults = defaults
+        self.fileManager = fileManager
+        self.userSuffix = userIdSuffix
+        let keys = Self.keys(for: userIdSuffix)
+        self.keyChat = keys.chat
+        self.keyThreadIndex = keys.threadIndex
+        self.keyCurrentThreadID = keys.currentThreadID
+        self.keyDebugLogs = keys.debugLogs
+        self.keyMemories = keys.memories
+        self.threadDirectory = Self.threadDirectory(for: userIdSuffix, fileManager: fileManager)
+        loadThreads()
         loadDebugLogs()
         loadMemories()
     }
 
-    // MARK: - 重新绑定 writer（AppStore init 后设置）
+    var currentThreadTitle: String {
+        currentThread()?.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        ? currentThread()?.title ?? "新的对话"
+        : "新的对话"
+    }
 
     func bind(writer: AgentDataWriter) {
         self.writer = writer
     }
 
-    // MARK: - 更新 storage keys（用户切换时）
-
     func reloadForUser(suffix: String) {
-        let base = suffix.isEmpty ? "" : ".\(suffix)"
-        keyChat = "ps.agent.chat\(base)"
-        keyDebugLogs = "ps.agent.debug.logs\(base)"
-        keyMemories = "ps.agent.memories\(base)"
-        loadSession()
+        userSuffix = suffix
+        let keys = Self.keys(for: suffix)
+        keyChat = keys.chat
+        keyThreadIndex = keys.threadIndex
+        keyCurrentThreadID = keys.currentThreadID
+        keyDebugLogs = keys.debugLogs
+        keyMemories = keys.memories
+        threadDirectory = Self.threadDirectory(for: suffix, fileManager: fileManager)
+        loadThreads()
         loadDebugLogs()
         loadMemories()
     }
-
-    // MARK: - Send message
 
     func send(
         text: String,
@@ -67,6 +89,7 @@ final class AgentManager: ObservableObject {
     ) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        ensureCurrentThread()
 
         let request = AgentOrchestrator.makeRequest(
             input: clean,
@@ -78,8 +101,8 @@ final class AgentManager: ObservableObject {
             memories: memories
         )
         markMemoriesUsed()
-        session.messages.append(AgentChatMessage(role: "user", content: clean))
-        saveSession()
+        appendMessage(AgentChatMessage(role: "user", content: clean))
+        requestTitleIfNeeded(seed: clean)
         isLoading = true
         errorMessage = nil
         let today = AIParser.isoDate()
@@ -127,12 +150,12 @@ final class AgentManager: ObservableObject {
         }
     }
 
-    // MARK: - Quick send (lightweight single-turn)
-
     func quickSend(text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
-
+        ensureCurrentThread()
+        appendMessage(AgentChatMessage(role: "user", content: clean))
+        requestTitleIfNeeded(seed: clean)
         isLoading = true
         errorMessage = nil
         let today = AIParser.isoDate()
@@ -149,42 +172,25 @@ final class AgentManager: ObservableObject {
                 await MainActor.run {
                     self.isLoading = false
                     let actions = response.actionSuggestions.filter { self.hasContent($0) }
-                    for action in actions {
-                        if !self.session.pendingActions.contains(where: { self.isSameIntent($0, action) }) {
-                            self.session.pendingActions.append(action)
-                        }
+                    self.mergeActionSuggestions(actions)
+                    let pieces = [response.reply, response.followUpQuestion]
+                        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    if !pieces.isEmpty {
+                        self.appendMessage(AgentChatMessage(role: "assistant", content: pieces.joined(separator: "\n\n")))
+                    } else {
+                        self.saveCurrentThread()
                     }
-                    if let fq = response.followUpQuestion?.trimmingCharacters(in: .whitespacesAndNewlines), !fq.isEmpty {
-                        self.session.messages.append(AgentChatMessage(role: "user", content: clean))
-                        self.session.messages.append(AgentChatMessage(role: "assistant", content: fq))
-                    }
-                    self.saveSession()
                 }
             } catch {
                 await MainActor.run {
                     self.isLoading = false
                     self.errorMessage = "快录失败，请重试。"
+                    self.saveCurrentThread()
                 }
             }
         }
     }
-
-    // MARK: - Receive response
-
-    private func receiveResponse(_ response: AgentChatResponse, mergedActions: [AgentActionDraft]? = nil) {
-        isLoading = false
-        let pieces = [response.reply, response.followUpQuestion]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let content = pieces.joined(separator: "\n\n")
-        if !content.isEmpty {
-            session.messages.append(AgentChatMessage(role: "assistant", content: content))
-        }
-        mergeActionSuggestions(mergedActions ?? actionSuggestionsToMerge(from: response))
-        saveSession()
-    }
-
-    // MARK: - Action suggestions: filter, merge, confirm, dismiss
 
     func actionSuggestionsToMerge(from response: AgentChatResponse) -> [AgentActionDraft] {
         let isAskingFollowUp = response.followUpQuestion?
@@ -207,6 +213,7 @@ final class AgentManager: ObservableObject {
                 session.pendingActions.append(action)
             }
         }
+        saveCurrentThread()
     }
 
     @discardableResult
@@ -227,21 +234,25 @@ final class AgentManager: ObservableObject {
 
         if result == nil {
             session.pendingActions.removeAll { $0.id == id }
-            saveSession()
+            appendMessage(AgentChatMessage(role: "assistant", content: savedMessage(for: action)))
         }
         return result
     }
 
     func dismissAction(id: UUID) {
         session.pendingActions.removeAll { $0.id == id }
-        saveSession()
+        saveCurrentThread()
     }
 
     func clearChat() {
         let messagesToExtract = session.messages
-        session = AgentChatSession()
+        let threadID = currentThreadID
+        if let threadID {
+            deleteThreadFile(id: threadID)
+            threadIndex.removeAll { $0.id == threadID }
+        }
+        createNewThread(saveOldForMemory: false)
         errorMessage = nil
-        defaults.removeObject(forKey: keyChat)
 
         if messagesToExtract.count >= 4 {
             memoryStatus = "正在提取记忆..."
@@ -251,12 +262,82 @@ final class AgentManager: ObservableObject {
         }
     }
 
+    func prepareForPanelClose() {
+        extractMemoriesForCurrentThreadIfNeeded()
+    }
+
+    func createNewThread(saveOldForMemory: Bool = true) {
+        if saveOldForMemory {
+            extractMemoriesForCurrentThreadIfNeeded()
+        }
+        let now = Date()
+        let thread = AgentChatThread(createdAt: now, updatedAt: now)
+        currentThreadID = thread.id
+        session = thread.session
+        upsertIndex(for: thread)
+        saveThread(thread)
+        saveThreadIndex()
+        defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
+        enforceThreadLimit()
+    }
+
+    func selectThread(id: UUID) {
+        guard id != currentThreadID else { return }
+        extractMemoriesForCurrentThreadIfNeeded()
+        let thread = loadThread(id: id) ?? AgentChatThread(id: id)
+        currentThreadID = thread.id
+        session = thread.session
+        upsertIndex(for: thread)
+        saveThreadIndex()
+        defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
+    }
+
+    @discardableResult
+    func deleteThread(id: UUID) -> AgentChatThread? {
+        let deleted = loadThread(id: id)
+        deleteThreadFile(id: id)
+        threadIndex.removeAll { $0.id == id }
+        saveThreadIndex()
+
+        if id == currentThreadID {
+            if let next = threadIndex.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+                selectThread(id: next.id)
+            } else {
+                createNewThread(saveOldForMemory: false)
+            }
+        }
+        return deleted
+    }
+
+    func restoreThread(_ thread: AgentChatThread) {
+        saveThread(thread)
+        upsertIndex(for: thread)
+        saveThreadIndex()
+        selectThread(id: thread.id)
+    }
+
     func clearDebugLogs() {
         debugLogs = []
         defaults.removeObject(forKey: keyDebugLogs)
     }
 
-    // MARK: - Memory management
+    func clearAllUserData() {
+        for item in threadIndex {
+            deleteThreadFile(id: item.id)
+        }
+        try? fileManager.removeItem(at: threadDirectory)
+        threadIndex = []
+        currentThreadID = nil
+        session = AgentChatSession()
+        memories = []
+        debugLogs = []
+        defaults.removeObject(forKey: keyChat)
+        defaults.removeObject(forKey: keyThreadIndex)
+        defaults.removeObject(forKey: keyCurrentThreadID)
+        defaults.removeObject(forKey: keyMemories)
+        defaults.removeObject(forKey: keyDebugLogs)
+        createNewThread(saveOldForMemory: false)
+    }
 
     func addMemory(content: String, category: String = "fact", source: String = "user") {
         let clean = content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -280,6 +361,121 @@ final class AgentManager: ObservableObject {
         saveMemories()
     }
 
+    func threadMatchesSearch(_ item: AgentChatThreadIndexItem, query: String) -> Bool {
+        let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return true }
+        if item.title.localizedCaseInsensitiveContains(clean) { return true }
+        guard let thread = loadThread(id: item.id) else { return false }
+        return thread.messages.contains { $0.content.localizedCaseInsensitiveContains(clean) }
+    }
+
+    func archivedThreadsForBackup() -> [[String: Any]] {
+        threadIndex.compactMap { item in
+            guard let thread = loadThread(id: item.id),
+                  let data = try? JSONEncoder.agentThreadEncoder.encode(thread),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return nil }
+            return object
+        }
+    }
+
+    private func receiveResponse(_ response: AgentChatResponse, mergedActions: [AgentActionDraft]? = nil) {
+        isLoading = false
+        let pieces = [response.reply, response.followUpQuestion]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let content = pieces.joined(separator: "\n\n")
+        if !content.isEmpty {
+            session.messages.append(AgentChatMessage(role: "assistant", content: content))
+        }
+        mergeActionSuggestions(mergedActions ?? actionSuggestionsToMerge(from: response))
+        saveCurrentThread()
+    }
+
+    private func appendMessage(_ message: AgentChatMessage) {
+        session.messages.append(message)
+        saveCurrentThread()
+    }
+
+    private func currentThread() -> AgentChatThread? {
+        guard let id = currentThreadID else { return nil }
+        var thread = loadThread(id: id)
+        if thread == nil {
+            thread = AgentChatThread(id: id)
+        }
+        thread?.messages = session.messages
+        thread?.pendingActions = session.pendingActions
+        return thread
+    }
+
+    private func ensureCurrentThread() {
+        if currentThreadID == nil {
+            createNewThread(saveOldForMemory: false)
+        }
+    }
+
+    private func saveCurrentThread() {
+        ensureCurrentThread()
+        guard var thread = currentThread() else { return }
+        thread.updatedAt = Date()
+        if thread.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let firstUser = thread.messages.first(where: { $0.role == "user" }) {
+            thread.title = localTitle(from: firstUser.content)
+        }
+        saveThread(thread)
+        upsertIndex(for: thread)
+        saveThreadIndex()
+        defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
+        session = thread.session
+    }
+
+    private func requestTitleIfNeeded(seed: String) {
+        guard let id = currentThreadID,
+              var thread = loadThread(id: id),
+              !thread.titleGenerated,
+              thread.messages.filter({ $0.role == "user" }).count == 1
+        else { return }
+        thread.title = localTitle(from: seed)
+        saveThread(thread)
+        upsertIndex(for: thread)
+        saveThreadIndex()
+
+        Task { [weak self] in
+            guard let self else { return }
+            let title: String
+            do {
+                title = try await self.client.suggestTitle(content: seed)
+            } catch {
+                title = self.localTitle(from: seed)
+            }
+            await MainActor.run {
+                self.applyGeneratedTitle(title, to: id)
+            }
+        }
+    }
+
+    private func applyGeneratedTitle(_ title: String, to id: UUID) {
+        let clean = localTitle(from: title)
+        guard !clean.isEmpty, var thread = loadThread(id: id), !thread.titleGenerated else { return }
+        thread.title = clean
+        thread.titleGenerated = true
+        saveThread(thread)
+        upsertIndex(for: thread)
+        saveThreadIndex()
+        if id == currentThreadID {
+            session = thread.session
+        }
+    }
+
+    private func extractMemoriesForCurrentThreadIfNeeded() {
+        let messages = session.messages
+        guard messages.count >= 4 else { return }
+        memoryStatus = "正在提取记忆..."
+        Task { [weak self] in
+            await self?.extractMemories(from: messages)
+        }
+    }
+
     private func trimMemories() {
         guard memories.count > Self.maxMemories else { return }
         memories.sort { $0.lastUsedAt > $1.lastUsedAt }
@@ -293,15 +489,13 @@ final class AgentManager: ObservableObject {
             )
             await MainActor.run {
                 var added = 0
-                for item in extracted {
-                    if !self.memories.contains(where: { $0.content == item.content }) {
-                        self.memories.append(AgentMemory(
-                            content: item.content,
-                            category: item.category,
-                            source: "auto"
-                        ))
-                        added += 1
-                    }
+                for item in extracted where !self.memories.contains(where: { $0.content == item.content }) {
+                    self.memories.append(AgentMemory(
+                        content: item.content,
+                        category: item.category,
+                        source: "auto"
+                    ))
+                    added += 1
                 }
                 self.trimMemories()
                 self.saveMemories()
@@ -316,8 +510,6 @@ final class AgentManager: ObservableObject {
             }
         }
     }
-
-    // MARK: - Commit actions → AppStore
 
     private func commitInboxAction(_ action: AgentActionDraft) -> String? {
         guard let writer else { return "内部错误" }
@@ -390,8 +582,6 @@ final class AgentManager: ObservableObject {
         ) else { return "内容为空，未保存" }
         return writer.commitTurn(id: id)
     }
-
-    // MARK: - Helpers
 
     private func inboxType(for action: AgentActionDraft) -> String {
         let allowedTypes = ["想法", "感受", "感恩", "做梦"]
@@ -475,6 +665,22 @@ final class AgentManager: ObservableObject {
         return String(text.prefix(18)) + "…"
     }
 
+    private func localTitle(from text: String) -> String {
+        let title = AIParser.threadFallbackTitle(from: text)
+        return title.isEmpty ? "新的对话" : title
+    }
+
+    private func savedMessage(for action: AgentActionDraft) -> String {
+        let label: String
+        switch action.kind {
+        case .inbox: label = "随手记"
+        case .task: label = "待办"
+        case .time: label = "时间记录"
+        }
+        let title = action.title.isEmpty ? action.detail : action.title
+        return "已创建\(label)：\(title)"
+    }
+
     func debugSummary(_ action: AgentActionDraft) -> String {
         var parts: [String] = ["kind=\(action.kind.rawValue)"]
         if let inboxType = action.inboxType, !inboxType.isEmpty { parts.append("inboxType=\(inboxType)") }
@@ -491,24 +697,119 @@ final class AgentManager: ObservableObject {
         return parts.joined(separator: " ; ")
     }
 
-    // MARK: - Persistence
+    private func loadThreads() {
+        ensureThreadDirectory()
+        loadThreadIndex()
+        migrateLegacySessionIfNeeded()
 
-    private func loadSession() {
-        guard let data = defaults.data(forKey: keyChat) else {
-            session = AgentChatSession()
+        if let idString = defaults.string(forKey: keyCurrentThreadID),
+           let id = UUID(uuidString: idString),
+           let thread = loadThread(id: id) {
+            currentThreadID = id
+            session = thread.session
+        } else if let first = threadIndex.sorted(by: { $0.updatedAt > $1.updatedAt }).first,
+                  let thread = loadThread(id: first.id) {
+            currentThreadID = thread.id
+            session = thread.session
+            defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
+        } else {
+            createNewThread(saveOldForMemory: false)
+        }
+        enforceThreadLimit()
+    }
+
+    private func loadThreadIndex() {
+        guard let data = defaults.data(forKey: keyThreadIndex) else {
+            threadIndex = []
             return
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
-        session = (try? decoder.decode(AgentChatSession.self, from: data)) ?? AgentChatSession()
+        threadIndex = (try? decoder.decode([AgentChatThreadIndexItem].self, from: data)) ?? []
     }
 
-    private func saveSession() {
-        session.updatedAt = Date()
+    private func saveThreadIndex() {
+        threadIndex.sort { $0.updatedAt > $1.updatedAt }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970
-        guard let data = try? encoder.encode(session) else { return }
-        defaults.set(data, forKey: keyChat)
+        guard let data = try? encoder.encode(threadIndex) else { return }
+        defaults.set(data, forKey: keyThreadIndex)
+    }
+
+    private func migrateLegacySessionIfNeeded() {
+        guard threadIndex.isEmpty,
+              let data = defaults.data(forKey: keyChat)
+        else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        guard let legacy = try? decoder.decode(AgentChatSession.self, from: data),
+              !legacy.messages.isEmpty || !legacy.pendingActions.isEmpty
+        else { return }
+        let firstUser = legacy.messages.first(where: { $0.role == "user" })?.content ?? "旧对话"
+        let thread = AgentChatThread(
+            id: legacy.id,
+            title: localTitle(from: firstUser),
+            messages: legacy.messages,
+            pendingActions: legacy.pendingActions,
+            createdAt: legacy.messages.first?.createdAt ?? legacy.updatedAt,
+            updatedAt: legacy.updatedAt,
+            titleGenerated: false
+        )
+        saveThread(thread)
+        upsertIndex(for: thread)
+        currentThreadID = thread.id
+        defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
+        saveThreadIndex()
+    }
+
+    private func loadThread(id: UUID) -> AgentChatThread? {
+        let url = threadURL(id: id)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return try? decoder.decode(AgentChatThread.self, from: data)
+    }
+
+    private func saveThread(_ thread: AgentChatThread) {
+        ensureThreadDirectory()
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? encoder.encode(thread) else { return }
+        try? data.write(to: threadURL(id: thread.id), options: [.atomic])
+    }
+
+    private func upsertIndex(for thread: AgentChatThread) {
+        let item = AgentChatThreadIndexItem(thread: thread)
+        if let index = threadIndex.firstIndex(where: { $0.id == thread.id }) {
+            threadIndex[index] = item
+        } else {
+            threadIndex.append(item)
+        }
+        threadIndex.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func enforceThreadLimit() {
+        guard threadIndex.count > Self.maxThreads else { return }
+        let sorted = threadIndex.sorted { $0.updatedAt < $1.updatedAt }
+        let removable = sorted.filter { $0.id != currentThreadID }
+        let overflow = threadIndex.count - Self.maxThreads
+        for item in removable.prefix(overflow) {
+            deleteThreadFile(id: item.id)
+            threadIndex.removeAll { $0.id == item.id }
+        }
+        saveThreadIndex()
+    }
+
+    private func deleteThreadFile(id: UUID) {
+        try? fileManager.removeItem(at: threadURL(id: id))
+    }
+
+    private func ensureThreadDirectory() {
+        try? fileManager.createDirectory(at: threadDirectory, withIntermediateDirectories: true)
+    }
+
+    private func threadURL(id: UUID) -> URL {
+        threadDirectory.appendingPathComponent("\(id.uuidString).json")
     }
 
     private func loadDebugLogs() {
@@ -575,5 +876,39 @@ final class AgentManager: ObservableObject {
             debugLogs = Array(debugLogs.prefix(20))
         }
         saveDebugLogs()
+    }
+
+    private static func keys(for suffix: String) -> (
+        chat: String,
+        threadIndex: String,
+        currentThreadID: String,
+        debugLogs: String,
+        memories: String
+    ) {
+        let base = suffix.isEmpty ? "" : ".\(suffix)"
+        return (
+            "ps.agent.chat\(base)",
+            "ps.agent.threads.index\(base)",
+            "ps.agent.threads.current\(base)",
+            "ps.agent.debug.logs\(base)",
+            "ps.agent.memories\(base)"
+        )
+    }
+
+    private static func threadDirectory(for suffix: String, fileManager: FileManager) -> URL {
+        let root = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        let folder = suffix.isEmpty ? "default" : suffix
+        return root
+            .appendingPathComponent("agent-threads", isDirectory: true)
+            .appendingPathComponent(folder, isDirectory: true)
+    }
+}
+
+private extension JSONEncoder {
+    static var agentThreadEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        return encoder
     }
 }

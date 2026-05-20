@@ -1,40 +1,23 @@
 import SwiftUI
 
-/// 全局 AI 输入框 —— 类似 Notion 的浮动按钮
-/// - 折叠态：右下角一个圆形 `+` 按钮，小猫趴在按钮左上方
-/// - 展开态：底部完整输入条，带 ⚡ 快捷本地 & ↑ AI 发送 两个按钮；小猫趴在输入条右上方
-/// - 点击输入条外部空白区域可收起
-/// - 所有 AI 输入统一走 Agent 聊天通道：猫自动判断是记录还是闲聊
 struct GlobalAIInputBar: View {
     static let openComposerNotification = Notification.Name("LifeOSOpenGlobalAIComposer")
 
     @EnvironmentObject var store: AppStore
-
-    @State private var rawInput = ""
-    @State private var isExpanded = false
-    @FocusState private var inputFocused: Bool
-
+    @State private var showPanel = false
+    @State private var pendingPrefill = ""
     @State private var keyboardVisible = false
-    @State private var chatMode = false
-
-    // AI 首次使用同意弹窗
-    @State private var showConsent = false
-    @State private var pendingAIText: String? = nil
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(alignment: .trailing, spacing: 8) {
-                if isExpanded {
-                    expandedBarWithMascot
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if !keyboardVisible {
-                    fabWithMascot
-                        .transition(.scale.combined(with: .opacity))
-                }
+        ZStack(alignment: .bottomTrailing) {
+            if !keyboardVisible {
+                fabWithMascot
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 54)
+                    .transition(.scale.combined(with: .opacity))
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, keyboardVisible ? 6 : 54)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.easeInOut(duration: 0.18)) { keyboardVisible = true }
         }
@@ -42,313 +25,752 @@ struct GlobalAIInputBar: View {
             withAnimation(.easeInOut(duration: 0.18)) { keyboardVisible = false }
         }
         .onReceive(NotificationCenter.default.publisher(for: Self.openComposerNotification)) { notification in
-            if let prompt = notification.object as? String, !prompt.isEmpty, rawInput.isEmpty {
-                rawInput = prompt
+            pendingPrefill = notification.object as? String ?? ""
+            showPanel = true
+        }
+        .fullScreenCover(isPresented: $showPanel) {
+            AgentChatPanel(prefill: pendingPrefill) {
+                store.prepareAgentPanelClose()
+                showPanel = false
+                pendingPrefill = ""
             }
-            expand()
+            .environmentObject(store)
+            .presentationBackground(.clear)
+        }
+    }
+
+    private var fabWithMascot: some View {
+        ZStack(alignment: .topTrailing) {
+            Button {
+                showPanel = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(CreamTheme.green))
+                    .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 38)
+
+            MascotCatAssetView(stroke: CreamTheme.green, assetName: "mascot-cat")
+                .frame(width: 58, height: 52)
+                .offset(x: 0, y: -2)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct AgentChatPanel: View {
+    @EnvironmentObject var store: AppStore
+    @FocusState private var inputFocused: Bool
+
+    let prefill: String
+    let onClose: () -> Void
+
+    @State private var rawInput = ""
+    @State private var chatMode = true
+    @State private var showConsent = false
+    @State private var pendingAIText: String?
+    @State private var showHistory = false
+    @State private var searchText = ""
+    @State private var pendingDelete: AgentChatThreadIndexItem?
+    @State private var recentlyDeletedThread: AgentChatThread?
+    @State private var verticalDragOffset: CGFloat = 0
+    @State private var historyDragOffset: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.10)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    if showHistory {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                            showHistory = false
+                        }
+                    }
+                }
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 54)
+
+                ZStack {
+                    panelBackground
+
+                    VStack(spacing: 0) {
+                        header
+                        conversationArea
+                        inputDock
+                    }
+
+                    if showHistory {
+                        historyOverlay
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 38, topTrailingRadius: 38))
+                .shadow(color: .black.opacity(0.12), radius: 24, x: 0, y: -4)
+                .offset(y: max(0, verticalDragOffset))
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+        }
+        .onAppear {
+            if !prefill.isEmpty, rawInput.isEmpty {
+                rawInput = prefill
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                inputFocused = true
+            }
         }
         .sheet(isPresented: $showConsent) {
             AIConsentSheet {
                 if let text = pendingAIText {
-                    store.submitAgentText(text)
-                    rawInput = ""
+                    submitAI(text)
                     pendingAIText = nil
                 }
             }
         }
-    }
-
-    // MARK: - FAB (折叠态) + 小猫（坐姿 mascot-cat，脸朝左）
-    private var fabWithMascot: some View {
-        HStack {
-            Spacer()
-            ZStack(alignment: .topTrailing) {
-                Button {
-                    expand()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
-                        .background(
-                            Circle().fill(CreamTheme.green)
-                        )
-                        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 38)
-
-                MascotCatAssetView(stroke: CreamTheme.green, assetName: "mascot-cat")
-                    .frame(width: 58, height: 52)
-                    .offset(x: 0, y: -2)
-                    .allowsHitTesting(false)
+        .alert("删除这段对话？", isPresented: Binding(
+            get: { pendingDelete != nil },
+            set: { if !$0 { pendingDelete = nil } }
+        )) {
+            Button("明天再说", role: .cancel) {
+                pendingDelete = nil
             }
-        }
-    }
-
-    // MARK: - Expanded Bar (展开态) + 趴姿小猫（cat-lying，脸朝左）
-    private var expandedBarWithMascot: some View {
-        ZStack(alignment: .topTrailing) {
-            expandedBar
-                .padding(.top, 30)
-
-            MascotCatAssetView(stroke: CreamTheme.green, assetName: "cat-lying")
-                .frame(width: 84, height: 42)
-                .offset(x: -12, y: 1)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private var expandedBar: some View {
-        let hasText = !rawInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let isLoading = store.isAgentLoading
-        let canSend = hasText && !isLoading
-        let placeholder = chatMode ? "和猫聊聊..." : "快速记录..."
-
-        return VStack(alignment: .leading, spacing: 9) {
-            // 顶部工具栏：模式切换 + 清空对话
-            HStack(spacing: 6) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { chatMode.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: chatMode ? "bubble.left.and.bubble.right.fill" : "bolt.fill")
-                            .font(.caption2)
-                        Text(chatMode ? "对话" : "快录")
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(chatMode ? CreamTheme.green : Color(red: 0.85, green: 0.65, blue: 0.25))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule().fill(
-                            chatMode
-                            ? CreamTheme.green.opacity(0.12)
-                            : Color(red: 0.99, green: 0.93, blue: 0.80)
-                        )
-                    )
+            Button("删除", role: .destructive) {
+                if let item = pendingDelete {
+                    recentlyDeletedThread = store.deleteAgentThread(id: item.id)
                 }
-                .buttonStyle(.plain)
+                pendingDelete = nil
+            }
+        } message: {
+            Text("这只会删除这段猫猫对话，不会影响已经保存到随手记、待办或时间里的内容。")
+        }
+    }
+
+    private var panelBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.99, green: 0.99, blue: 0.97),
+                .white,
+                Color(red: 0.94, green: 0.97, blue: 0.94)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(CreamTheme.text.opacity(0.16))
+                .frame(width: 38, height: 4)
+                .padding(.top, 10)
+
+            HStack {
+                iconButton("clock.arrow.circlepath") {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                        showHistory = true
+                    }
+                }
 
                 Spacer()
-                if chatMode && !store.agentSession.messages.isEmpty {
-                    Button {
-                        store.clearAgentChat()
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.plain)
+
+                Text(displayTitle)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CreamTheme.text)
+                    .lineLimit(1)
+                    .frame(maxWidth: 210)
+
+                Spacer()
+
+                iconButton("square.and.pencil") {
+                    store.createNewAgentThread()
+                    inputFocused = true
                 }
             }
-
-            if chatMode {
-                agentConversationPreview
-            }
-            if let memStatus = store.agentMemoryStatus {
-                HStack(spacing: 6) {
-                    Image(systemName: "brain.head.profile")
-                        .font(.caption2)
-                        .foregroundStyle(CreamTheme.green)
-                    Text(memStatus)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-                .transition(.opacity)
-            }
-            if store.isAgentLoading {
-                dialogueLine(label: "猫", text: chatMode ? "我在想怎么接这句话..." : "正在分析...", isUser: false)
-            }
-            if let msg = store.agentErrorMessage {
-                dialogueLine(label: "猫", text: msg, isUser: false, canDismiss: true)
-            }
-            agentActionCards
-
-            HStack(alignment: .center, spacing: 8) {
-                HStack(alignment: .center, spacing: 6) {
-                    Button {
-                        collapse()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(CreamTheme.green)
-                            .frame(width: 28, height: 28)
-                            .background(
-                                Circle().fill(CreamTheme.green.opacity(0.12))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isLoading)
-
-                    TextField(placeholder, text: $rawInput, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.body)
-                        .lineLimit(1...4)
-                        .submitLabel(.send)
-                        .focused($inputFocused)
-                        .disabled(isLoading)
-                        .frame(minHeight: 28, alignment: .center)
-                        .onSubmit {
-                            if canSend { submitAgent() }
-                        }
-
-                    if isLoading {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(0.7)
-                            .tint(CreamTheme.green)
-                            .frame(width: 28, height: 28)
-                    } else {
-                        // ⚡ 快捷本地（不走网络，直接本地关键词入库）
-                        Button {
-                            submitLocal()
-                        } label: {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(hasText ? Color(red: 0.85, green: 0.65, blue: 0.25) : .secondary.opacity(0.4))
-                                .frame(width: 28, height: 28)
-                                .background(
-                                    Circle().fill(
-                                        hasText
-                                        ? Color(red: 0.99, green: 0.93, blue: 0.80)
-                                        : Color.gray.opacity(0.12)
-                                    )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!hasText)
-
-                        // ↑ AI 发送
-                        Button {
-                            submitAgent()
-                        } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(
-                                    Circle().fill(canSend ? CreamTheme.green : Color.gray.opacity(0.3))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!canSend)
-                    }
-                }
-            }
+            .padding(.horizontal, 24)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
         .padding(.bottom, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.white.opacity(0.98))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(
-                    isLoading ? CreamTheme.green.opacity(0.38) : Color.black.opacity(0.08),
-                    lineWidth: isLoading ? 1.3 : 1
-                )
-        )
-        .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 6)
+        .contentShape(Rectangle())
+        .highPriorityGesture(panelDismissDrag)
     }
 
-    private func dialogueLine(label: String, text: String, isUser: Bool, canDismiss: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(isUser ? CreamTheme.green : .primary.opacity(0.46))
-                .frame(width: 34, alignment: .leading)
+    private var displayTitle: String {
+        store.agentSession.messages.isEmpty ? "LifeOS AI" : store.currentAgentThreadTitle
+    }
+
+    private var conversationArea: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    if store.agentSession.messages.isEmpty && store.agentSession.pendingActions.isEmpty {
+                        emptyState
+                            .padding(.top, 36)
+                    } else {
+                        ForEach(store.agentSession.messages) { message in
+                            messageRow(message)
+                                .id(message.id)
+                        }
+                        if store.isAgentLoading {
+                            thinkingRow
+                        }
+                        if let msg = store.agentErrorMessage {
+                            systemNotice(msg)
+                        }
+                        if let memStatus = store.agentMemoryStatus {
+                            systemNotice(memStatus, icon: "brain.head.profile")
+                        }
+                        actionCards
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 136)
+            }
+            .onChange(of: store.agentSession.messages.count) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .onChange(of: store.agentSession.pendingActions.count) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .simultaneousGesture(contentDismissKeyboardDrag)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            ZStack(alignment: .top) {
+                Circle()
+                    .fill(.white.opacity(0.9))
+                    .frame(width: 108, height: 108)
+                    .shadow(color: .black.opacity(0.07), radius: 22, x: 0, y: 9)
+                MascotCatAssetView(stroke: CreamTheme.green, assetName: "cat-lying")
+                    .frame(width: 82, height: 41)
+                    .offset(y: -20)
+                Text("LifeOS AI")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(CreamTheme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.86)
+                    .frame(width: 108, height: 108, alignment: .center)
+                    .offset(y: 6)
+            }
+            Text("可以快速记一件事，也可以慢慢聊清楚。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func messageRow(_ message: AgentChatMessage) -> some View {
+        HStack(alignment: .top) {
+            if message.role == "user" {
+                Spacer(minLength: 46)
+                Text(message.content)
+                    .font(.callout)
+                    .foregroundStyle(CreamTheme.text)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(Color.black.opacity(0.045))
+                    )
+                    .frame(maxWidth: 285, alignment: .trailing)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(message.content)
+                        .font(.callout)
+                        .lineSpacing(4)
+                        .foregroundStyle(CreamTheme.text.opacity(0.9))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 26)
+            }
+        }
+    }
+
+    private var thinkingRow: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .scaleEffect(0.75)
+                .tint(CreamTheme.green)
+            Text(chatMode ? "猫猫在想怎么接这句话..." : "正在轻轻整理...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func systemNotice(_ text: String, icon: String = "leaf") -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(CreamTheme.green)
             Text(text)
                 .font(.caption)
-                .foregroundStyle(Color.primary.opacity(isUser ? 0.78 : 0.62))
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if canDismiss {
+                .foregroundStyle(.secondary)
+            if store.agentErrorMessage == text {
                 Button {
                     store.agentErrorMessage = nil
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.primary.opacity(0.32))
-                        .frame(width: 20, height: 20)
+                        .font(.caption2.weight(.bold))
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
         }
-        .padding(.bottom, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(.white.opacity(0.72)))
     }
 
-    private var agentConversationPreview: some View {
-        let messages = store.agentSession.messages.suffix(4)
-        return VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(messages)) { message in
-                dialogueLine(
-                    label: message.role == "user" ? "我" : "猫",
-                    text: message.content,
-                    isUser: message.role == "user"
-                )
-            }
-        }
-    }
-
-    private var agentActionCards: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var actionCards: some View {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(store.agentSession.pendingActions) { action in
-                agentActionCard(action)
+                actionCard(action)
             }
         }
     }
 
-    private func agentActionCard(_ action: AgentActionDraft) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label(actionLabel(for: action.kind), systemImage: actionIcon(for: action.kind))
-                    .font(.caption.weight(.semibold))
+    private func actionCard(_ action: AgentActionDraft) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: actionIcon(for: action.kind))
                     .foregroundStyle(CreamTheme.green)
+                Text(actionLabel(for: action.kind))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CreamTheme.text)
                 Spacer()
                 Button {
                     store.dismissAgentAction(id: action.id)
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
             Text(action.title.isEmpty ? action.detail : action.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary.opacity(0.82))
+                .font(.callout.weight(.medium))
+                .foregroundStyle(CreamTheme.text)
                 .lineLimit(2)
             if !action.detail.isEmpty, action.detail != action.title {
                 Text(action.detail)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
             Button {
                 if let err = store.confirmAgentAction(id: action.id) {
                     store.agentErrorMessage = err
                 }
             } label: {
-                Label("保存", systemImage: "checkmark")
+                Text("保存")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(CreamTheme.green)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(CreamTheme.green))
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(CreamTheme.green.opacity(0.13)))
             }
             .buttonStyle(.plain)
         }
-        .padding(10)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(CreamTheme.green.opacity(0.08))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.9))
+                .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 8)
         )
+    }
+
+    private var inputDock: some View {
+        VStack(spacing: 9) {
+            HStack(spacing: 6) {
+                modeChip(title: "快录", icon: "bolt.fill", selected: !chatMode) {
+                    chatMode = false
+                }
+                modeChip(title: "对话", icon: "bubble.left.and.bubble.right.fill", selected: chatMode) {
+                    chatMode = true
+                }
+                Spacer()
+            }
+
+            HStack(alignment: .center, spacing: 10) {
+                TextField("问问、快速记录或聊聊今天...", text: $rawInput, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                    .lineLimit(1...5)
+                    .submitLabel(.send)
+                    .focused($inputFocused)
+                    .disabled(store.isAgentLoading)
+                    .onSubmit {
+                        if canSend { submitAgent() }
+                    }
+                    .padding(.vertical, 11)
+
+                Button {
+                    submitAgent()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(canSend ? CreamTheme.green : Color.gray.opacity(0.26)))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .frame(width: 42, height: 42, alignment: .center)
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 26)
+                    .fill(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.10), radius: 22, x: 0, y: 8)
+            )
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 22)
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.18),
+                            .init(color: .black, location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .allowsHitTesting(false)
+        )
+    }
+
+    private var historyOverlay: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                        showHistory = false
+                    }
+                }
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 22) {
+                    historyHeader
+
+                    historyList
+                    undoDeleteBanner
+                    historySearchDock
+                }
+                .padding(.horizontal, 30)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .background(
+                    UnevenRoundedRectangle(topLeadingRadius: 36, topTrailingRadius: 36)
+                        .fill(Color(red: 0.99, green: 0.99, blue: 0.98))
+                )
+                .offset(y: max(0, historyDragOffset))
+                .shadow(color: .black.opacity(0.10), radius: 22, x: 0, y: -4)
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+        }
+    }
+
+    private var historyHeader: some View {
+        VStack(spacing: 12) {
+            Capsule()
+                .fill(CreamTheme.text.opacity(0.16))
+                .frame(width: 38, height: 4)
+                .padding(.top, 12)
+
+            Text("对话")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(CreamTheme.text)
+                .frame(maxWidth: .infinity)
+        }
+        .contentShape(Rectangle())
+        .highPriorityGesture(historyDismissDrag)
+    }
+
+    private var historySearchDock: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("搜索", text: $searchText)
+                    .font(.callout)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 52)
+            .background(Capsule().fill(.white.opacity(0.92)))
+            .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 8)
+
+            Button {
+                store.createNewAgentThread()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                    showHistory = false
+                }
+                inputFocused = true
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(CreamTheme.text)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(.white.opacity(0.92)))
+                    .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.bottom, 26)
+    }
+
+    @ViewBuilder
+    private var undoDeleteBanner: some View {
+        if let thread = recentlyDeletedThread {
+            HStack(spacing: 10) {
+                Text("已移除「\(thread.title.isEmpty ? "新的对话" : thread.title)」")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Button("撤销") {
+                    store.restoreAgentThread(thread)
+                    recentlyDeletedThread = nil
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CreamTheme.green)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 42)
+            .background(Capsule().fill(.white.opacity(0.92)))
+            .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 6)
+        }
+    }
+
+    private var historyList: some View {
+        let items = filteredThreads
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                if !recentThreads(items).isEmpty {
+                    historySection("过去 30 天", items: recentThreads(items))
+                }
+                if !olderThreads(items).isEmpty {
+                    historySection("更早", items: olderThreads(items))
+                }
+                if items.isEmpty {
+                    Text("还没有留下对话。新的想法可以从这里开始。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 20)
+                }
+            }
+            .padding(.bottom, 20)
+        }
+    }
+
+    private var filteredThreads: [AgentChatThreadIndexItem] {
+        store.agentThreadIndex
+            .filter { store.agentThreadMatchesSearch($0, query: searchText) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func recentThreads(_ items: [AgentChatThreadIndexItem]) -> [AgentChatThreadIndexItem] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? .distantPast
+        return items.filter { $0.updatedAt >= cutoff }
+    }
+
+    private func olderThreads(_ items: [AgentChatThreadIndexItem]) -> [AgentChatThreadIndexItem] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? .distantPast
+        return items.filter { $0.updatedAt < cutoff }
+    }
+
+    private func historySection(_ title: String, items: [AgentChatThreadIndexItem]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(items) { item in
+                historyRow(item)
+            }
+        }
+    }
+
+    private func historyRow(_ item: AgentChatThreadIndexItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: item.id == store.currentAgentThreadID ? "bubble.left.fill" : "bubble.left")
+                .font(.system(size: 18))
+                .foregroundStyle(item.id == store.currentAgentThreadID ? CreamTheme.green : .secondary)
+                .frame(width: 24)
+
+            Button {
+                store.selectAgentThread(id: item.id)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                    showHistory = false
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.title.isEmpty ? "新的对话" : item.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(CreamTheme.text)
+                        .lineLimit(1)
+                    Text(relativeDate(item.updatedAt))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                pendingDelete = item
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary.opacity(0.72))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func iconButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(CreamTheme.text.opacity(0.82))
+                .frame(width: 48, height: 48)
+                .background(
+                    Circle()
+                        .fill(.white.opacity(0.78))
+                        .shadow(color: .black.opacity(0.055), radius: 15, x: 0, y: 7)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func modeChip(title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(selected ? .white : CreamTheme.text.opacity(0.74))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule().fill(selected ? CreamTheme.green : .white.opacity(0.86))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var hasText: Bool {
+        !rawInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canSend: Bool {
+        hasText && !store.isAgentLoading
+    }
+
+    private func submitAgent() {
+        let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if !AIConsent.hasAccepted {
+            pendingAIText = text
+            showConsent = true
+            return
+        }
+        submitAI(text)
+    }
+
+    private func submitAI(_ text: String) {
+        if chatMode {
+            store.submitAgentText(text)
+        } else {
+            store.submitQuickText(text)
+        }
+        rawInput = ""
+    }
+
+    private func submitLocal() {
+        let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        store.submitLocalOnly(text)
+        rawInput = ""
+    }
+
+    private var panelDismissDrag: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
+            .onChanged { value in
+                guard !showHistory else { return }
+                let downward = value.translation.height
+                if downward > 0, downward > abs(value.translation.width) {
+                    verticalDragOffset = min(downward * 0.86, 220)
+                }
+            }
+            .onEnded { value in
+                guard !showHistory else {
+                    verticalDragOffset = 0
+                    return
+                }
+                let downward = value.translation.height
+                let predicted = value.predictedEndTranslation.height
+                if downward > 210 || predicted > 420 {
+                    onClose()
+                } else {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        verticalDragOffset = 0
+                    }
+                }
+            }
+    }
+
+    private var contentDismissKeyboardDrag: some Gesture {
+        DragGesture(minimumDistance: 14, coordinateSpace: .local)
+            .onChanged { value in
+                let downward = value.translation.height
+                guard downward > 10, downward > abs(value.translation.width) else { return }
+                inputFocused = false
+            }
+    }
+
+    private var historyDismissDrag: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
+            .onChanged { value in
+                let downward = value.translation.height
+                if downward > 0, downward > abs(value.translation.width) {
+                    historyDragOffset = min(downward * 0.86, 220)
+                }
+            }
+            .onEnded { value in
+                let downward = value.translation.height
+                let predicted = value.predictedEndTranslation.height
+                if downward > 210 || predicted > 420 {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                        showHistory = false
+                        historyDragOffset = 0
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        historyDragOffset = 0
+                    }
+                }
+            }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        guard let last = store.agentSession.messages.last else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(last.id, anchor: .bottom)
+            }
+        }
     }
 
     private func actionLabel(for kind: AgentActionKind) -> String {
@@ -367,43 +789,10 @@ struct GlobalAIInputBar: View {
         }
     }
 
-    // MARK: - Expand / Collapse
-    private func expand() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            isExpanded = true
-        }
-        inputFocused = true
-    }
-
-    private func collapse() {
-        inputFocused = false
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            isExpanded = false
-        }
-    }
-
-    // MARK: - Submit actions
-
-    private func submitAgent() {
-        let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        if !AIConsent.hasAccepted {
-            pendingAIText = text
-            showConsent = true
-            return
-        }
-        if chatMode {
-            store.submitAgentText(text)
-        } else {
-            store.submitQuickText(text)
-        }
-        rawInput = ""
-    }
-
-    private func submitLocal() {
-        let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        store.submitLocalOnly(text)
-        rawInput = ""
+    private func relativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans")
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }

@@ -186,7 +186,8 @@ struct SettingsView: View {
             )) {
                 healthKitRow(
                     icon: "bed.double",
-                    title: "同步睡眠"
+                    title: "同步睡眠",
+                    subtitle: store.healthSyncStatusText
                 )
             }
             .tint(CreamTheme.green)
@@ -218,21 +219,26 @@ struct SettingsView: View {
                 store.syncHealthKitNow(showCompletionAlert: true)
             } label: {
                 HStack {
-                    Text("立即同步")
+                    Text(store.isHealthSyncing ? "同步中..." : "立即同步")
                         .font(.body.weight(.semibold))
                     Spacer()
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption.weight(.semibold))
+                    if store.isHealthSyncing {
+                        ProgressView()
+                            .tint(CreamTheme.green)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
+                    }
                 }
                 .foregroundStyle(CreamTheme.green)
             }
-            .disabled(!store.isHealthSleepSyncEnabled && !store.isHealthWorkoutSyncEnabled)
+            .disabled(store.isHealthSyncing || (!store.isHealthSleepSyncEnabled && !store.isHealthWorkoutSyncEnabled))
         } header: {
             Text("Apple 健康")
         }
     }
 
-    private func healthKitRow(icon: String, title: String) -> some View {
+    private func healthKitRow(icon: String, title: String, subtitle: String? = nil) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
@@ -248,6 +254,11 @@ struct SettingsView: View {
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

@@ -1,13 +1,13 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-05-18
+> 最后更新：2026-05-20
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 1.7.0 (build 11) 已通过审核并上架。**
+**LifeOS 1.7.0 (build 11) 已通过审核并上架；1.8.0 (build 12) 正在准备 PR，尚未 Archive / Upload / Submit。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架
@@ -19,10 +19,11 @@
 - ✅ `1.5.2 (build 9)` — 2026-05-13 上架
 - ✅ `1.6.0 (build 10)` — 2026-05-15 上架
 - ✅ `1.7.0 (build 11)` — 2026-05-20 上架（桌面小组件、CloudKit 同步、导出全部数据、延伸思考、醒后梦境提醒）
+- 🔄 `1.8.0 (build 12)` — PR 准备中（AI 全屏对话窗、多会话历史、健康同步与时间记录修复）
 - ✅ App ID：`6763877227`
 - ✅ App Store Connect 状态：1.0.0 ~ 1.7.0 均 Ready for Distribution
 
-**待办：用户需手动打 `v1.7.0` tag 和发 GitHub Release（见 §6.8）。**
+**待办：1.8.0 PR 合入 main 后，用户需手动 Archive / Upload 到 App Store Connect，并在 ASC 创建 1.8.0 版本提交审核（见 §6.9）。**
 
 **审核期间想做新功能怎么办？** 见 §4.8。
 
@@ -42,7 +43,7 @@
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.7.0` (build 11) |
-| 当前 main 状态 | `1.7.0` (build 11) 已上架；待打 `v1.7.0` tag / GitHub Release |
+| 当前 main 状态 | `1.7.0` (build 11) 已上架；`1.8.0 (build 12)` 发版 PR 准备中 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -382,13 +383,23 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.6.0` 已 push（指向 `f563735`）。
 - ✅ GitHub Release [v1.6.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.6.0) 已发布。
 
-### 6.8 1.7.0 上架收尾
+### 6.8 1.7.0 上架收尾（已完成 ✅）
 
 - ✅ 发版 PR 已合入 `main`：`1.7.0 (build 11)` 版本号 / changelog / 本清单状态更新（[#56](https://github.com/nannan-debug/lifeos/pull/56)）。
 - ✅ 用户已手动 Archive / Upload 到 App Store Connect。
 - ✅ ASC 已创建 / 选择 `1.7.0` 新版本，并 Submit to App Review（2026-05-18）。
 - ✅ `1.7.0 (build 11)` 已通过审核并上架（2026-05-20，用户确认）。
-- ⏳ 待用户手动打 `v1.7.0` tag 和发 GitHub Release（参考 §4.7）。
+- ✅ Tag `v1.7.0` 已 push。
+- ✅ GitHub Release [v1.7.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.7.0) 已发布。
+
+### 6.9 1.8.0 发版准备
+
+- 🔄 当前分支：`feat/agent-fullscreen-chat`。
+- 🔄 准备内容：AI 全屏对话窗、多会话文件存储、历史搜索 / 切换 / 删除、Agent 对话视觉优化、Apple 健康睡眠同步修复、时间记录更新事件修复、随手记时间线排序和短标题优化。
+- 🔄 版本号：`1.8.0 (build 12)` 已在发版分支准备，等待 PR 合入 `main`。
+- ⏳ PR 合入后：用户需要在 Xcode 重新打开项目，Archive / Upload build 12 到 App Store Connect。
+- ⏳ 上传处理完成后：用户需要在 ASC 创建 `1.8.0` 新版本，填写 What's New，选择 build 12，并 Submit to App Review。
+- ⏳ 只有 ASC 显示 Ready for Distribution / 已上架后，才打 `v1.8.0` tag 和发 GitHub Release。
 
 ---
 
@@ -410,4 +421,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 ~ 1.7.0 均已在 App Store 在线。`v1.7.0` tag 和 GitHub Release 待用户手动完成；当前没有进行中的发版周期。**
+**LifeOS 1.0.0 ~ 1.7.0 均已在 App Store 在线。当前正在准备 `1.8.0 (build 12)`：PR 合入后再 Archive / Upload / Submit，过审上架后再打 `v1.8.0` tag 和 GitHub Release。**

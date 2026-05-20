@@ -72,7 +72,7 @@ final class HealthKitSyncService {
         guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else {
             throw HealthKitSyncError.typeUnavailable
         }
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictEndDate)
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: [])
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let samples = try await categorySamples(type: sleepType, predicate: predicate, sortDescriptors: [sort])
         let intervals = mergedSleepSessions(from: samples)

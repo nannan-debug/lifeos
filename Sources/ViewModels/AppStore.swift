@@ -68,6 +68,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private var agentCancellable: AnyCancellable?
 
     var agentSession: AgentChatSession { agent.session }
+    var agentThreadIndex: [AgentChatThreadIndexItem] { agent.threadIndex }
+    var currentAgentThreadID: UUID? { agent.currentThreadID }
+    var currentAgentThreadTitle: String { agent.currentThreadTitle }
     var isAgentLoading: Bool { agent.isLoading }
     var agentErrorMessage: String? {
         get { agent.errorMessage }
@@ -86,6 +89,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     @Published var isHealthSleepSyncEnabled: Bool
     @Published var isHealthWorkoutSyncEnabled: Bool
     @Published var isWakeDreamReminderEnabled: Bool
+    @Published var isHealthSyncing: Bool = false
     @Published var healthSyncStatusText: String
     @Published var healthSyncCompletionMessage: String? = nil
 
@@ -253,6 +257,12 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
 
     func syncHealthKitNow(showCompletionAlert: Bool = false) {
+        guard !isHealthSyncing else {
+            if showCompletionAlert {
+                healthSyncCompletionMessage = "正在同步 Apple 健康，请稍等一下。"
+            }
+            return
+        }
         let readSleep = isHealthSleepSyncEnabled
         let readWorkouts = isHealthWorkoutSyncEnabled
         guard readSleep || readWorkouts else {
@@ -263,6 +273,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             return
         }
 
+        isHealthSyncing = true
         healthSyncStatusText = "正在从 Apple 健康同步..."
         let endDate = Date()
         let startDate = Calendar.current.date(byAdding: .day, value: -30, to: endDate) ?? endDate
@@ -275,6 +286,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
                     _ = await WakeDreamReminderService.scheduleIfNeeded(from: blocks)
                 }
                 await MainActor.run {
+                    self.isHealthSyncing = false
                     let imported = self.importHealthKitTimeBlocks(blocks, replacingSleepSince: readSleep ? startDate : nil, until: endDate)
                     if imported > 0 {
                         self.healthSyncStatusText = "已同步 \(imported) 条睡眠/运动记录。"
@@ -287,6 +299,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
                 }
             } catch {
                 await MainActor.run {
+                    self.isHealthSyncing = false
                     self.healthSyncStatusText = error.localizedDescription
                     self.isHealthSleepSyncEnabled = false
                     self.isHealthWorkoutSyncEnabled = false
@@ -322,8 +335,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         turns = []
         brainCards = []
         aiFailureLogs = []
-        agent.clearChat()
-        agent.clearDebugLogs()
+        agent.clearAllUserData()
         publishCheckWidgetSnapshot()
         syncICloudAfterLocalChange()
     }
@@ -536,7 +548,11 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         guard let existing = timeEntries.first(where: { $0.id == id }) else { return "记录不存在" }
 
         let startDateKey = existing.extra[TimeEntryCrossDayKey.startDateKey] ?? selectedDateKey
-        removeTimeEntryByID(id, dateKey: selectedDateKey)
+        let healthKitSourceID = existing.extra[HealthKitTimeEntryKey.sourceID]
+        removeTimeEntryByID(id, dateKey: nil)
+        if let healthKitSourceID, !healthKitSourceID.isEmpty {
+            removeHealthKitTimeEntry(sourceID: healthKitSourceID)
+        }
 
         if endMinutes > startMinutes {
             insertTimeEntry(
@@ -612,6 +628,27 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
                 let extra = decodeExtra(row["extra"])
                 return extra[HealthKitTimeEntryKey.source] == HealthKitTimeEntryKey.sourceValue
                     && extra[HealthKitTimeEntryKey.kind] == kind
+            }
+            if rows.count != before {
+                map[key] = rows
+                didRemove = true
+            }
+        }
+
+        if didRemove {
+            defaults.set(map, forKey: keyTime)
+        }
+    }
+
+    private func removeHealthKitTimeEntry(sourceID: String) {
+        var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        var didRemove = false
+
+        for key in map.keys {
+            guard var rows = map[key] else { continue }
+            let before = rows.count
+            rows.removeAll { row in
+                decodeExtra(row["extra"])[HealthKitTimeEntryKey.sourceID] == sourceID
             }
             if rows.count != before {
                 map[key] = rows
@@ -1721,6 +1758,15 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
     func clearAgentDebugLogs() { agent.clearDebugLogs() }
     func clearAgentChat() { agent.clearChat() }
+    func prepareAgentPanelClose() { agent.prepareForPanelClose() }
+    func createNewAgentThread() { agent.createNewThread() }
+    func selectAgentThread(id: UUID) { agent.selectThread(id: id) }
+    @discardableResult
+    func deleteAgentThread(id: UUID) -> AgentChatThread? { agent.deleteThread(id: id) }
+    func restoreAgentThread(_ thread: AgentChatThread) { agent.restoreThread(thread) }
+    func agentThreadMatchesSearch(_ item: AgentChatThreadIndexItem, query: String) -> Bool {
+        agent.threadMatchesSearch(item, query: query)
+    }
 
     func submitAgentText(_ text: String) {
         agent.send(text: text, turns: turns, tasks: tasks, timeEntries: timeEntries, checks: checkItems)
@@ -2035,10 +2081,24 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
 
     private func summarizeTurnTitle(_ raw: String) -> String {
-        let clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var clean = raw
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         if clean.isEmpty { return "未命名记录" }
-        if clean.count <= 20 { return clean }
-        return String(clean.prefix(20)) + "…"
+
+        let separators = CharacterSet(charactersIn: "，,。.!！？?；;")
+        if let first = clean.rangeOfCharacter(from: separators) {
+            clean = String(clean[..<first.lowerBound])
+        }
+
+        let removablePhrases = ["今天", "上午", "下午", "晚上", "早上", "中午", "刚刚", "有点", "好像", "感觉", "觉得", "我", "一", "呢", "啦", "了", "啊", "呀", "吧"]
+        for phrase in removablePhrases {
+            clean = clean.replacingOccurrences(of: phrase, with: "")
+        }
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return "随手记" }
+        if clean.count <= 10 { return clean }
+        return String(clean.prefix(10))
     }
 
     private func currentDateKey() -> String {
@@ -2457,6 +2517,19 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             if let value = defaults.object(forKey: scopedKey(base)) {
                 payload[base] = value
             }
+        }
+        if let threadIndex = defaults.object(forKey: scopedKey("ps.agent.threads.index")) {
+            payload["ps.agent.threads.index"] = threadIndex
+        }
+        if let currentThreadID = defaults.object(forKey: scopedKey("ps.agent.threads.current")) {
+            payload["ps.agent.threads.current"] = currentThreadID
+        }
+        if let memories = defaults.object(forKey: scopedKey("ps.agent.memories")) {
+            payload["ps.agent.memories"] = memories
+        }
+        let archivedThreads = agent.archivedThreadsForBackup()
+        if !archivedThreads.isEmpty {
+            payload["ps.agent.threads"] = archivedThreads
         }
         guard !payload.isEmpty else { return nil }
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""

@@ -138,6 +138,7 @@ struct QuickCaptureView: View {
         }
         // 过滤掉今天已隐藏的
         result = result.filter { !hiddenTodayIDs.contains($0.id) }
+        result = result.sorted { $0.createdAt > $1.createdAt }
         return result
     }
 
@@ -965,15 +966,40 @@ enum QuickCaptureParser {
     }
 
     private static func summarizeTitle(_ s: String) -> String {
-        let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleaned.count <= 18 { return cleaned }
-        return String(cleaned.prefix(18)) + "…"
+        compactTopicTitle(from: s)
     }
 
     private static func threeLineSummary(_ s: String) -> String {
         let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.count <= 60 { return cleaned }
         return String(cleaned.prefix(60)) + "…"
+    }
+
+    private static func compactTopicTitle(from text: String) -> String {
+        var cleaned = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "随手记" }
+
+        let separators = CharacterSet(charactersIn: "，,。.!！？?；;")
+        if let first = cleaned.rangeOfCharacter(from: separators) {
+            cleaned = String(cleaned[..<first.lowerBound])
+        }
+
+        let removablePhrases = [
+            "今天", "上午", "下午", "晚上", "早上", "中午", "刚刚", "有点", "好像",
+            "感觉", "觉得", "我", "一", "呢", "啦", "了", "啊", "呀", "吧"
+        ]
+        for phrase in removablePhrases {
+            cleaned = cleaned.replacingOccurrences(of: phrase, with: "")
+        }
+        cleaned = cleaned
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleaned.isEmpty { return "随手记" }
+        if cleaned.count > 10 { return String(cleaned.prefix(10)) }
+        return cleaned
     }
 
     private static func verbLeadingTitle(from s: String) -> String {
