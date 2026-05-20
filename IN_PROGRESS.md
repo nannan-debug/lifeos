@@ -26,7 +26,7 @@ Agent V2 已经完成「快录 / 对话」分层与轻量 Memory，但 UI 仍是
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| PR 1 | AI 全屏对话窗 + 多会话文件存储 + 历史抽屉 | 🔄 开发中 |
+| PR 1 | AI 全屏对话窗 + 多会话文件存储 + 历史抽屉 | ✅ [#68](https://github.com/nannan-debug/lifeos/pull/68) 已合入 main；`1.8.0 (build 12)` 已提交 App Review，等待 Apple 审核 |
 
 ## 本轮包含的改动
 
@@ -51,8 +51,8 @@ Agent V2 已经完成「快录 / 对话」分层与轻量 Memory，但 UI 仍是
 
 ## 已知问题 / 待验收
 
-- 需要在模拟器或真机肉眼验收三种状态：初始化、历史抽屉、有聊天内容。
-- GitHub Release `v1.7.0` 目前已存在，但历史文档中仍可能有发版收尾口径漂移，后续可单独开 docs PR 清理。
+- 等待 Apple 审核 `1.8.0 (build 12)`。
+- App Store 显示 Ready for Distribution / 已上架后，打 `v1.8.0` tag、发 GitHub Release，并把本功能归档到 `docs/archived-features/agent-fullscreen-chat.md`。
 
 ---
 
