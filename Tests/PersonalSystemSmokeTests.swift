@@ -558,6 +558,62 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(decoded.actionSuggestions.first?.feelings, ["困惑", "焦虑"])
     }
 
+    func testAgentChatResponseDecodesUsage() throws {
+        let data = """
+        {
+          "reply": "好的",
+          "followUpQuestion": null,
+          "actionSuggestions": [],
+          "usage": {
+            "prompt_tokens": 123,
+            "completion_tokens": 45,
+            "total_tokens": 168,
+            "prompt_tokens_details": {
+              "cached_tokens": 80
+            }
+          }
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
+
+        XCTAssertEqual(decoded.usage?.promptTokens, 123)
+        XCTAssertEqual(decoded.usage?.completionTokens, 45)
+        XCTAssertEqual(decoded.usage?.totalTokens, 168)
+        XCTAssertEqual(decoded.usage?.promptTokenDetails?["cached_tokens"], 80)
+    }
+
+    func testAgentTraceEventCodableRoundtrip() throws {
+        let event = AgentTraceEvent(
+            traceId: "trace-1",
+            sessionId: "user-1",
+            threadId: "thread-1",
+            eventName: "request_started",
+            payload: [
+                "input": "今天有点乱",
+                "messages": AgentTracePayload.json([AgentChatRequestMessage(role: "user", content: "你好")])
+            ],
+            usage: AgentTokenUsage(
+                promptTokens: 10,
+                completionTokens: 5,
+                totalTokens: 15,
+                promptTokenDetails: ["cached_tokens": 3]
+            ),
+            latencyMs: 321,
+            error: nil
+        )
+
+        let data = try JSONEncoder().encode(event)
+        let decoded = try JSONDecoder().decode(AgentTraceEvent.self, from: data)
+
+        XCTAssertEqual(decoded.traceId, "trace-1")
+        XCTAssertEqual(decoded.source, "ios")
+        XCTAssertEqual(decoded.eventName, "request_started")
+        XCTAssertEqual(decoded.payload["input"], "今天有点乱")
+        XCTAssertEqual(decoded.usage?.promptTokenDetails?["cached_tokens"], 3)
+        XCTAssertEqual(decoded.latencyMs, 321)
+    }
+
     func testTaskToggleRecordsAndClearsCompletionTime() {
         let store = AppStore()
         let title = "completion-time-\(UUID().uuidString)"
@@ -1361,9 +1417,11 @@ final class PersonalSystemSmokeTests: XCTestCase {
     // MARK: - Agent mock tests
 
     func testAgentHandlesChatNetworkError() {
+        let uid = "agent-network-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
         let store = AppStore()
         let mock = MockAIClient(result: .failure(AIParseError.network("timeout")))
-        store.agent = AgentManager(writer: store, userIdSuffix: "", client: mock)
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
 
         store.submitAgentText("hello")
         let exp = expectation(description: "agent finishes")
@@ -1376,10 +1434,12 @@ final class PersonalSystemSmokeTests: XCTestCase {
     }
 
     func testAgentHandlesEmptyReply() {
+        let uid = "agent-empty-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
         let response = AgentChatResponse(reply: "", followUpQuestion: nil, actionSuggestions: [])
         let mock = MockAIClient(result: .success(response))
         let store = AppStore()
-        store.agent = AgentManager(writer: store, userIdSuffix: "", client: mock)
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
 
         store.submitAgentText("hello")
         let exp = expectation(description: "agent finishes")
@@ -1393,11 +1453,13 @@ final class PersonalSystemSmokeTests: XCTestCase {
     }
 
     func testAgentHandlesMalformedActions() {
+        let uid = "agent-malformed-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
         let badAction = AgentActionDraft(kind: .inbox, title: "", detail: "", confidence: 0.5, reason: "")
         let response = AgentChatResponse(reply: "ok", followUpQuestion: nil, actionSuggestions: [badAction])
         let mock = MockAIClient(result: .success(response))
         let store = AppStore()
-        store.agent = AgentManager(writer: store, userIdSuffix: "", client: mock)
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
 
         store.submitAgentText("记录一下")
         let exp = expectation(description: "agent finishes")
@@ -1419,14 +1481,30 @@ private final class MockAIClient: AIClient {
         self.result = result
     }
 
-    func chat(input: String, messages: [AgentChatRequestMessage], contextSummary: String, currentDate: String, currentTime: String) async throws -> AgentChatResponse {
+    func chat(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?
+    ) async throws -> AgentChatResponse {
         switch result {
         case .success(let response): return response
         case .failure(let error): throw error
         }
     }
 
-    func quick(input: String, currentDate: String, currentTime: String) async throws -> AgentChatResponse {
+    func quick(
+        input: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?
+    ) async throws -> AgentChatResponse {
         switch result {
         case .success(let response): return response
         case .failure(let error): throw error

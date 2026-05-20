@@ -55,6 +55,8 @@ tmp/
 
 # ───── Agent trace data (本地评估用) ─────
 scripts/traces/*.jsonl
+deploy/agent-trace-ingest/.env
+deploy/agent-trace-ingest/node_modules/
 
 # ───── Project-specific ─────
 # xcodegen 生成的 xcodeproj 可以选择忽略或保留

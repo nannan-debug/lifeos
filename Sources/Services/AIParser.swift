@@ -44,9 +44,12 @@ enum AIParser {
         messages: [AgentChatRequestMessage],
         contextSummary: String,
         currentDate: String,
-        currentTime: String
+        currentTime: String,
+        traceId: String? = nil,
+        sessionId: String? = nil,
+        threadId: String? = nil
     ) async throws -> AgentChatResponse {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "mode": "chat",
             "input": input,
             "messages": messages.map { ["role": $0.role, "content": $0.content] },
@@ -54,6 +57,9 @@ enum AIParser {
             "currentDate": currentDate,
             "currentTime": currentTime
         ]
+        body["traceId"] = traceId
+        body["sessionId"] = sessionId
+        body["threadId"] = threadId
         let data = try await postWorker(body: body)
         do {
             let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
@@ -62,7 +68,8 @@ enum AIParser {
                 followUpQuestion: decoded.followUpQuestion,
                 actionSuggestions: decoded.actionSuggestions,
                 debug: decoded.debug,
-                rawBody: String(data: data, encoding: .utf8) ?? "<binary>"
+                rawBody: String(data: data, encoding: .utf8) ?? "<binary>",
+                usage: decoded.usage
             )
         } catch {
             let raw = String(data: data, encoding: .utf8) ?? "<binary>"
@@ -75,14 +82,20 @@ enum AIParser {
     static func quick(
         input: String,
         currentDate: String,
-        currentTime: String
+        currentTime: String,
+        traceId: String? = nil,
+        sessionId: String? = nil,
+        threadId: String? = nil
     ) async throws -> AgentChatResponse {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "mode": "quick",
             "input": input,
             "currentDate": currentDate,
             "currentTime": currentTime
         ]
+        body["traceId"] = traceId
+        body["sessionId"] = sessionId
+        body["threadId"] = threadId
         let data = try await postWorker(body: body)
         do {
             let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
@@ -91,7 +104,8 @@ enum AIParser {
                 followUpQuestion: decoded.followUpQuestion,
                 actionSuggestions: decoded.actionSuggestions,
                 debug: decoded.debug,
-                rawBody: String(data: data, encoding: .utf8) ?? "<binary>"
+                rawBody: String(data: data, encoding: .utf8) ?? "<binary>",
+                usage: decoded.usage
             )
         } catch {
             let raw = String(data: data, encoding: .utf8) ?? "<binary>"

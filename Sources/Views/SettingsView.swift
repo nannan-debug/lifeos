@@ -508,7 +508,7 @@ private struct AgentDebugLogListView: View {
             } header: {
                 Text("最近记录")
             } footer: {
-                Text("包含聊天历史摘要、人格设定、用户信息、上下文摘要、AI 原始返回和最终进入卡片队列的建议，仅本机保存。")
+                Text("未配置云端 Agent Trace 时，这里保留最近 20 条本机调试记录；配置后完整日志会统一上传到 trace 服务。")
             }
         }
         .navigationTitle("AI 聊天调试")

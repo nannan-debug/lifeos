@@ -11,6 +11,7 @@
 		0732BCB968A2F5C9B6F3ACE8 /* CheckWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2667D21549DBF7F063A42F03 /* CheckWidgetSnapshot.swift */; };
 		0BE52857AA88AC63F2AD3350 /* GlobalAIInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43793AFBE40A0207A015C59 /* GlobalAIInputBar.swift */; };
 		1282ACB00F9A6EEB2F100955 /* PersonalSystemApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3E4506D76484EEB429054A /* PersonalSystemApp.swift */; };
+		17C22D7455FA21E07CCB31F3 /* AgentTraceLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED93A393A73A15095567370 /* AgentTraceLogger.swift */; };
 		19D3943266C325922D29C221 /* TimeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C06AA9437C4C92DB191C4D7F /* TimeView.swift */; };
 		1BF60C73DA6FD63FF0FD1A4C /* CreamTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499F1731265F2DDA1F0395B4 /* CreamTheme.swift */; };
 		1FA257F7D66FC66E583121FA /* CheckWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2667D21549DBF7F063A42F03 /* CheckWidgetSnapshot.swift */; };
@@ -121,6 +122,7 @@
 		77C4A93F0C815F1D56908E9F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7C822E9B099D15F6EE89A2EC /* BrainCardDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainCardDetailView.swift; sourceTree = "<group>"; };
 		7DEF70D944E0A492D3712B2F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		7ED93A393A73A15095567370 /* AgentTraceLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTraceLogger.swift; sourceTree = "<group>"; };
 		8A1C212C5B39C02449173866 /* ReviewSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewSessionView.swift; sourceTree = "<group>"; };
 		8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewHubView.swift; sourceTree = "<group>"; };
 		8C9E49D2D37FD2539D75275B /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 			children = (
 				45D49338D8DBCBCD4802B149 /* AgentManager.swift */,
 				430AB77324DB2A31B0516400 /* AgentOrchestrator.swift */,
+				7ED93A393A73A15095567370 /* AgentTraceLogger.swift */,
 				F8C51C9E4D24CBEE1F6DE475 /* AIClient.swift */,
 				229491345B70D21BB0902CB5 /* AIParser.swift */,
 				16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */,
@@ -436,6 +439,7 @@
 				257999BBA159C9066609056B /* AIParser.swift in Sources */,
 				E7196BB0A6712E14D720A0BB /* AgentManager.swift in Sources */,
 				2874582AED10DCD404B5C280 /* AgentOrchestrator.swift in Sources */,
+				17C22D7455FA21E07CCB31F3 /* AgentTraceLogger.swift in Sources */,
 				3B95585BBBD69166DAA93AC5 /* AppStore.swift in Sources */,
 				E7F784C38996BCF7DA31FB2E /* AppUpdateService.swift in Sources */,
 				74F5A5797CBFA7BF85650474 /* BrainCardDetailView.swift in Sources */,
