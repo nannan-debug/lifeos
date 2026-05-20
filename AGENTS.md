@@ -13,7 +13,6 @@
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — 分支命名 / commit 规范 / PR 流程
 - [`VERSIONING.md`](./VERSIONING.md) — 版本号约定（注意：`project.yml` 是 source of truth，不是 `Info.plist`）
 - [`LAUNCH_CHECKLIST.md`](./LAUNCH_CHECKLIST.md) — 当前上架状态 + 发版 SOP（重点看 §4.8 审核期间开发策略）
-- [`PRODUCT_BRIEF.md`](./PRODUCT_BRIEF.md) — 产品背景与 ADHD 友好设计原则
 
 ## Codex 协作口径
 
