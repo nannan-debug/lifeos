@@ -135,7 +135,19 @@ final class AgentManager: ObservableObject {
                     self.errorMessage = "对话服务暂时没有接上，我先用本地方式陪你。"
                     let fallback = AgentOrchestrator.fallbackResponse(for: clean)
                     let mergedActions = self.actionSuggestionsToMerge(from: fallback)
-                    self.receiveResponse(fallback, mergedActions: mergedActions)
+                    // 错误兜底：只显示给用户，不写入历史，避免污染发送给 AI 的上下文
+                    self.isLoading = false
+                    let pieces = [fallback.reply, fallback.followUpQuestion]
+                        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    let content = pieces.joined(separator: "\n\n")
+                    if !content.isEmpty {
+                        self.session.messages.append(
+                            AgentChatMessage(role: "assistant", content: content, isError: true)
+                        )
+                    }
+                    self.mergeActionSuggestions(mergedActions)
+                    self.saveCurrentThread()
                     self.recordDebugLog(
                         input: clean,
                         request: request,
@@ -484,8 +496,9 @@ final class AgentManager: ObservableObject {
 
     private func extractMemories(from messages: [AgentChatMessage]) async {
         do {
+            let validMessages = messages.filter { !$0.isError }
             let extracted = try await AIParser.extractMemories(
-                messages: messages.map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
+                messages: validMessages.map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
             )
             await MainActor.run {
                 var added = 0

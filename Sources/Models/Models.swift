@@ -166,6 +166,7 @@ struct AgentChatMessage: Identifiable, Codable, Equatable {
     var role: String            // user / assistant
     var content: String
     var createdAt: Date = Date()
+    var isError: Bool = false   // 错误兜底消息，不发送给 AI
 }
 
 struct AgentChatSession: Codable, Equatable {
