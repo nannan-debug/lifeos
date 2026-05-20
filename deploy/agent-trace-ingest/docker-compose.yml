@@ -1,0 +1,11 @@
+services:
+  agent-trace-ingest:
+    build: .
+    container_name: lifeos-agent-trace-ingest
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - /var/lib/lifeos-traces:/var/lib/lifeos-traces
