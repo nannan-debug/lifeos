@@ -1,4 +1,4 @@
-# 当前在做：iCloud 同步迁移到 CloudKit
+# 当前在做：Agent V2 — 分层交互 + 轻量 Memory
 
 > **目的**：大功能横跨多个 PR 时，这份文档是"在飞状态"的唯一真相。新接手的人（或断线重连的 AI）只看这一份就能继续。
 >
@@ -8,49 +8,57 @@
 
 ## 背景
 
-原 iCloud 同步把全部数据塞进 `NSUbiquitousKeyValueStore` 的单键快照，存在 1MB 静默丢弃、整包覆盖无合并、重装后开启同步可能用空数据覆盖云端等数据丢失风险。迁移到 CloudKit（逐记录同步、按 Apple ID 隔离的 private database、跨重装持久存在）以根治。
+Agent V1 只有一种交互深度——每次请求都加载完整上下文（system prompt + contextSummary + 历史消息），无论用户只是想快速记一句话还是想深入聊天。同时 Agent 没有跨会话记忆，每次清空聊天后所有积累的理解都丢失。
 
-## 锁定决策清单
+## 设计：三层交互深度
 
-> 改动此清单前先和 Anna 对齐，不要直接改。
+```
+⚡ 本地快录（已有）     → 纯本地关键词解析，不走网络
+↑  AI 快录（默认）     → 单轮 AI 分析，轻量 prompt，无 memory
+💬 对话模式（手动切换） → 多轮对话，加载 memory + contextSummary
+```
 
-1. **最低系统**：iOS 17+，用 `CKSyncEngine`。
-2. **同步开关**：保留设置项，**默认开**；关闭 = 仅暂停，云端数据保留，重新打开续传。
-3. **同步范围**：核心 6 类 —— 打卡、时间记录、待办、AI 对话、第二大脑、打卡项配置。AI 失败日志、遗留 inbox **不同步**。
-4. **Schema**（private database）：`CheckDay` 按日期一条；`TimeEntry` / `Task` / `Turn` / `BrainCard` 各按 UUID 一条；`DailyConfig` 打卡项配置单例。
-5. **存储模型**：本地 `UserDefaults` 仍是 App 的工作存储，`CKSyncEngine` 在旁做镜像；迁移**只读本地、永不删除本地数据**（本地始终是一份兜底）。
-6. **过渡**：首次启动一次性导入 —— 本地有数据则迁本地；本地为空则读一次旧 KVS 快照当种子。之后彻底弃用 KVS，一次性标志位守住。
-7. **安全网**：首次迁移前自动写一份完整 JSON 本地备份；设置页提供「导出全部数据」。
+用户手动切换快录/对话模式（GlobalAIInputBar 左上角按钮）。
 
 ## PR 进度表
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| PR 1 | 安全网先行：设置页「导出全部数据」+ JSON 备份序列化器 | ✅ [#51](https://github.com/nannan-debug/lifeos/pull/51) 2026-05-17 |
-| PR 2 | CloudKit 基建：iCloud capability + 容器、Schema 常量、本地数据 ↔ CKRecord 双向转换器 + 单测 | ✅ [#52](https://github.com/nannan-debug/lifeos/pull/52) 2026-05-17 |
-| PR 3 | `CKSyncEngine` 接入 + 上行/下行同步 + 一次性迁移 + 切 CloudKit 为默认 + 退役 KVS | ✅ [#53](https://github.com/nannan-debug/lifeos/pull/53) 2026-05-18 |
+| PR 1 | Agent V1 架构重构——瘦身 prompt、清理死码、引入 AIClient 依赖注入 | ✅ [#63](https://github.com/nannan-debug/lifeos/pull/63) 2026-05-19 |
+| PR 2 | Agent V2 全量——分层交互 + Memory 系统 + Worker quick/extract_memories | 🔄 [#65](https://github.com/nannan-debug/lifeos/pull/65) 待合并 |
 
-> PR 2/3 边界微调：`CKSyncEngine` 控制器与启用/迁移逻辑绑定，从 PR 2 挪到 PR 3。
->
-> PR 3 因体量大、且 CloudKit 行为只能真机验证，拆成同一分支上的 3 个可验证阶段：
-> - **S1** ✅：CloudKit 上行 + 一次性迁移（迁移前自动备份）。最低系统提升到 iOS 17。真机验过（zone 与记录已上传）。
-> - **S2** ✅：下行同步——云端变更增量应用回本地。真机验过（删除重装能完整恢复）。
-> - **S3** ✅：退役旧 KVS 同步、切 CloudKit 默认开启、收尾。
-> 每个阶段实现后真机验收，再叠下一阶段。
->
-> ✅ 三个 PR 全部合入 `main`，已随 `1.7.0 (build 11)` 于 2026-05-18 提交 App 审核。
-> **上架后**把本节归档到 `docs/archived-features/cloudkit-sync-migration.md`，并清空本文件。
+## PR 2 包含的改动
+
+**Worker（`CloudflareWorkers/personal-ai-proxy/worker.js`）：**
+- `handleQuick()`：轻量单轮，max_tokens 500，temperature 0.3
+- `extract_memories` utility：从对话提取 1-3 条 memory
+- prompt 精简（~2200→~1200 字）
+- 空响应自动重试
+
+**iOS 端：**
+- `AgentMemory` 数据模型 + LRU 淘汰（上限 15 条）
+- `AgentManager.quickSend()` 快录路径
+- `AgentManager` memory CRUD + 自动提取（clearChat 时触发）
+- `AgentOrchestrator` contextSummary 注入 memory + 随手记带标题
+- `GlobalAIInputBar` 模式切换 UI + memory 状态提示
+- 对话模式更正时清掉旧 action cards（防重复）
+- 设置页 Memory 管理列表
+- 随手记卡片和编辑页展示 action title
+
+**工具：**
+- `scripts/agent_lab.py` Python 实验脚本
+
+## 已知问题
+
+- DeepSeek 在多轮对话中偶尔混淆实体属性（如搞反哪场面试好/差），这是模型能力限制，非代码 bug
+- Memory 提取依赖 LLM 判断，没有 embedding 相似度去重（当前 15 条上限下尚不是问题）
 
 ## 阻塞 / 待人工
 
-- iCloud 容器 `iCloud.ai.anna.personalsystem` 已注册、App target 已加 iCloud(CloudKit) capability、构建通过（2026-05-17 完成）。
-
-## 关联
-
-- PR #50（交互 Widget + KVS 同步止血修复）已并入 `main`，是 CloudKit 上线前的过渡保护；CloudKit 上线后其 iCloud 同步部分被取代。
+- PR #65 待 Anna 合并
 
 ---
 
 上一项已完成归档：
 
-- [`灵感与反思模块 V2`](docs/archived-features/v2-inspiration-reflection.md) — 随 `1.3.0 (build 5)` 上架完成归档（2026-05-03）
+- [`iCloud 同步迁移到 CloudKit`](docs/archived-features/cloudkit-sync-migration.md) — 随 `1.7.0 (build 11)` 提交审核（2026-05-18），三个 PR 全部合入
