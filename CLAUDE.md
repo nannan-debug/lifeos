@@ -22,21 +22,28 @@
 Sources/
   App/          # 入口 + Info.plist + Assets
   Models/       # 数据模型（Models.swift）
-  ViewModels/   # AppStore + AIRoutingPolicy 等全局状态 / 策略
-  Services/     # AIParser + 系统服务 + Secrets（Secrets.swift 已 gitignore）
+  ViewModels/   # AppStore（全局状态）
+  Services/     # AgentManager + AIParser + AIClient + Secrets（Secrets.swift 已 gitignore）
   Views/        # 所有 SwiftUI 页面
-Tests/          # 单元测试 + Fixtures 标准样本库
+CloudflareWorkers/
+  personal-ai-proxy/  # Cloudflare Worker（AI 代理 + prompt 管理）
+Tests/          # 单元测试
+scripts/        # Python 实验脚本（agent_lab.py）
 project.yml     # XcodeGen 配置，版本号 source of truth，勿手编 .xcodeproj
 Secrets.example.swift  # Secrets 模板，真实文件不进仓库
 ```
 
 **关键文件：**
 - `Sources/ViewModels/AppStore.swift` — 全局状态，所有 @Published 数据都在这里
-- `Sources/Services/AIParser.swift` — AI 解析逻辑与 schema 定义
-- `Sources/ViewModels/AIRoutingPolicy.swift` — AI record 落库前的本地归类策略
+- `Sources/Services/AgentManager.swift` — Agent 核心：会话管理、快录/对话路由、Memory CRUD、action card 生命周期
+- `Sources/Services/AIParser.swift` — AI 网络层：chat / quick / extractMemories 请求
+- `Sources/Services/AIClient.swift` — AIClient 协议（依赖注入，方便测试 mock）
+- `Sources/Services/AgentOrchestrator.swift` — 构建 contextSummary（随手记+待办+时间+打卡+memory）
+- `Sources/Views/GlobalAIInputBar.swift` — 全局浮动输入框（快录/对话模式切换）
 - `Sources/Views/RootTabView.swift` — Tab 容器
+- `CloudflareWorkers/personal-ai-proxy/worker.js` — AI 代理（prompt、路由、工具端点）
+- `scripts/agent_lab.py` — Python 快速实验脚本（测 prompt 不需要 Xcode rebuild）
 - `project.yml` — XcodeGen 配置，改依赖/Target 时在这里改
-- `Tests/Fixtures/ai-routing-cases.json` — AI 识别回归样本库
 
 ---
 
@@ -139,39 +146,56 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 | `DailyCheckItem` | 每日打卡项 |
 | `TaskEntry` | 待办任务（含优先级/截止时间） |
 | `TimeEntry` | 时间块记录（起止时间 + 类别） |
-| `InboxNote` | 随记（想法/感受/感恩/做梦） |
-| `ConversationTurn` | AI 对话轮次 |
+| `ConversationTurn` | 随手记（想法/感受/感恩/做梦，含 payload 字典存标题等元数据） |
+| `AgentChatSession` | Agent 对话会话（消息历史 + pending action cards） |
+| `AgentMemory` | 跨会话记忆（content/category/lastUsedAt，上限 15 条） |
+| `AgentActionDraft` | Agent 建议的 action card（inbox/task/time 三种） |
 
 数据通过 `AppStore` 持久化到 `UserDefaults`，key 按 `userId` 前缀隔离（`scopedKey(_:)`）。
 
 ---
 
-## AI 解析链路
+## Agent 架构
+
+三层架构：iOS App → Cloudflare Worker（代理 + prompt）→ DeepSeek LLM
 
 ```
-用户输入一句话
-  → GlobalAIInputBar
-  → AppStore.handleAIInput()
-  → AIParser（POST to Cloudflare Worker）
-  → 解析 AIParsedRecord（bucket: "time" | "note"）
-  → 写入对应数据桶
-  
-兜底：本地规则解析（不走网络）
-追问：返回 needsClarification 时，AppStore 暂存 PendingClarification，
-      下次提交自动拼接上下文
+用户输入
+  → GlobalAIInputBar（快录/对话模式手动切换）
+  ├─ ⚡ 本地快录：纯本地关键词解析，不走网络
+  ├─ ↑ AI 快录（默认）：单轮 → AIParser.quick() → Worker handleQuick
+  │   不带历史、不带 contextSummary、不带 memory
+  │   max_tokens: 500, temperature: 0.3
+  └─ 💬 对话模式（手动切换）：多轮 → AgentManager.send() → Worker handleChat
+      带历史（最近 8 轮）+ contextSummary + memory（最多 10 条）
+
+Worker 返回 → AgentChatResponse（reply + actionSuggestions）
+  → action cards 展示在输入栏上方，用户确认后写入数据桶
 ```
 
-修改 AI schema 时，`AIParser.swift` 中的 `AIParsedRecord` struct 必须与 Cloudflare Worker 的 system prompt 保持同步。
+**核心流程文件：**
+- `GlobalAIInputBar` → `AppStore.submitQuickText()` 或 `submitAgentText()`
+- `AgentManager.quickSend()` / `send()` → `AIClient.quick()` / `chat()`
+- `AgentOrchestrator.makeContextSummary()` 拼接上下文（随手记带标题 + 待办 + 时间 + 打卡 + memory）
+- `AgentManager.mergeActionSuggestions()` 管理 action card 去重与替换
+- `AgentManager.confirmAction()` → `AppStore` 写入数据
 
-AI 落库前必须经过 `AIRoutingPolicy`。`AppStore` 负责真正写入数据，`AIRoutingPolicy` 只判断：进入哪个 bucket、是否跳过、是否需要二次确认。
+**Memory 系统：**
+- 仅对话模式使用，快录模式不涉及
+- 清空对话时自动提取（≥4 条消息触发，调 Worker `extract_memories` utility）
+- 每次最多提取 3 条，每条 ≤60 字，分 fact/preference/summary 三类
+- 总上限 15 条，按 `lastUsedAt` LRU 淘汰
+- 对话模式首轮随 contextSummary 注入（Worker 只在 history 为空时发 system prompt）
+- 设置页可手动查看/添加/删除 memory
 
-AI 识别规则与回归样本维护：
+**Worker 端点（`CloudflareWorkers/personal-ai-proxy/worker.js`）：**
+- `mode: "chat"` → 多轮对话，完整 system prompt + 历史
+- `mode: "quick"` → 单轮快录，极简 prompt，无历史
+- `mode: "utility"` → 工具端点（`extract_memories` / `suggest_topics` / `suggest_title`）
 
-- 产品契约在 `docs/ai-recognition-rules.md`。
-- 标准样本库在 `Tests/Fixtures/ai-routing-cases.json`。
-- 自动化测试在 `Tests/AIRoutingPolicyTests.swift`。
-- 修 AI 归类 bug 时，先把失败输入脱敏后加入样本库，再改策略。
-- 如果改了 bucket 边界、二次确认标准或样本标签，同步更新规则文档。
+**Prompt 实验：** `python3 scripts/agent_lab.py` 可快速测试 prompt 效果（30 秒反馈），不需要 Xcode rebuild。支持 `quick "文本"` / `chat` / `test_quick_vs_chat` 三种模式。
+
+**修改 prompt / action schema 时：** Worker 的 system prompt 和 iOS 端的 `AgentChatResponse` / `AgentActionDraft` 解码必须保持同步。改完 Worker 需 `cd CloudflareWorkers/personal-ai-proxy && npx wrangler deploy` 部署。
 
 ---
 
@@ -216,15 +240,9 @@ AI 识别规则与回归样本维护：
 xcodebuild test -project PersonalSystem.xcodeproj -scheme PersonalSystem -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath .deriveddata
 ```
 
-测试文件在 `Tests/PersonalSystemSmokeTests.swift` 和按功能拆分的测试文件中。
-添加新 Service / 解析逻辑 / AI 路由策略时，**必须补测试**。View 层不强制测试。
-
-AI 识别回归测试流程：
-
-1. 从真实问题或调试导出中提炼脱敏输入。
-2. 加入 `Tests/Fixtures/ai-routing-cases.json`，写清 `expectedRecords`、`notes`、`tags`。
-3. 修改 `AIRoutingPolicy` 或相关解析逻辑。
-4. 跑完整单测，确认旧样本没有回归。
+测试文件在 `Tests/PersonalSystemSmokeTests.swift`。
+添加新 Service / Agent 逻辑时，**必须补测试**。View 层不强制测试。
+Agent 相关测试使用 `MockAIClient`（实现 `AIClient` 协议），不依赖真实网络。
 
 ---
 
@@ -236,7 +254,7 @@ AI 识别回归测试流程：
 - [ ] UI 改动附了截图或录屏
 - [ ] ADHD 友好原则没被破坏（见上方硬约束）
 - [ ] 新页面有空状态
-- [ ] AI 识别 / 归类改动已更新样本库和规则文档
+- [ ] Agent prompt / schema 改动已同步 Worker 和 iOS 端
 - [ ] 审核期间的用户可见改动已写入 `CHANGELOG.md` `[Unreleased]`
 - [ ] 发版 / 审核状态变化已更新 `LAUNCH_CHECKLIST.md`
 - [ ] commit message 符合 Conventional Commits
