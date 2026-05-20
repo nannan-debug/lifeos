@@ -420,11 +420,14 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
   const content = (aiData?.choices?.[0]?.message?.content ?? "").trim();
 
   if (!content) {
-    if (_retry < 1) {
+    if (_retry < 2) {
       return callAIJSON(provider, apiKey, messages, temperature, maxTokens, _retry + 1);
     }
     return {
-      errorResponse: jsonError(502, "ai_empty_response"),
+      errorResponse: jsonError(502, "ai_empty_response", {
+        raw: JSON.stringify(aiData).slice(0, 300),
+        retried: _retry,
+      }),
     };
   }
 
