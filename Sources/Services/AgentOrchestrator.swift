@@ -55,8 +55,10 @@ enum AgentOrchestrator {
     ) -> String {
         var sections: [String] = []
 
-        let recentTurns = turns.prefix(maxContextTurns).map {
-            "- \($0.recognizedType)：\($0.rawText.prefix(80))"
+        let recentTurns = turns.prefix(maxContextTurns).map { turn -> String in
+            let title = turn.payload["title"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let prefix = title.isEmpty ? "\(turn.recognizedType)：" : "\(turn.recognizedType)【\(title)】："
+            return "- \(prefix)\(turn.rawText.prefix(80))"
         }
         if !recentTurns.isEmpty {
             sections.append("近期随手记：\n" + recentTurns.joined(separator: "\n"))

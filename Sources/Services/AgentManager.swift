@@ -194,6 +194,10 @@ final class AgentManager: ObservableObject {
     }
 
     func mergeActionSuggestions(_ suggestions: [AgentActionDraft]) {
+        let hasConversation = session.messages.count >= 3
+        if hasConversation && !suggestions.isEmpty {
+            session.pendingActions.removeAll()
+        }
         for action in suggestions where hasContent(action) {
             if let existingIndex = session.pendingActions.firstIndex(where: { isSameIntent($0, action) }) {
                 if completenessScore(action) >= completenessScore(session.pendingActions[existingIndex]) {
