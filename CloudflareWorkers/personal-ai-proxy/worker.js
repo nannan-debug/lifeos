@@ -244,7 +244,7 @@ async function handleQuick(body, provider, apiKey) {
       ? parsed.actionSuggestions.map(normalizeActionSuggestion).filter(Boolean).slice(0, 2)
       : [];
 
-  return jsonOk({ reply, followUpQuestion, actionSuggestions });
+  return jsonOk({ reply, followUpQuestion, actionSuggestions, usage: parsed.__usage || null });
 }
 
 async function handleChat(body, provider, apiKey) {
@@ -310,6 +310,7 @@ async function handleChat(body, provider, apiKey) {
       rawModelOutput: parsed.__rawModelOutput || "",
       suppressedActionsReason: shouldSuppressActions ? "followUpQuestion_present" : null,
     },
+    usage: parsed.__usage || null,
   });
 }
 
@@ -430,6 +431,7 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
   try {
     const parsed = JSON.parse(content);
     parsed.__rawModelOutput = content;
+    parsed.__usage = aiData.usage || null;
     return parsed;
   } catch {
     return {
