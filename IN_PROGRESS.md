@@ -25,7 +25,8 @@ Agent V1 只有一种交互深度——每次请求都加载完整上下文（sy
 | PR | 内容 | 状态 |
 |---|---|---|
 | PR 1 | Agent V1 架构重构——瘦身 prompt、清理死码、引入 AIClient 依赖注入 | ✅ [#63](https://github.com/nannan-debug/lifeos/pull/63) 2026-05-19 |
-| PR 2 | Agent V2 全量——分层交互 + Memory 系统 + Worker quick/extract_memories | 🔄 [#65](https://github.com/nannan-debug/lifeos/pull/65) 待合并 |
+| PR 2 | Agent V2 全量——分层交互 + Memory 系统 + Worker quick/extract_memories | ✅ [#65](https://github.com/nannan-debug/lifeos/pull/65) 2026-05-20 |
+| PR 3 | Followup——随手记 context 带标题 + 清旧卡片 + 文档更新 | ✅ [#66](https://github.com/nannan-debug/lifeos/pull/66) 2026-05-20 |
 
 ## PR 2 包含的改动
 
@@ -53,12 +54,12 @@ Agent V1 只有一种交互深度——每次请求都加载完整上下文（sy
 - DeepSeek 在多轮对话中偶尔混淆实体属性（如搞反哪场面试好/差），这是模型能力限制，非代码 bug
 - Memory 提取依赖 LLM 判断，没有 embedding 相似度去重（当前 15 条上限下尚不是问题）
 
-## 阻塞 / 待人工
+## 状态
 
-- PR #65 待 Anna 合并
+> ✅ Agent V2 全部 PR 已合入 main（2026-05-20）。v1.7.0 已过审上架。可归档到 `docs/archived-features/agent-v2.md`。
 
 ---
 
-上一项已完成归档：
+上一项已完成：
 
-- [`iCloud 同步迁移到 CloudKit`](docs/archived-features/cloudkit-sync-migration.md) — 随 `1.7.0 (build 11)` 提交审核（2026-05-18），三个 PR 全部合入
+- iCloud 同步迁移到 CloudKit — 随 `1.7.0 (build 11)` 上架（2026-05-20），三个 PR 全部合入

@@ -25,7 +25,6 @@ GitHub：github.com/nannan-debug/lifeos
 5. VERSIONING.md       — 版本号约定（注意：project.yml 是 source of truth，不是 Info.plist）
 6. LAUNCH_CHECKLIST.md — 当前上架状态 + 发版 SOP（重点看 §4.8 审核期间开发策略）
 7. CHANGELOG.md        — 版本变更历史（按需，发版相关时看）
-8. PRODUCT_BRIEF.md    — 产品背景（按需）
 
 读完后用 5 行向我汇报：
 （1）当前线上版本号 + ASC 审核状态
@@ -62,7 +61,7 @@ GitHub：github.com/nannan-debug/lifeos
   「继续 IN_PROGRESS.md 里的功能，从下一个 ⏳ 状态的 PR 开始（先报告你看到的下一个 PR 是什么）」
 
 - 新功能：
-  「想加 X 功能：[简短描述]，参考 PRODUCT_BRIEF §X / 某 issue / 某外部 PRD。先帮我用 grill-me 拷问范围再开发」
+  「想加 X 功能：[简短描述]，参考 CLAUDE.md / 某 issue / 某外部 PRD。先帮我用 grill-me 拷问范围再开发」
 
 - 修 bug：
   「修 bug：[复现步骤] / 期望行为是 A、实际是 B / 影响哪个 Tab」
