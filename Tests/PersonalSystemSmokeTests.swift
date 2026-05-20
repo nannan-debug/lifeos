@@ -39,6 +39,26 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(snapshot.displayItems.map(\.title), ["回忆梦境", "写日记", "吃维生素"])
     }
 
+    private func waitForMainQueue(seconds: TimeInterval = 0.35) {
+        let exp = expectation(description: "main queue settles")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2)
+    }
+
+    private func cleanupAgentThreadFiles(_ uid: String) {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let url = root
+            .appendingPathComponent("agent-threads", isDirectory: true)
+            .appendingPathComponent(uid, isDirectory: true)
+        try? FileManager.default.removeItem(at: url)
+        UserDefaults.standard.removeObject(forKey: "ps.agent.threads.index.\(uid)")
+        UserDefaults.standard.removeObject(forKey: "ps.agent.threads.current.\(uid)")
+        UserDefaults.standard.removeObject(forKey: "ps.agent.chat.\(uid)")
+    }
+
     func testCheckWidgetToggleUpdatesSharedChecksAndSnapshot() {
         let suiteName = "CheckWidgetToggleTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -274,6 +294,94 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
         let store = AppStore()
         XCTAssertEqual(store.agentSession.messages.first?.content, "今天有点乱")
+    }
+
+    func testAgentThreadPersistsMessagesInFileStorage() {
+        let uid = "agent-thread-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        defer { cleanupAgentThreadFiles(uid) }
+
+        let store = AppStore()
+        let mock = MockAIClient(result: .success(AgentChatResponse(reply: "我在", actionSuggestions: [])))
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("今天有点乱")
+        waitForMainQueue()
+
+        let reloaded = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+        XCTAssertEqual(reloaded.session.messages.map(\.content), ["今天有点乱", "我在"])
+        XCTAssertEqual(reloaded.threadIndex.count, 1)
+        XCTAssertEqual(reloaded.threadIndex.first?.messageCount, 2)
+    }
+
+    func testAgentThreadLimitPrunesOldThreads() {
+        let uid = "agent-limit-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        defer { cleanupAgentThreadFiles(uid) }
+
+        let store = AppStore()
+        let mock = MockAIClient(result: .success(AgentChatResponse(reply: "ok", actionSuggestions: [])))
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        for _ in 0..<35 {
+            store.createNewAgentThread()
+        }
+
+        XCTAssertLessThanOrEqual(store.agentThreadIndex.count, AgentManager.maxThreads)
+    }
+
+    func testAgentThreadUsesAITitleAndFallsBackWhenTitleFails() {
+        let uid = "agent-title-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        defer { cleanupAgentThreadFiles(uid) }
+
+        let store = AppStore()
+        let mock = MockAIClient(result: .success(AgentChatResponse(reply: "收到", actionSuggestions: [])))
+        mock.titleResult = .success("陈姐提醒")
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("陈姐提醒我要紧张一点")
+        waitForMainQueue()
+
+        XCTAssertEqual(store.agentThreadIndex.first?.title, "陈姐提醒")
+
+        let fallbackUID = "agent-title-fallback-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(fallbackUID)
+        defer { cleanupAgentThreadFiles(fallbackUID) }
+        let fallbackStore = AppStore()
+        let fallbackMock = MockAIClient(result: .success(AgentChatResponse(reply: "收到", actionSuggestions: [])))
+        fallbackMock.titleResult = .failure(AIParseError.network("title timeout"))
+        fallbackStore.agent = AgentManager(writer: fallbackStore, userIdSuffix: fallbackUID, client: fallbackMock)
+
+        fallbackStore.submitAgentText("记录一下今天的情绪恢复")
+        waitForMainQueue()
+
+        XCTAssertFalse(fallbackStore.agentThreadIndex.first?.title.isEmpty ?? true)
+    }
+
+    func testFullDataArchiveIncludesAgentThreadsStoredOnDisk() throws {
+        let uid = "agent-archive-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        defer {
+            cleanupAgentThreadFiles(uid)
+            UserDefaults.standard.removeObject(forKey: "auth.userId")
+        }
+        UserDefaults.standard.set(uid, forKey: "auth.userId")
+
+        let store = AppStore()
+        let mock = MockAIClient(result: .success(AgentChatResponse(reply: "收到", actionSuggestions: [])))
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+        store.submitAgentText("备份这段对话")
+        waitForMainQueue()
+
+        let data = try XCTUnwrap(store.makeFullDataArchive())
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let payload = try XCTUnwrap(json["data"] as? [String: Any])
+        let threads = try XCTUnwrap(payload["ps.agent.threads"] as? [[String: Any]])
+
+        XCTAssertEqual(threads.count, 1)
+        XCTAssertNotNil(payload["ps.agent.threads.index"])
+        XCTAssertNotNil(payload["ps.agent.threads.current"])
     }
 
     func testAgentActionConfirmationSavesInboxTaskAndTime() {
@@ -1305,6 +1413,7 @@ final class PersonalSystemSmokeTests: XCTestCase {
 
 private final class MockAIClient: AIClient {
     let result: Result<AgentChatResponse, Error>
+    var titleResult: Result<String, Error> = .success("测试标题")
 
     init(result: Result<AgentChatResponse, Error>) {
         self.result = result
@@ -1320,6 +1429,13 @@ private final class MockAIClient: AIClient {
     func quick(input: String, currentDate: String, currentTime: String) async throws -> AgentChatResponse {
         switch result {
         case .success(let response): return response
+        case .failure(let error): throw error
+        }
+    }
+
+    func suggestTitle(content: String) async throws -> String {
+        switch titleResult {
+        case .success(let title): return title
         case .failure(let error): throw error
         }
     }

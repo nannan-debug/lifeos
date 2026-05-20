@@ -175,6 +175,59 @@ struct AgentChatSession: Codable, Equatable {
     var updatedAt: Date = Date()
 }
 
+struct AgentChatThread: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var title: String = ""
+    var messages: [AgentChatMessage] = []
+    var pendingActions: [AgentActionDraft] = []
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var titleGenerated: Bool = false
+
+    var session: AgentChatSession {
+        AgentChatSession(
+            id: id,
+            messages: messages,
+            pendingActions: pendingActions,
+            updatedAt: updatedAt
+        )
+    }
+
+    init(
+        id: UUID = UUID(),
+        title: String = "",
+        messages: [AgentChatMessage] = [],
+        pendingActions: [AgentActionDraft] = [],
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        titleGenerated: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.messages = messages
+        self.pendingActions = pendingActions
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.titleGenerated = titleGenerated
+    }
+}
+
+struct AgentChatThreadIndexItem: Identifiable, Codable, Equatable {
+    var id: UUID
+    var title: String
+    var createdAt: Date
+    var updatedAt: Date
+    var messageCount: Int
+
+    init(thread: AgentChatThread) {
+        id = thread.id
+        title = thread.title
+        createdAt = thread.createdAt
+        updatedAt = thread.updatedAt
+        messageCount = thread.messages.count
+    }
+}
+
 struct AgentMemory: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var content: String

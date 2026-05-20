@@ -14,6 +14,8 @@ protocol AIClient {
         currentDate: String,
         currentTime: String
     ) async throws -> AgentChatResponse
+
+    func suggestTitle(content: String) async throws -> String
 }
 
 struct DefaultAIClient: AIClient {
@@ -43,5 +45,9 @@ struct DefaultAIClient: AIClient {
             currentDate: currentDate,
             currentTime: currentTime
         )
+    }
+
+    func suggestTitle(content: String) async throws -> String {
+        try await AIParser.suggestAgentThreadTitle(content: content)
     }
 }

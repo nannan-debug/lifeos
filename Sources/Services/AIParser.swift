@@ -155,6 +155,11 @@ enum AIParser {
         return fallbackTitle(from: content)
     }
 
+    static func suggestAgentThreadTitle(content: String) async throws -> String {
+        let title = try await suggestBrainTitle(content: content)
+        return threadFallbackTitle(from: title.isEmpty ? content : title)
+    }
+
     // MARK: - Helpers
 
     static func isoDate(_ d: Date = Date()) -> String {
@@ -223,6 +228,10 @@ enum AIParser {
     }
 
     private static func fallbackTitle(from content: String) -> String {
+        threadFallbackTitle(from: content)
+    }
+
+    static func threadFallbackTitle(from content: String) -> String {
         let clean = content
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "\"'\u{201c}\u{201d}\u{2018}\u{2019}\u{300c}\u{300d}\u{300e}\u{300f}[]\u{3010}\u{3011}\u{ff08}\u{ff09}()\u{3002}.\u{ff01}!\u{ff1f}?\u{ff1a}:\u{ff0c},\u{3001}"))
@@ -239,7 +248,7 @@ enum AIParser {
             title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             break
         }
-        return String(title.prefix(10))
+        return String(title.prefix(14))
     }
 }
 
