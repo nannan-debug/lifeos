@@ -39,6 +39,8 @@ final class HealthKitSyncService {
     private let store = HKHealthStore()
     private let calendar = Calendar.current
     private static let sleepSessionGap: TimeInterval = 90 * 60
+    private static let reliableAsleepCoverageRatio = 0.6
+    private static let minimumReliableAsleepDuration: TimeInterval = 3 * 60 * 60
 
     private init() {}
 
@@ -205,10 +207,31 @@ final class HealthKitSyncService {
         sessions.append(currentSession)
 
         return sessions.flatMap { session in
-            let asleepIntervals = session.filter { isAsleepValue($0.value) }
-            let selected = asleepIntervals.isEmpty ? session.filter { isInBedValue($0.value) } : asleepIntervals
-            return mergeSleepIntervals(selected.map { (start: $0.start, end: $0.end) })
+            selectedSleepIntervalsForImport(from: session)
         }
+    }
+
+    private static func selectedSleepIntervalsForImport(from session: [(value: Int, start: Date, end: Date)]) -> [(start: Date, end: Date)] {
+        let asleepIntervals = mergeSleepIntervals(
+            session
+                .filter { isAsleepValue($0.value) }
+                .map { (start: $0.start, end: $0.end) }
+        )
+        let inBedIntervals = mergeSleepIntervals(
+            session
+                .filter { isInBedValue($0.value) }
+                .map { (start: $0.start, end: $0.end) }
+        )
+
+        guard !asleepIntervals.isEmpty else { return inBedIntervals }
+        guard !inBedIntervals.isEmpty else { return asleepIntervals }
+
+        let asleepDuration = totalDuration(of: asleepIntervals)
+        let inBedDuration = totalDuration(of: inBedIntervals)
+        let hasReliableAsleepCoverage = asleepDuration >= minimumReliableAsleepDuration
+            && asleepDuration >= inBedDuration * reliableAsleepCoverageRatio
+
+        return hasReliableAsleepCoverage ? asleepIntervals : inBedIntervals
     }
 
     private static func mergeSleepIntervals(_ intervals: [(start: Date, end: Date)]) -> [(start: Date, end: Date)] {
@@ -225,6 +248,12 @@ final class HealthKitSyncService {
         }
         result.append(current)
         return result
+    }
+
+    private static func totalDuration(of intervals: [(start: Date, end: Date)]) -> TimeInterval {
+        intervals.reduce(0) { total, interval in
+            total + interval.end.timeIntervalSince(interval.start)
+        }
     }
 
     private func workoutName(for type: HKWorkoutActivityType) -> String {

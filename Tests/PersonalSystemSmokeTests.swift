@@ -352,6 +352,29 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(intervals.first?.end, asleep.endDate)
     }
 
+    func testHealthKitSleepImportUsesInBedWhenAsleepCoverageIsTooShort() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let sleepType = try XCTUnwrap(HKObjectType.categoryType(forIdentifier: .sleepAnalysis))
+        let inBed = HKCategorySample(
+            type: sleepType,
+            value: HKCategoryValueSleepAnalysis.inBed.rawValue,
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 0, minute: 10),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 7, minute: 20)
+        )
+        let shortAsleep = HKCategorySample(
+            type: sleepType,
+            value: HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 2, minute: 45),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 3, minute: 45)
+        )
+
+        let intervals = HealthKitSyncService.mergedSleepSessionsForImport(from: [inBed, shortAsleep])
+
+        XCTAssertEqual(intervals.count, 1)
+        XCTAssertEqual(intervals.first?.start, inBed.startDate)
+        XCTAssertEqual(intervals.first?.end, inBed.endDate)
+    }
+
     func testAgentChatResponseDecodesOptionalFields() throws {
         let data = #"{"reply":"我在。"}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
