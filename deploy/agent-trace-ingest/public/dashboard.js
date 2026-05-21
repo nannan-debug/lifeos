@@ -19,6 +19,11 @@ function shortTime(value) {
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function formatLatency(ms) {
+  if (!ms) return "";
+  return (ms / 1000).toFixed(1) + "s";
+}
+
 function compact(text, fallback = "") {
   const value = String(text || fallback || "").replace(/\s+/g, " ").trim();
   return value.length > 96 ? `${value.slice(0, 96)}...` : value;
@@ -146,7 +151,8 @@ function setBusy(isBusy, text = "") {
 }
 
 function setRefreshState(text) {
-  $("refreshState").textContent = text;
+  const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  $("refreshState").textContent = `${text} · ${now}`;
 }
 
 function renderTraceList() {
@@ -162,7 +168,7 @@ function renderTraceList() {
         <span class="pill ${trace.hasError ? "error" : "ok"}">${trace.status}</span>
         <span class="pill">${escapeHTML(shortTime(trace.lastAt))}</span>
         <span class="pill">${trace.eventCount} events</span>
-        ${trace.latencyMs ? `<span class="pill">${trace.latencyMs}ms</span>` : ""}
+        ${trace.latencyMs ? `<span class="pill">${formatLatency(trace.latencyMs)}</span>` : ""}
         ${trace.sources.map((source) => `<span class="pill">${escapeHTML(source)}</span>`).join("")}
       </div>
     </button>
@@ -214,7 +220,7 @@ function renderTimeline() {
           <span class="pill">${escapeHTML(event.source)}</span>
         </div>
         <div class="event-body">
-          ${event.latencyMs ? `<div>${event.latencyMs} ms</div>` : ""}
+          ${event.latencyMs ? `<div>${formatLatency(event.latencyMs)}</div>` : ""}
           ${eventPreview(event) ? `<div class="summary-line">${escapeHTML(eventPreview(event))}</div>` : ""}
         </div>
       </button>
@@ -243,7 +249,7 @@ function renderEventDetail() {
     <div class="metric-grid">
       <div class="metric"><span>Event</span><strong>${escapeHTML(event.eventName)}</strong></div>
       <div class="metric"><span>Source</span><strong>${escapeHTML(event.source)}</strong></div>
-      <div class="metric"><span>Latency</span><strong>${event.latencyMs ? `${event.latencyMs} ms` : "n/a"}</strong></div>
+      <div class="metric"><span>Latency</span><strong>${event.latencyMs ? formatLatency(event.latencyMs) : "n/a"}</strong></div>
       <div class="metric"><span>Tokens</span><strong>${escapeHTML(event.usage?.total_tokens || event.usage?.totalTokens || "n/a")}</strong></div>
     </div>
     ${event.error ? `<div class="pill error">${escapeHTML(event.error.type || "error")}: ${escapeHTML(event.error.message)}</div>` : ""}

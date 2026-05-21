@@ -213,9 +213,17 @@ select:focus {
 .search-button {
   align-self: end;
   color: #fff;
-  border-color: #26382c;
-  background: #26382c;
+  border-color: var(--green);
+  background: var(--green);
   font-weight: 600;
+  border-radius: 14px;
+  letter-spacing: 0.04em;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.search-button:hover:not(:disabled) {
+  background: #3a9e56;
+  box-shadow: 0 4px 14px rgba(75, 175, 104, 0.3);
 }
 
 .ghost-button:disabled,

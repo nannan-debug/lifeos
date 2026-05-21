@@ -574,7 +574,7 @@ ${transcript}`;
   return jsonError(400, "unknown_task", { task });
 }
 
-async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2048, _retry = 0, trace = () => {}) {
+async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2048, _retry = 0, trace = () => {}, useJsonFormat = true) {
   let upstream;
   const startedAt = Date.now();
   trace("model_call_started", {
@@ -584,6 +584,15 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
     maxTokens,
     retry: { attempt: _retry },
   });
+  const bodyObj = {
+    model: provider.model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  };
+  if (useJsonFormat) {
+    bodyObj.response_format = { type: "json_object" };
+  }
   try {
     upstream = await fetch(provider.url, {
       method: "POST",
@@ -591,14 +600,7 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: provider.model,
-        messages,
-        temperature,
-        thinking: { type: "disabled" },
-        max_tokens: maxTokens,
-        response_format: { type: "json_object" },
-      }),
+      body: JSON.stringify(bodyObj),
     });
   } catch (e) {
     trace("model_call_failed", {
@@ -646,7 +648,8 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
   }
 
   const aiData = await upstream.json();
-  const content = (aiData?.choices?.[0]?.message?.content ?? "").trim();
+  const msg = aiData?.choices?.[0]?.message;
+  const content = (msg?.content || msg?.reasoning_content || "").trim();
 
   if (!content) {
     trace("model_empty_response", {
@@ -663,7 +666,8 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
       },
     });
     if (_retry < 2) {
-      return callAIJSON(provider, apiKey, messages, temperature, maxTokens, _retry + 1, trace);
+      const dropFormat = useJsonFormat && _retry >= 1;
+      return callAIJSON(provider, apiKey, messages, temperature, maxTokens, _retry + 1, trace, dropFormat ? false : useJsonFormat);
     }
     return {
       errorResponse: jsonError(502, "ai_empty_response", {
@@ -673,8 +677,9 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
     };
   }
 
+  const cleaned = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
   try {
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(cleaned);
     parsed.__rawModelOutput = content;
     parsed.__usage = aiData.usage || null;
     parsed.__latencyMs = Date.now() - startedAt;
@@ -695,7 +700,17 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
     });
     return parsed;
   } catch {
-    trace("model_call_failed", {
+    const fallback = {
+      reply: cleaned,
+      followUpQuestion: null,
+      actionSuggestions: [],
+      __rawModelOutput: content,
+      __usage: aiData.usage || null,
+      __latencyMs: Date.now() - startedAt,
+      __retryAttempt: _retry,
+      __textFallback: true,
+    };
+    trace("model_call_finished", {
       model: provider.model,
       provider: "deepseek",
       temperature,
@@ -703,16 +718,12 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
       usage: aiData.usage || null,
       latencyMs: Date.now() - startedAt,
       retry: { attempt: _retry },
-      error: {
-        type: "ai_response_not_json",
-        sample: content.slice(0, 500),
+      payload: {
+        rawModelOutput: content,
+        textFallback: true,
       },
     });
-    return {
-      errorResponse: jsonError(500, "ai_response_not_json", {
-        sample: content.slice(0, 200),
-      }),
-    };
+    return fallback;
   }
 }
 
