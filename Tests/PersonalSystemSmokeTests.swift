@@ -1,4 +1,5 @@
 import CloudKit
+import HealthKit
 import XCTest
 @testable import PersonalSystem
 
@@ -309,6 +310,46 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 17, hour: 13, minute: 0)
 
         XCTAssertNil(WakeDreamReminderService.reminderDate(for: wake, now: now))
+    }
+
+    func testHealthKitSleepImportFallsBackToInBedWhenNoAsleepSamplesExist() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let sleepType = try XCTUnwrap(HKObjectType.categoryType(forIdentifier: .sleepAnalysis))
+        let inBed = HKCategorySample(
+            type: sleepType,
+            value: HKCategoryValueSleepAnalysis.inBed.rawValue,
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 20, hour: 23, minute: 40),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 7, minute: 20)
+        )
+
+        let intervals = HealthKitSyncService.mergedSleepSessionsForImport(from: [inBed])
+
+        XCTAssertEqual(intervals.count, 1)
+        XCTAssertEqual(intervals.first?.start, inBed.startDate)
+        XCTAssertEqual(intervals.first?.end, inBed.endDate)
+    }
+
+    func testHealthKitSleepImportPrefersAsleepSamplesOverInBedEnvelope() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let sleepType = try XCTUnwrap(HKObjectType.categoryType(forIdentifier: .sleepAnalysis))
+        let inBed = HKCategorySample(
+            type: sleepType,
+            value: HKCategoryValueSleepAnalysis.inBed.rawValue,
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 20, hour: 23, minute: 10),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 8, minute: 0)
+        )
+        let asleep = HKCategorySample(
+            type: sleepType,
+            value: HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            start: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 0, minute: 20),
+            end: makeDate(calendar: calendar, year: 2026, month: 5, day: 21, hour: 6, minute: 50)
+        )
+
+        let intervals = HealthKitSyncService.mergedSleepSessionsForImport(from: [inBed, asleep])
+
+        XCTAssertEqual(intervals.count, 1)
+        XCTAssertEqual(intervals.first?.start, asleep.startDate)
+        XCTAssertEqual(intervals.first?.end, asleep.endDate)
     }
 
     func testAgentChatResponseDecodesOptionalFields() throws {
