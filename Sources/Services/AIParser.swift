@@ -48,8 +48,7 @@ enum AIParser {
         currentTime: String,
         traceId: String? = nil,
         sessionId: String? = nil,
-        threadId: String? = nil,
-        userProfile: String? = nil
+        threadId: String? = nil
     ) async throws -> AgentChatResponse {
         var body: [String: Any] = [
             "mode": "chat",
@@ -62,9 +61,6 @@ enum AIParser {
         body["traceId"] = traceId
         body["sessionId"] = sessionId
         body["threadId"] = threadId
-        if let userProfile, !userProfile.isEmpty {
-            body["userProfile"] = userProfile
-        }
         let data = try await postWorker(body: body)
         do {
             let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
@@ -72,7 +68,6 @@ enum AIParser {
                 reply: decoded.reply,
                 followUpQuestion: decoded.followUpQuestion,
                 actionSuggestions: decoded.actionSuggestions,
-                toolCall: decoded.toolCall,
                 debug: decoded.debug,
                 rawBody: String(data: data, encoding: .utf8) ?? "<binary>",
                 usage: decoded.usage
@@ -124,7 +119,6 @@ enum AIParser {
     struct ExtractedMemory: Decodable {
         let content: String
         let category: String
-        let scope: String?
     }
 
     static func extractMemories(messages: [AgentChatRequestMessage]) async throws -> [ExtractedMemory] {

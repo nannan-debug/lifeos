@@ -2,7 +2,6 @@ import Foundation
 
 protocol AgentDataWriter: AnyObject {
     var selectedDateKey: String { get }
-    var userProfile: String { get set }
     func addTurnDraft(rawText: String, recognizedType: String, targetBucket: String, confidence: Double, payload: [String: String], status: String, fixHint: String, moodScore: Int?, feelingTags: [String]) -> UUID?
     func commitTurn(id: UUID) -> String?
     func addTask(title: String, detail: String, status: String, priority: String, dueDate: String, date: String?, completedAt: Date?, isAllDay: Bool, startTime: String, endTime: String, location: String, sourceNoteId: UUID?, sourceExcerpt: String) -> UUID?
@@ -86,10 +85,7 @@ final class AgentManager: ObservableObject {
         turns: [ConversationTurn],
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
-        checks: [DailyCheckItem],
-        weeklySummary: String? = nil,
-        toolExecutor: ((AgentToolCall) -> String)? = nil,
-        userProfile: String? = nil
+        checks: [DailyCheckItem]
     ) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
@@ -104,8 +100,7 @@ final class AgentManager: ObservableObject {
             tasks: tasks,
             timeEntries: timeEntries,
             checks: checks,
-            memories: memories,
-            weeklySummary: weeklySummary
+            memories: memories
         )
         markMemoriesUsed()
         appendMessage(AgentChatMessage(role: "user", content: clean))
@@ -139,122 +134,41 @@ final class AgentManager: ObservableObject {
                     currentTime: now,
                     traceId: traceID,
                     sessionId: self.userSuffix,
-                    threadId: threadID,
-                    userProfile: userProfile
+                    threadId: threadID
                 )
-
-                if let toolCall = response.toolCall, let executor = toolExecutor {
-                    await MainActor.run {
-                        if !response.reply.isEmpty {
-                            self.appendMessage(AgentChatMessage(role: "assistant", content: response.reply))
-                        }
-                    }
+                await MainActor.run {
+                    let mergedActions = self.actionSuggestionsToMerge(from: response)
+                    self.receiveResponse(response, mergedActions: mergedActions)
                     self.emitTrace(
                         traceID: traceID,
-                        eventName: "tool_call_started",
+                        eventName: "response_merged",
+                        usage: response.usage,
                         latencyMs: Self.msSince(startedAt),
                         payload: [
                             "mode": "chat",
-                            "toolName": toolCall.name,
-                            "toolArgs": AgentTracePayload.json(toolCall.args ?? [:]),
-                            "intermediateReply": response.reply
+                            "reply": response.reply,
+                            "followUpQuestion": response.followUpQuestion ?? "",
+                            "actionSuggestions": AgentTracePayload.json(response.actionSuggestions),
+                            "mergedActions": AgentTracePayload.json(mergedActions),
+                            "rawResponse": response.rawBody ?? ""
                         ]
                     )
-                    let toolResult = executor(toolCall)
-                    self.emitTrace(
-                        traceID: traceID,
-                        eventName: "tool_call_result",
-                        payload: [
-                            "mode": "chat",
-                            "toolName": toolCall.name,
-                            "toolResult": toolResult
-                        ]
-                    )
-                    let followUpRequest = AgentOrchestrator.makeRequest(
+                    self.recordDebugLog(
                         input: clean,
-                        session: self.session,
-                        turns: turns,
-                        tasks: tasks,
-                        timeEntries: timeEntries,
-                        checks: checks,
-                        memories: self.memories,
-                        toolResult: toolResult
-                    )
-                    let followUpResponse = try await self.client.chat(
-                        input: followUpRequest.input,
-                        messages: followUpRequest.messages,
-                        contextSummary: followUpRequest.contextSummary,
+                        request: request,
                         currentDate: today,
                         currentTime: now,
-                        traceId: traceID,
-                        sessionId: self.userSuffix,
-                        threadId: threadID,
-                        userProfile: userProfile
+                        response: response,
+                        mergedActions: mergedActions,
+                        traceID: traceID
                     )
-                    await MainActor.run {
-                        let mergedActions = self.actionSuggestionsToMerge(from: followUpResponse)
-                        self.receiveResponse(followUpResponse, mergedActions: mergedActions)
-                        self.emitTrace(
-                            traceID: traceID,
-                            eventName: "response_merged",
-                            usage: followUpResponse.usage,
-                            latencyMs: Self.msSince(startedAt),
-                            payload: [
-                                "mode": "chat",
-                                "reply": followUpResponse.reply,
-                                "followUpQuestion": followUpResponse.followUpQuestion ?? "",
-                                "actionSuggestions": AgentTracePayload.json(followUpResponse.actionSuggestions),
-                                "mergedActions": AgentTracePayload.json(mergedActions),
-                                "rawResponse": followUpResponse.rawBody ?? "",
-                                "toolCallUsed": toolCall.name
-                            ]
-                        )
-                        self.recordDebugLog(
-                            input: clean,
-                            request: followUpRequest,
-                            currentDate: today,
-                            currentTime: now,
-                            response: followUpResponse,
-                            mergedActions: mergedActions,
-                            traceID: traceID
-                        )
-                    }
-                } else {
-                    await MainActor.run {
-                        let mergedActions = self.actionSuggestionsToMerge(from: response)
-                        self.receiveResponse(response, mergedActions: mergedActions)
-                        self.emitTrace(
-                            traceID: traceID,
-                            eventName: "response_merged",
-                            usage: response.usage,
-                            latencyMs: Self.msSince(startedAt),
-                            payload: [
-                                "mode": "chat",
-                                "reply": response.reply,
-                                "followUpQuestion": response.followUpQuestion ?? "",
-                                "actionSuggestions": AgentTracePayload.json(response.actionSuggestions),
-                                "mergedActions": AgentTracePayload.json(mergedActions),
-                                "rawResponse": response.rawBody ?? ""
-                            ]
-                        )
-                        self.recordDebugLog(
-                            input: clean,
-                            request: request,
-                            currentDate: today,
-                            currentTime: now,
-                            response: response,
-                            mergedActions: mergedActions,
-                            traceID: traceID
-                        )
-                    }
                 }
             } catch {
                 await MainActor.run {
-                    let fallback = AgentOrchestrator.fallbackResponse(for: clean, weeklySummary: weeklySummary)
-                    self.errorMessage = weeklySummary != nil && AgentOrchestrator.detectsReviewIntent(clean)
-                        ? nil
-                        : "对话服务暂时没有接上，我先用本地方式陪你。"
+                    self.errorMessage = "对话服务暂时没有接上，我先用本地方式陪你。"
+                    let fallback = AgentOrchestrator.fallbackResponse(for: clean)
                     let mergedActions = self.actionSuggestionsToMerge(from: fallback)
+                    // 错误兜底：只显示给用户，不写入历史，避免污染发送给 AI 的上下文
                     self.isLoading = false
                     let pieces = [fallback.reply, fallback.followUpQuestion]
                         .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -474,16 +388,15 @@ final class AgentManager: ObservableObject {
 
     func clearChat() {
         let messagesToExtract = session.messages
-        let extractedCount = currentThread()?.memoryExtractedCount ?? 0
         let threadID = currentThreadID
         if let threadID {
             deleteThreadFile(id: threadID)
             threadIndex.removeAll { $0.id == threadID }
         }
-        forceCreateNewThread()
+        createNewThread(saveOldForMemory: false)
         errorMessage = nil
 
-        if messagesToExtract.count >= 4 && messagesToExtract.count > extractedCount {
+        if messagesToExtract.count >= 4 {
             memoryStatus = "正在提取记忆..."
             Task { [weak self] in
                 await self?.extractMemories(from: messagesToExtract)
@@ -496,11 +409,6 @@ final class AgentManager: ObservableObject {
     }
 
     func createNewThread(saveOldForMemory: Bool = true) {
-        if session.messages.isEmpty && currentThreadID != nil { return }
-        forceCreateNewThread(saveOldForMemory: saveOldForMemory)
-    }
-
-    private func forceCreateNewThread(saveOldForMemory: Bool = false) {
         if saveOldForMemory {
             extractMemoriesForCurrentThreadIfNeeded()
         }
@@ -537,7 +445,7 @@ final class AgentManager: ObservableObject {
             if let next = threadIndex.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
                 selectThread(id: next.id)
             } else {
-                forceCreateNewThread()
+                createNewThread(saveOldForMemory: false)
             }
         }
         return deleted
@@ -570,7 +478,7 @@ final class AgentManager: ObservableObject {
         defaults.removeObject(forKey: keyCurrentThreadID)
         defaults.removeObject(forKey: keyMemories)
         defaults.removeObject(forKey: keyDebugLogs)
-        forceCreateNewThread()
+        createNewThread(saveOldForMemory: false)
     }
 
     func addMemory(content: String, category: String = "fact", source: String = "user") {
@@ -644,7 +552,7 @@ final class AgentManager: ObservableObject {
 
     private func ensureCurrentThread() {
         if currentThreadID == nil {
-            forceCreateNewThread()
+            createNewThread(saveOldForMemory: false)
         }
     }
 
@@ -704,17 +612,9 @@ final class AgentManager: ObservableObject {
     private func extractMemoriesForCurrentThreadIfNeeded() {
         let messages = session.messages
         guard messages.count >= 4 else { return }
-        let thread = currentThread()
-        guard messages.count > (thread?.memoryExtractedCount ?? 0) else { return }
         memoryStatus = "正在提取记忆..."
-        let countAtExtraction = messages.count
         Task { [weak self] in
             await self?.extractMemories(from: messages)
-            await MainActor.run {
-                guard let self, let id = self.currentThreadID, var thread = self.loadThread(id: id) else { return }
-                thread.memoryExtractedCount = countAtExtraction
-                self.saveThread(thread)
-            }
         }
     }
 
@@ -732,10 +632,7 @@ final class AgentManager: ObservableObject {
             )
             await MainActor.run {
                 var added = 0
-                let profileItems = extracted.filter { $0.scope == "profile" }
-                let memoryItems = extracted.filter { $0.scope != "profile" }
-
-                for item in memoryItems where !self.memories.contains(where: { $0.content == item.content }) {
+                for item in extracted where !self.memories.contains(where: { $0.content == item.content }) {
                     self.memories.append(AgentMemory(
                         content: item.content,
                         category: item.category,
@@ -745,20 +642,6 @@ final class AgentManager: ObservableObject {
                 }
                 self.trimMemories()
                 self.saveMemories()
-
-                if !profileItems.isEmpty, let writer = self.writer {
-                    let current = writer.userProfile
-                    let newFacts = profileItems
-                        .map(\.content)
-                        .filter { fact in !current.contains(fact) }
-                    if !newFacts.isEmpty {
-                        let updated = current.isEmpty
-                            ? newFacts.joined(separator: "\n")
-                            : current + "\n" + newFacts.joined(separator: "\n")
-                        writer.userProfile = updated
-                    }
-                }
-
                 self.memoryStatus = added > 0 ? "已记住 \(added) 条新信息" : nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     self.memoryStatus = nil
@@ -973,7 +856,7 @@ final class AgentManager: ObservableObject {
             session = thread.session
             defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
         } else {
-            forceCreateNewThread()
+            createNewThread(saveOldForMemory: false)
         }
         enforceThreadLimit()
     }

@@ -138,7 +138,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private var keyDailyFields: String { scopedKey("fields.daily") }
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
-    private var keyUserProfile: String { scopedKey("ps.agent.userProfile") }
 
     // 兼容旧版本（未按用户隔离）
     private let legacyKeyDailyFields = "fields.daily"
@@ -1798,24 +1797,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         agent.threadMatchesSearch(item, query: query)
     }
 
-    var userProfile: String {
-        get { defaults.string(forKey: keyUserProfile) ?? "" }
-        set { defaults.set(newValue, forKey: keyUserProfile) }
-    }
-
     func submitAgentText(_ text: String) {
-        let weeklySummary = AgentOrchestrator.detectsReviewIntent(text) ? weeklyContextSummary() : nil
-        let profile = userProfile.isEmpty ? nil : userProfile
-        agent.send(
-            text: text,
-            turns: turns,
-            tasks: tasks,
-            timeEntries: timeEntries,
-            checks: checkItems,
-            weeklySummary: weeklySummary.flatMap { $0.isEmpty ? nil : $0 },
-            toolExecutor: { [weak self] call in self?.executeAgentTool(call) ?? "" },
-            userProfile: profile
-        )
+        agent.send(text: text, turns: turns, tasks: tasks, timeEntries: timeEntries, checks: checkItems)
     }
 
     func submitQuickText(_ text: String) {
@@ -2180,104 +2163,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             if ordered.count >= 4 { break }
         }
         return ordered
-    }
-
-    // MARK: - Weekly summary for Arya tool calls
-
-    func weeklyContextSummary(days: Int = 7) -> String {
-        var sections: [String] = []
-        let calendar = Calendar.current
-        let end = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
-        let start = calendar.date(byAdding: .day, value: -days, to: end) ?? end
-        let dateRange = AIParser.isoDate(start) + "~" + AIParser.isoDate(calendar.date(byAdding: .day, value: -1, to: end) ?? Date())
-
-        let checks = weeklyChecksSummary(start: start, end: end)
-        if !checks.isEmpty { sections.append(checks) }
-        let time = weeklyTimeSummary(start: start, end: end)
-        if !time.isEmpty { sections.append(time) }
-        let taskSummary = weeklyTasksSummary(days: days)
-        if !taskSummary.isEmpty { sections.append(taskSummary) }
-        let mood = weeklyMoodSummary(days: days)
-        if !mood.isEmpty { sections.append(mood) }
-        let inbox = weeklyInboxSummary(days: days)
-        if !inbox.isEmpty { sections.append(inbox) }
-
-        if sections.isEmpty { return "" }
-        return "本周回顾(\(dateRange)):\n" + sections.joined(separator: "\n")
-    }
-
-    private func weeklyChecksSummary(start: Date, end: Date) -> String {
-        let habits = reviewCheckHabitSummaries(start: start, end: end)
-        guard !habits.isEmpty else { return "" }
-        let totalDays = max(dateKeys(start: start, end: end).count, 1)
-        let lines = habits.map { "\($0.title) \($0.completedDays)/\(totalDays)" }
-        return "打卡: " + lines.joined(separator: ", ")
-    }
-
-    private func weeklyTimeSummary(start: Date, end: Date) -> String {
-        let categories = reviewTimeCategorySummaries(start: start, end: end)
-        guard !categories.isEmpty else { return "" }
-        let lines = categories.map { cat -> String in
-            let hours = Double(cat.minutes) / 60.0
-            return "\(cat.category) \(String(format: "%.1f", hours))h"
-        }
-        return "时间: " + lines.joined(separator: ", ")
-    }
-
-    private func weeklyTasksSummary(days: Int = 7) -> String {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        let completed = tasks.filter { $0.status == "已完成" && ($0.completedAt ?? Date.distantPast) >= cutoff }.count
-        let created = tasks.filter {
-            guard let d = Self.dateKeyFormatter.date(from: $0.date) else { return false }
-            return d >= cutoff
-        }.count
-        let pending = tasks.filter { $0.status != "已完成" }.count
-        guard completed > 0 || created > 0 else { return "" }
-        return "任务: 完成 \(completed), 新增 \(created), 待办 \(pending)"
-    }
-
-    private func weeklyMoodSummary(days: Int = 7) -> String {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        let recent = turns.filter { $0.createdAt >= cutoff }
-        let moods = recent.compactMap(\.moodScore)
-        guard !moods.isEmpty else { return "" }
-        let avg = Double(moods.reduce(0, +)) / Double(moods.count)
-        var feelingCounts: [String: Int] = [:]
-        for turn in recent {
-            for tag in turn.feelingTags { feelingCounts[tag, default: 0] += 1 }
-        }
-        let topFeelings = feelingCounts.sorted { $0.value > $1.value }.prefix(3)
-            .map { "\($0.key)(\($0.value)次)" }
-        var result = "心情: 平均 \(String(format: "%.1f", avg))/5"
-        if !topFeelings.isEmpty { result += ", 主要感受: " + topFeelings.joined(separator: ", ") }
-        return result
-    }
-
-    private func weeklyInboxSummary(days: Int = 7) -> String {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        let recent = turns.filter { $0.createdAt >= cutoff }
-        guard !recent.isEmpty else { return "" }
-        var typeCounts: [String: Int] = [:]
-        for turn in recent { typeCounts[turn.recognizedType, default: 0] += 1 }
-        let lines = typeCounts.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value)" }
-        return "随手记: " + lines.joined(separator: ", ")
-    }
-
-    func executeAgentTool(_ call: AgentToolCall) -> String {
-        let days = Int(call.args?["days"] ?? "7") ?? 7
-        let calendar = Calendar.current
-        let end = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
-        let start = calendar.date(byAdding: .day, value: -days, to: end) ?? end
-
-        switch call.name {
-        case "weeklyAll": return weeklyContextSummary(days: days)
-        case "weeklyChecks": return weeklyChecksSummary(start: start, end: end)
-        case "weeklyTime": return weeklyTimeSummary(start: start, end: end)
-        case "weeklyTasks": return weeklyTasksSummary(days: days)
-        case "weeklyMood": return weeklyMoodSummary(days: days)
-        case "weeklyInbox": return weeklyInboxSummary(days: days)
-        default: return "未知工具: \(call.name)"
-        }
     }
 
     func reviewCheckHabitSummaries(start: Date, end: Date) -> [ReviewCheckHabitSummary] {

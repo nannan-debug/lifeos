@@ -19,11 +19,6 @@ enum AgentOrchestrator {
         var trigger: AgentTrigger
     }
 
-    static func detectsReviewIntent(_ input: String) -> Bool {
-        let keywords = ["这周", "本周", "最近", "过去几天", "这几天", "周总结", "总结", "状态", "回顾"]
-        return keywords.contains(where: { input.contains($0) })
-    }
-
     static func makeRequest(
         input: String,
         session: AgentChatSession,
@@ -32,9 +27,7 @@ enum AgentOrchestrator {
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
         memories: [AgentMemory] = [],
-        trigger: AgentTrigger = .userMessage,
-        weeklySummary: String? = nil,
-        toolResult: String? = nil
+        trigger: AgentTrigger = .userMessage
     ) -> Request {
         let recentMessages = session.messages
             .filter { !$0.isError }
@@ -48,9 +41,7 @@ enum AgentOrchestrator {
                 tasks: tasks,
                 timeEntries: timeEntries,
                 checks: checks,
-                memories: memories,
-                weeklySummary: weeklySummary,
-                toolResult: toolResult
+                memories: memories
             ),
             trigger: trigger
         )
@@ -61,9 +52,7 @@ enum AgentOrchestrator {
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
-        memories: [AgentMemory] = [],
-        weeklySummary: String? = nil,
-        toolResult: String? = nil
+        memories: [AgentMemory] = []
     ) -> String {
         var sections: [String] = []
 
@@ -102,26 +91,14 @@ enum AgentOrchestrator {
             sections.append("历史记忆：\n" + memoryLines.joined(separator: "\n"))
         }
 
-        if let weekly = weeklySummary, !weekly.isEmpty {
-            sections.append(weekly)
-        }
-
-        if let result = toolResult, !result.isEmpty {
-            sections.append("数据查询结果：\n" + result)
-        }
-
         if sections.isEmpty {
             return "暂无近期 LifeOS 记录。"
         }
         return sections.joined(separator: "\n\n")
     }
 
-    static func fallbackResponse(for input: String, weeklySummary: String? = nil) -> AgentChatResponse {
+    static func fallbackResponse(for input: String) -> AgentChatResponse {
         let clean = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let summary = weeklySummary, !summary.isEmpty, detectsReviewIntent(clean) {
-            let reply = "网络暂时没接上，我先用本地数据帮你看看：\n\n\(summary)"
-            return AgentChatResponse(reply: reply)
-        }
         let reply = clean.isEmpty
             ? "我在。你可以先说一点点，不用整理好。"
             : "我先接住这句。现在网络里的对话服务暂时没接上，但这段话没有丢。你愿意的话，可以再补一句：这件事更像想法、待办，还是一段时间记录？"

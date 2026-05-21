@@ -9,8 +9,7 @@ protocol AIClient {
         currentTime: String,
         traceId: String?,
         sessionId: String?,
-        threadId: String?,
-        userProfile: String?
+        threadId: String?
     ) async throws -> AgentChatResponse
 
     func quick(
@@ -34,8 +33,7 @@ struct DefaultAIClient: AIClient {
         currentTime: String,
         traceId: String?,
         sessionId: String?,
-        threadId: String?,
-        userProfile: String?
+        threadId: String?
     ) async throws -> AgentChatResponse {
         try await AIParser.chat(
             input: input,
@@ -45,8 +43,7 @@ struct DefaultAIClient: AIClient {
             currentTime: currentTime,
             traceId: traceId,
             sessionId: sessionId,
-            threadId: threadId,
-            userProfile: userProfile
+            threadId: threadId
         )
     }
 
