@@ -184,6 +184,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var titleGenerated: Bool = false
+    var memoryExtractedCount: Int = 0
 
     var session: AgentChatSession {
         AgentChatSession(
@@ -210,6 +211,22 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.titleGenerated = titleGenerated
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        messages = try c.decodeIfPresent([AgentChatMessage].self, forKey: .messages) ?? []
+        pendingActions = try c.decodeIfPresent([AgentActionDraft].self, forKey: .pendingActions) ?? []
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        titleGenerated = try c.decodeIfPresent(Bool.self, forKey: .titleGenerated) ?? false
+        memoryExtractedCount = try c.decodeIfPresent(Int.self, forKey: .memoryExtractedCount) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, messages, pendingActions, createdAt, updatedAt, titleGenerated, memoryExtractedCount
     }
 }
 
@@ -238,10 +255,16 @@ struct AgentMemory: Identifiable, Codable, Equatable {
     var source: String = "auto" // auto / user
 }
 
+struct AgentToolCall: Codable, Equatable {
+    var name: String
+    var args: [String: String]?
+}
+
 struct AgentChatResponse: Decodable, Equatable {
     var reply: String
     var followUpQuestion: String?
     var actionSuggestions: [AgentActionDraft]
+    var toolCall: AgentToolCall?
     var debug: AgentChatDebugPayload?
     var rawBody: String?
     var usage: AgentTokenUsage?
@@ -251,14 +274,16 @@ struct AgentChatResponse: Decodable, Equatable {
         case followUpQuestion
         case actionSuggestions
         case actions
+        case toolCall
         case debug
         case usage
     }
 
-    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
+    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], toolCall: AgentToolCall? = nil, debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
         self.reply = reply
         self.followUpQuestion = followUpQuestion
         self.actionSuggestions = actionSuggestions
+        self.toolCall = toolCall
         self.debug = debug
         self.rawBody = rawBody
         self.usage = usage
@@ -271,6 +296,7 @@ struct AgentChatResponse: Decodable, Equatable {
         actionSuggestions = (try? c.decode([AgentActionDraft].self, forKey: .actionSuggestions))
             ?? (try? c.decode([AgentActionDraft].self, forKey: .actions))
             ?? []
+        toolCall = try? c.decodeIfPresent(AgentToolCall.self, forKey: .toolCall)
         debug = try? c.decodeIfPresent(AgentChatDebugPayload.self, forKey: .debug)
         usage = try? c.decodeIfPresent(AgentTokenUsage.self, forKey: .usage)
         rawBody = nil

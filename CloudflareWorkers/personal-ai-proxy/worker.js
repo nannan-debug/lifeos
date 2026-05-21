@@ -116,6 +116,21 @@ feelings 词表：开心/满足/兴奋/激动/感动/平静/放松/疲惫/焦虑
 # 输出格式（严格 JSON）
 {“reply”:”自然回复”,”followUpQuestion”:”一个追问或null”,”actionSuggestions”:[]}
 
+# 可用数据查询工具
+当用户询问历史数据（本周/最近/过去N天的状态、总结、回顾），通过 toolCall 请求查询。
+格式：{“reply”:”简短过渡语”,”toolCall”:{“name”:”weeklyAll”,”args”:{“days”:”7”}},”followUpQuestion”:null,”actionSuggestions”:[]}
+toolCall 非 null 时，followUpQuestion 和 actionSuggestions 必须为 null/空。
+
+可用工具：
+- weeklyAll: 全维度周总结（打卡、时间、任务、心情、随手记）
+- weeklyChecks: 打卡完成率
+- weeklyTime: 时间分类汇总
+- weeklyTasks: 任务完成情况
+- weeklyMood: 心情与感受分布
+- weeklyInbox: 随手记分类统计
+
+参数 args.days 默认 “7”，用户说”最近三天”就用 “3”。
+
 # 规则
 1. reply 简短自然，像可靠但不啰嗦的伙伴。每轮最多追问 1 个问题，不连续盘问。
 2. followUpQuestion 非 null 时，actionSuggestions 必须为空 []。需要追问就不生成卡片。
@@ -363,6 +378,9 @@ async function handleChat(body, provider, apiKey, trace) {
   const currentDate = body.currentDate || "";
   const currentTime = body.currentTime || "";
   const contextSummary = String(body.contextSummary || "").slice(0, 4000);
+  const userProfileText = typeof body.userProfile === "string" && body.userProfile.trim()
+    ? body.userProfile.trim().slice(0, 500)
+    : USER_PROFILE;
 
   if (!input) return jsonError(400, "empty_input");
 
@@ -395,7 +413,7 @@ async function handleChat(body, provider, apiKey, trace) {
 
   const systemPrompt = CHAT_SYSTEM_PROMPT
     .replace("{{AGENT_PERSONA}}", AGENT_PERSONA)
-    .replace("{{USER_PROFILE}}", USER_PROFILE)
+    .replace("{{USER_PROFILE}}", userProfileText)
     .replace("{{CHAT_POLICY}}", CHAT_POLICY)
     .replace("{{CURRENT_DATE}}", currentDate)
     .replace("{{CURRENT_TIME}}", currentTime)
@@ -432,7 +450,11 @@ async function handleChat(body, provider, apiKey, trace) {
     ? parsed.followUpQuestion.trim()
     : null;
 
-  const shouldSuppressActions = followUpQuestion !== null;
+  const toolCall = parsed.toolCall && typeof parsed.toolCall === "object" && parsed.toolCall.name
+    ? { name: String(parsed.toolCall.name), args: parsed.toolCall.args || {} }
+    : null;
+
+  const shouldSuppressActions = followUpQuestion !== null || toolCall !== null;
 
   const actionSuggestions = shouldSuppressActions
     ? []
@@ -450,6 +472,7 @@ async function handleChat(body, provider, apiKey, trace) {
     payload: {
       reply,
       followUpQuestion,
+      toolCall,
       shouldSuppressActions,
       actionSuggestions,
       rawModelOutput: parsed.__rawModelOutput || "",
@@ -460,9 +483,12 @@ async function handleChat(body, provider, apiKey, trace) {
     reply,
     followUpQuestion,
     actionSuggestions,
+    toolCall,
     debug: {
       rawModelOutput: parsed.__rawModelOutput || "",
-      suppressedActionsReason: shouldSuppressActions ? "followUpQuestion_present" : null,
+      suppressedActionsReason: shouldSuppressActions
+        ? (toolCall ? "toolCall_present" : "followUpQuestion_present")
+        : null,
     },
     usage: parsed.__usage || null,
   });
@@ -536,7 +562,13 @@ async function handleUtility(body, provider, apiKey, trace) {
     const transcript = messages
       .map((m) => `${m.role === "user" ? "用户" : "AI"}: ${String(m.content || "").slice(0, 300)}`)
       .join("\n");
-    const prompt = `从这段对话中提取 1-3 条值得长期记住的关键信息（用户的事实、偏好或重要结论）。每条不超过 30 字。只返回 JSON：{"memories":[{"content":"...","category":"fact|preference|summary"}]}
+    const prompt = `从这段对话中提取 1-3 条值得长期记住的关键信息。每条不超过 30 字。
+
+区分 scope：
+- "profile"：关于用户身份、性格、长期偏好、职业等不容易变的信息（如"用户是产品经理"、"不喜欢啰嗦"）
+- "memory"：近期事件、短期状态、具体计划（如"下午要面试"、"最近在学 Swift"）
+
+只返回 JSON：{"memories":[{"content":"...","category":"fact|preference|summary","scope":"profile|memory"}]}
 
 对话记录：
 ${transcript}`;
@@ -559,6 +591,7 @@ ${transcript}`;
           .map((m) => ({
             content: m.content.trim().slice(0, 60),
             category: ["fact", "preference", "summary"].includes(m.category) ? m.category : "fact",
+            scope: m.scope === "profile" ? "profile" : "memory",
           }))
           .slice(0, 3)
       : [];
