@@ -137,7 +137,7 @@ contextSummary:
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Client-Secret",
+  "Access-Control-Allow-Headers": "Content-Type, X-Client-Secret, X-LifeOS-Trace-Token",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -149,6 +149,11 @@ export default {
 
     if (request.method !== "POST") {
       return jsonError(405, "method_not_allowed");
+    }
+
+    const url = new URL(request.url);
+    if (url.pathname === "/v1/traces/events") {
+      return handleTraceRelay(request, env, ctx);
     }
 
     const provided = request.headers.get("X-Client-Secret");
@@ -224,6 +229,32 @@ function emitTrace(env, ctx, event) {
     },
     body: JSON.stringify(event),
   }).catch(() => undefined));
+}
+
+async function handleTraceRelay(request, env, ctx) {
+  const ingestUrl = env.TRACE_INGEST_URL;
+  const ingestToken = env.TRACE_INGEST_TOKEN;
+  if (!ingestUrl || !ingestToken) {
+    return jsonError(503, "trace_ingest_not_configured");
+  }
+  const traceToken = request.headers.get("X-LifeOS-Trace-Token");
+  if (!traceToken || traceToken !== ingestToken) {
+    return jsonError(401, "unauthorized");
+  }
+  const body = await request.text();
+  const resp = await fetch(ingestUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-LifeOS-Trace-Token": ingestToken,
+    },
+    body,
+  });
+  const result = await resp.text();
+  return new Response(result, {
+    status: resp.status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
 }
 
 async function handleParse(body, provider, apiKey, trace) {
