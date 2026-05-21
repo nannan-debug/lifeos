@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 
 struct RootTabView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = AppStore()
 
     private enum Tab: Hashable { case today, time, capture, review, settings }
@@ -47,9 +48,14 @@ struct RootTabView: View {
         .onAppear {
             store.ensureLocalIdentity()
             openCaptureFromReminderIfNeeded()
+            store.refreshAfterAppBecameActive()
         }
         .onOpenURL { url in
             handleDeepLink(url)
+        }
+        .onChange(of: scenePhase) { phase in
+            guard phase == .active else { return }
+            store.refreshAfterAppBecameActive()
         }
         .onReceive(NotificationCenter.default.publisher(for: DailyStateReminderService.notificationName)) { notification in
             openCaptureFromReminder(prefill: notification.object as? String)

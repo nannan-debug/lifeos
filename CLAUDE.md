@@ -121,6 +121,14 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 - 不改当前审核中版本号，不重新 Archive / Upload / Submit。
 - 不打 tag，不创建 GitHub Release；只有 ASC 显示已上架 / Ready for Distribution 后才做。
 
+多 Agent 并行开发：
+
+- 详细 SOP 见 [`docs/parallel-agent-collaboration.md`](docs/parallel-agent-collaboration.md)。
+- 如果当前工作区已有另一个 agent 的未提交改动，新任务应从最新 `origin/main` 创建独立 worktree 和独立分支，不在原工作区切分支。
+- 默认按模块划分文件所有权：Agent / AI / Worker / Trace 方向归 Agent 分支；非 Agent 的 UI、HealthKit、Widget、设置、导出等可走独立修复分支。
+- `Sources/ViewModels/AppStore.swift`、`Sources/Models/Models.swift` 是高冲突共享文件，动之前先说明影响范围，后合并的一方负责基于最新 `main` 解决冲突。
+- 多个方向独立 PR 到 `main`，不建议先合成一个“大集成分支”；谁先 ready 谁先合，谁后合谁 rebase / merge 最新 `main` 并重新验证。
+
 ---
 
 ## 版本号规范

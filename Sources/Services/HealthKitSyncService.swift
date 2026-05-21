@@ -10,6 +10,12 @@ struct HealthKitTimeBlock {
     let extra: [String: String]
 }
 
+struct HealthKitTimeBlockFetchResult {
+    let blocks: [HealthKitTimeBlock]
+    let rawSleepSampleCount: Int
+    let importableSleepBlockCount: Int
+}
+
 enum HealthKitSyncError: LocalizedError {
     case unavailable
     case noTypesSelected
@@ -32,7 +38,9 @@ final class HealthKitSyncService {
 
     private let store = HKHealthStore()
     private let calendar = Calendar.current
-    private let sleepSessionGap: TimeInterval = 90 * 60
+    private static let sleepSessionGap: TimeInterval = 90 * 60
+    private static let reliableAsleepCoverageRatio = 0.6
+    private static let minimumReliableAsleepDuration: TimeInterval = 3 * 60 * 60
 
     private init() {}
 
@@ -44,14 +52,27 @@ final class HealthKitSyncService {
     }
 
     func fetchTimeBlocks(readSleep: Bool, readWorkouts: Bool, since startDate: Date, until endDate: Date) async throws -> [HealthKitTimeBlock] {
+        try await fetchTimeBlocksWithReport(readSleep: readSleep, readWorkouts: readWorkouts, since: startDate, until: endDate).blocks
+    }
+
+    func fetchTimeBlocksWithReport(readSleep: Bool, readWorkouts: Bool, since startDate: Date, until endDate: Date) async throws -> HealthKitTimeBlockFetchResult {
         var blocks: [HealthKitTimeBlock] = []
+        var rawSleepSampleCount = 0
+        var importableSleepBlockCount = 0
         if readSleep {
-            blocks.append(contentsOf: try await fetchSleepBlocks(since: startDate, until: endDate))
+            let sleep = try await fetchSleepBlocks(since: startDate, until: endDate)
+            blocks.append(contentsOf: sleep.blocks)
+            rawSleepSampleCount = sleep.rawSampleCount
+            importableSleepBlockCount = sleep.blocks.count
         }
         if readWorkouts {
             blocks.append(contentsOf: try await fetchWorkoutBlocks(since: startDate, until: endDate))
         }
-        return blocks.sorted { $0.startDate < $1.startDate }
+        return HealthKitTimeBlockFetchResult(
+            blocks: blocks.sorted { $0.startDate < $1.startDate },
+            rawSleepSampleCount: rawSleepSampleCount,
+            importableSleepBlockCount: importableSleepBlockCount
+        )
     }
 
     private func healthTypes(readSleep: Bool, readWorkouts: Bool) throws -> Set<HKObjectType> {
@@ -68,16 +89,16 @@ final class HealthKitSyncService {
         return types
     }
 
-    private func fetchSleepBlocks(since startDate: Date, until endDate: Date) async throws -> [HealthKitTimeBlock] {
+    private func fetchSleepBlocks(since startDate: Date, until endDate: Date) async throws -> (blocks: [HealthKitTimeBlock], rawSampleCount: Int) {
         guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else {
             throw HealthKitSyncError.typeUnavailable
         }
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: [])
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let samples = try await categorySamples(type: sleepType, predicate: predicate, sortDescriptors: [sort])
-        let intervals = mergedSleepSessions(from: samples)
+        let intervals = Self.mergedSleepSessionsForImport(from: samples)
 
-        return intervals.map { interval in
+        let blocks = intervals.map { interval in
             let sourceID = "sleep:\(Self.sourceDateFormatter.string(from: interval.start)):\(Self.sourceDateFormatter.string(from: interval.end))"
             return HealthKitTimeBlock(
                 sourceIdentifier: sourceID,
@@ -92,6 +113,7 @@ final class HealthKitSyncService {
                 ]
             )
         }
+        return (blocks, samples.count)
     }
 
     private func fetchWorkoutBlocks(since startDate: Date, until endDate: Date) async throws -> [HealthKitTimeBlock] {
@@ -152,21 +174,71 @@ final class HealthKitSyncService {
         }
     }
 
-    private func isAsleepValue(_ rawValue: Int) -> Bool {
+    private static func isAsleepValue(_ rawValue: Int) -> Bool {
         guard let value = HKCategoryValueSleepAnalysis(rawValue: rawValue) else { return false }
         return HKCategoryValueSleepAnalysis.allAsleepValues.contains(value)
     }
 
-    private func mergedSleepSessions(from samples: [HKCategorySample]) -> [(start: Date, end: Date)] {
+    private static func isInBedValue(_ rawValue: Int) -> Bool {
+        rawValue == HKCategoryValueSleepAnalysis.inBed.rawValue
+    }
+
+    static func mergedSleepSessionsForImport(from samples: [HKCategorySample]) -> [(start: Date, end: Date)] {
         let intervals = samples
-            .filter { isAsleepValue($0.value) }
-            .map { (start: $0.startDate, end: $0.endDate) }
+            .filter { isAsleepValue($0.value) || isInBedValue($0.value) }
+            .map { (value: $0.value, start: $0.startDate, end: $0.endDate) }
             .filter { $0.end > $0.start }
             .sorted { $0.start < $1.start }
-        guard var current = intervals.first else { return [] }
+        guard let first = intervals.first else { return [] }
 
-        var result: [(start: Date, end: Date)] = []
+        var sessions: [[(value: Int, start: Date, end: Date)]] = []
+        var currentSession = [first]
+        var currentEnd = first.end
         for interval in intervals.dropFirst() {
+            if interval.start.timeIntervalSince(currentEnd) <= sleepSessionGap {
+                currentSession.append(interval)
+                currentEnd = max(currentEnd, interval.end)
+            } else {
+                sessions.append(currentSession)
+                currentSession = [interval]
+                currentEnd = interval.end
+            }
+        }
+        sessions.append(currentSession)
+
+        return sessions.flatMap { session in
+            selectedSleepIntervalsForImport(from: session)
+        }
+    }
+
+    private static func selectedSleepIntervalsForImport(from session: [(value: Int, start: Date, end: Date)]) -> [(start: Date, end: Date)] {
+        let asleepIntervals = mergeSleepIntervals(
+            session
+                .filter { isAsleepValue($0.value) }
+                .map { (start: $0.start, end: $0.end) }
+        )
+        let inBedIntervals = mergeSleepIntervals(
+            session
+                .filter { isInBedValue($0.value) }
+                .map { (start: $0.start, end: $0.end) }
+        )
+
+        guard !asleepIntervals.isEmpty else { return inBedIntervals }
+        guard !inBedIntervals.isEmpty else { return asleepIntervals }
+
+        let asleepDuration = totalDuration(of: asleepIntervals)
+        let inBedDuration = totalDuration(of: inBedIntervals)
+        let hasReliableAsleepCoverage = asleepDuration >= minimumReliableAsleepDuration
+            && asleepDuration >= inBedDuration * reliableAsleepCoverageRatio
+
+        return hasReliableAsleepCoverage ? asleepIntervals : inBedIntervals
+    }
+
+    private static func mergeSleepIntervals(_ intervals: [(start: Date, end: Date)]) -> [(start: Date, end: Date)] {
+        let sorted = intervals.sorted { $0.start < $1.start }
+        guard var current = sorted.first else { return [] }
+        var result: [(start: Date, end: Date)] = []
+        for interval in sorted.dropFirst() {
             if interval.start.timeIntervalSince(current.end) <= sleepSessionGap {
                 current.end = max(current.end, interval.end)
             } else {
@@ -176,6 +248,12 @@ final class HealthKitSyncService {
         }
         result.append(current)
         return result
+    }
+
+    private static func totalDuration(of intervals: [(start: Date, end: Date)]) -> TimeInterval {
+        intervals.reduce(0) { total, interval in
+            total + interval.end.timeIntervalSince(interval.start)
+        }
     }
 
     private func workoutName(for type: HKWorkoutActivityType) -> String {

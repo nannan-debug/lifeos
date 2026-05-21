@@ -30,9 +30,13 @@ struct CheckWidgetSnapshot: Codable, Equatable {
     }
 
     static var emptyToday: CheckWidgetSnapshot {
+        empty(for: Date())
+    }
+
+    static func empty(for date: Date) -> CheckWidgetSnapshot {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        return CheckWidgetSnapshot(dateKey: formatter.string(from: Date()), updatedAt: Date(), items: [])
+        return CheckWidgetSnapshot(dateKey: formatter.string(from: date), updatedAt: date, items: [])
     }
 }
 
@@ -55,12 +59,26 @@ enum CheckWidgetSnapshotStore {
         defaults.set(data, forKey: CheckWidgetSnapshot.storageKey)
     }
 
-    static func load(defaults: UserDefaults = sharedDefaults) -> CheckWidgetSnapshot {
+    static func load(defaults: UserDefaults = sharedDefaults, today: Date = Date()) -> CheckWidgetSnapshot {
         guard let data = defaults.data(forKey: CheckWidgetSnapshot.storageKey),
               let snapshot = try? JSONDecoder.widgetSnapshotDecoder.decode(CheckWidgetSnapshot.self, from: data) else {
-            return .emptyToday
+            return .empty(for: today)
         }
-        return snapshot
+        return refreshSnapshotForTodayIfNeeded(snapshot, today: today, defaults: defaults)
+    }
+
+    static func refreshSnapshotForTodayIfNeeded(
+        _ snapshot: CheckWidgetSnapshot,
+        today: Date = Date(),
+        defaults: UserDefaults = sharedDefaults
+    ) -> CheckWidgetSnapshot {
+        let todayKey = dateKey(for: today)
+        guard snapshot.dateKey != todayKey else {
+            return snapshot
+        }
+        let refreshed = snapshotForDate(todayKey, basedOn: snapshot, updatedAt: today, defaults: defaults)
+        save(refreshed, defaults: defaults)
+        return refreshed
     }
 
     static func saveAppContext(
@@ -79,12 +97,18 @@ enum CheckWidgetSnapshotStore {
     }
 
     @discardableResult
-    static func toggleItem(title: String, dateKey requestedDateKey: String?, defaults: UserDefaults = sharedDefaults) -> CheckWidgetSnapshot {
+    static func toggleItem(
+        title: String,
+        dateKey requestedDateKey: String?,
+        defaults: UserDefaults = sharedDefaults,
+        today: Date = Date()
+    ) -> CheckWidgetSnapshot {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let snapshot = load(defaults: defaults)
+        let snapshot = load(defaults: defaults, today: today)
         guard !cleanTitle.isEmpty else { return snapshot }
 
-        let targetDateKey = requestedDateKey?.isEmpty == false ? requestedDateKey! : snapshot.dateKey
+        let requestedDateKey = requestedDateKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetDateKey = requestedDateKey == snapshot.dateKey ? snapshot.dateKey : dateKey(for: today)
         let userID = defaults.string(forKey: activeUserIDKey) ?? ""
         let key = checksKey(for: userID)
         var checksByDate = defaults.dictionary(forKey: key) as? [String: [String: Bool]] ?? [:]
@@ -105,6 +129,28 @@ enum CheckWidgetSnapshotStore {
         )
         save(updatedSnapshot, defaults: defaults)
         return updatedSnapshot
+    }
+
+    private static func snapshotForDate(
+        _ dateKey: String,
+        basedOn snapshot: CheckWidgetSnapshot,
+        updatedAt: Date,
+        defaults: UserDefaults
+    ) -> CheckWidgetSnapshot {
+        let userID = defaults.string(forKey: activeUserIDKey) ?? ""
+        let key = checksKey(for: userID)
+        let checksByDate = defaults.dictionary(forKey: key) as? [String: [String: Bool]] ?? [:]
+        let day = checksByDate[dateKey] ?? [:]
+        let items = snapshot.items.map { item in
+            CheckWidgetItemSnapshot(title: item.title, done: day[item.title] ?? false, tag: item.tag)
+        }
+        return CheckWidgetSnapshot(dateKey: dateKey, updatedAt: updatedAt, items: items)
+    }
+
+    private static func dateKey(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }
 
