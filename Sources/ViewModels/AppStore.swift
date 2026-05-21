@@ -100,6 +100,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private lazy var cloudSync = CloudSyncController(dataSource: self)
     private let healthSleepSyncEnabledKey = "healthkit.sync.sleep.enabled"
     private let healthWorkoutSyncEnabledKey = "healthkit.sync.workout.enabled"
+    private let healthLastSyncAttemptAtKey = "healthkit.sync.lastAttemptAt"
+    private let healthForegroundSyncInterval: TimeInterval = 15 * 60
 
     private let scopedDataKeyBases = [
         "ps.checks.byDate",
@@ -257,6 +259,28 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
 
     func syncHealthKitNow(showCompletionAlert: Bool = false) {
+        syncHealthKitNow(showCompletionAlert: showCompletionAlert, referenceDate: Date())
+    }
+
+    func refreshAfterAppBecameActive(now: Date = Date()) {
+        publishCheckWidgetSnapshot(now: now)
+        guard shouldSyncHealthKitAfterAppBecameActive(now: now) else { return }
+        syncHealthKitNow(referenceDate: now)
+    }
+
+    func shouldSyncHealthKitAfterAppBecameActive(now: Date = Date()) -> Bool {
+        guard isHealthSleepSyncEnabled || isHealthWorkoutSyncEnabled else { return false }
+        guard !isHealthSyncing else { return false }
+        guard let lastAttempt = defaults.object(forKey: healthLastSyncAttemptAtKey) as? Date else {
+            return true
+        }
+        if !Calendar.current.isDate(lastAttempt, inSameDayAs: now) {
+            return true
+        }
+        return now.timeIntervalSince(lastAttempt) >= healthForegroundSyncInterval
+    }
+
+    private func syncHealthKitNow(showCompletionAlert: Bool = false, referenceDate: Date) {
         guard !isHealthSyncing else {
             if showCompletionAlert {
                 healthSyncCompletionMessage = "正在同步 Apple 健康，请稍等一下。"
@@ -275,7 +299,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
         isHealthSyncing = true
         healthSyncStatusText = "正在从 Apple 健康同步..."
-        let endDate = Date()
+        defaults.set(referenceDate, forKey: healthLastSyncAttemptAtKey)
+        let endDate = referenceDate
         let startDate = Calendar.current.date(byAdding: .day, value: -30, to: endDate) ?? endDate
 
         Task {
@@ -1464,8 +1489,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         syncICloudAfterLocalChange()
     }
 
-    private func publishCheckWidgetSnapshot() {
-        let todayKey = dateKey(for: Date())
+    private func publishCheckWidgetSnapshot(now: Date = Date()) {
+        let todayKey = dateKey(for: now)
         let map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
         let today = map[todayKey] ?? [:]
         let items = currentCheckEntries().map { entry in
@@ -1475,7 +1500,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
                 tag: entry.tag
             )
         }
-        let snapshot = CheckWidgetSnapshot(dateKey: todayKey, updatedAt: Date(), items: items)
+        let snapshot = CheckWidgetSnapshot(dateKey: todayKey, updatedAt: now, items: items)
         CheckWidgetSnapshotStore.saveAppContext(
             userID: currentUserId,
             checksByDate: map,

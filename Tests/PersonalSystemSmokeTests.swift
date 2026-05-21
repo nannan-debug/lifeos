@@ -63,6 +63,7 @@ final class PersonalSystemSmokeTests: XCTestCase {
         let suiteName = "CheckWidgetToggleTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        let today = makeDate(calendar: Calendar(identifier: .gregorian), year: 2026, month: 5, day: 17, hour: 12, minute: 0)
 
         let snapshot = CheckWidgetSnapshot(
             dateKey: "2026-05-17",
@@ -79,16 +80,94 @@ final class PersonalSystemSmokeTests: XCTestCase {
             defaults: defaults
         )
 
-        let updated = CheckWidgetSnapshotStore.toggleItem(title: "冥想", dateKey: "2026-05-17", defaults: defaults)
+        let updated = CheckWidgetSnapshotStore.toggleItem(title: "冥想", dateKey: "2026-05-17", defaults: defaults, today: today)
         let key = CheckWidgetSnapshotStore.checksKey(for: "dev-test")
         let checks = defaults.dictionary(forKey: key) as? [String: [String: Bool]]
 
         XCTAssertEqual(checks?["2026-05-17"]?["冥想"], true)
         XCTAssertEqual(checks?["2026-05-17"]?["写日记"], true)
         XCTAssertEqual(updated.items.first(where: { $0.title == "冥想" })?.done, true)
-        let reloaded = CheckWidgetSnapshotStore.load(defaults: defaults)
+        let reloaded = CheckWidgetSnapshotStore.load(defaults: defaults, today: today)
         XCTAssertEqual(reloaded.dateKey, updated.dateKey)
         XCTAssertEqual(reloaded.items, updated.items)
+    }
+
+    func testCheckWidgetLoadRefreshesStaleSnapshotForToday() {
+        let suiteName = "CheckWidgetStaleSnapshotTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let today = makeDate(calendar: Calendar(identifier: .gregorian), year: 2026, month: 5, day: 18, hour: 8, minute: 0)
+
+        let staleSnapshot = CheckWidgetSnapshot(
+            dateKey: "2026-05-17",
+            updatedAt: Date(timeIntervalSince1970: 1),
+            items: [
+                CheckWidgetItemSnapshot(title: "冥想", done: true, tag: "例行事务"),
+                CheckWidgetItemSnapshot(title: "写日记", done: true, tag: "例行事务")
+            ]
+        )
+        CheckWidgetSnapshotStore.saveAppContext(
+            userID: "dev-test",
+            checksByDate: ["2026-05-18": ["写日记": true]],
+            snapshot: staleSnapshot,
+            defaults: defaults
+        )
+
+        let refreshed = CheckWidgetSnapshotStore.load(defaults: defaults, today: today)
+
+        XCTAssertEqual(refreshed.dateKey, "2026-05-18")
+        XCTAssertEqual(refreshed.items.first(where: { $0.title == "冥想" })?.done, false)
+        XCTAssertEqual(refreshed.items.first(where: { $0.title == "写日记" })?.done, true)
+    }
+
+    func testCheckWidgetToggleUsesTodayWhenWidgetPassesStaleDateKey() {
+        let suiteName = "CheckWidgetStaleToggleTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let today = makeDate(calendar: Calendar(identifier: .gregorian), year: 2026, month: 5, day: 18, hour: 8, minute: 0)
+
+        let staleSnapshot = CheckWidgetSnapshot(
+            dateKey: "2026-05-17",
+            updatedAt: Date(timeIntervalSince1970: 1),
+            items: [CheckWidgetItemSnapshot(title: "冥想", done: false, tag: "例行事务")]
+        )
+        CheckWidgetSnapshotStore.saveAppContext(
+            userID: "dev-test",
+            checksByDate: ["2026-05-17": ["冥想": false]],
+            snapshot: staleSnapshot,
+            defaults: defaults
+        )
+
+        let updated = CheckWidgetSnapshotStore.toggleItem(title: "冥想", dateKey: "2026-05-17", defaults: defaults, today: today)
+        let checks = defaults.dictionary(forKey: CheckWidgetSnapshotStore.checksKey(for: "dev-test")) as? [String: [String: Bool]]
+
+        XCTAssertEqual(updated.dateKey, "2026-05-18")
+        XCTAssertEqual(checks?["2026-05-18"]?["冥想"], true)
+        XCTAssertEqual(checks?["2026-05-17"]?["冥想"], false)
+    }
+
+    func testHealthKitForegroundSyncIsDueWhenEnabledAndStale() {
+        let store = AppStore()
+        let calendar = Calendar(identifier: .gregorian)
+        let previousAttempt = makeDate(calendar: calendar, year: 2026, month: 5, day: 18, hour: 7, minute: 0)
+        let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 18, hour: 7, minute: 20)
+
+        store.isHealthSleepSyncEnabled = true
+        UserDefaults.standard.set(previousAttempt, forKey: "healthkit.sync.lastAttemptAt")
+
+        XCTAssertTrue(store.shouldSyncHealthKitAfterAppBecameActive(now: now))
+    }
+
+    func testHealthKitForegroundSyncIsThrottledWhenRecentlyChecked() {
+        let store = AppStore()
+        let calendar = Calendar(identifier: .gregorian)
+        let previousAttempt = makeDate(calendar: calendar, year: 2026, month: 5, day: 18, hour: 7, minute: 10)
+        let now = makeDate(calendar: calendar, year: 2026, month: 5, day: 18, hour: 7, minute: 20)
+
+        store.isHealthSleepSyncEnabled = true
+        UserDefaults.standard.set(previousAttempt, forKey: "healthkit.sync.lastAttemptAt")
+
+        XCTAssertFalse(store.shouldSyncHealthKitAfterAppBecameActive(now: now))
     }
 
     // MARK: - Codable roundtrip
