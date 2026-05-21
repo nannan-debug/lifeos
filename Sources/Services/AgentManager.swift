@@ -250,8 +250,10 @@ final class AgentManager: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.errorMessage = "对话服务暂时没有接上，我先用本地方式陪你。"
-                    let fallback = AgentOrchestrator.fallbackResponse(for: clean)
+                    let fallback = AgentOrchestrator.fallbackResponse(for: clean, weeklySummary: weeklySummary)
+                    self.errorMessage = weeklySummary != nil && AgentOrchestrator.detectsReviewIntent(clean)
+                        ? nil
+                        : "对话服务暂时没有接上，我先用本地方式陪你。"
                     let mergedActions = self.actionSuggestionsToMerge(from: fallback)
                     self.isLoading = false
                     let pieces = [fallback.reply, fallback.followUpQuestion]
@@ -478,7 +480,7 @@ final class AgentManager: ObservableObject {
             deleteThreadFile(id: threadID)
             threadIndex.removeAll { $0.id == threadID }
         }
-        createNewThread(saveOldForMemory: false)
+        forceCreateNewThread()
         errorMessage = nil
 
         if messagesToExtract.count >= 4 && messagesToExtract.count > extractedCount {
@@ -494,6 +496,11 @@ final class AgentManager: ObservableObject {
     }
 
     func createNewThread(saveOldForMemory: Bool = true) {
+        if session.messages.isEmpty && currentThreadID != nil { return }
+        forceCreateNewThread(saveOldForMemory: saveOldForMemory)
+    }
+
+    private func forceCreateNewThread(saveOldForMemory: Bool = false) {
         if saveOldForMemory {
             extractMemoriesForCurrentThreadIfNeeded()
         }
@@ -530,7 +537,7 @@ final class AgentManager: ObservableObject {
             if let next = threadIndex.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
                 selectThread(id: next.id)
             } else {
-                createNewThread(saveOldForMemory: false)
+                forceCreateNewThread()
             }
         }
         return deleted
@@ -563,7 +570,7 @@ final class AgentManager: ObservableObject {
         defaults.removeObject(forKey: keyCurrentThreadID)
         defaults.removeObject(forKey: keyMemories)
         defaults.removeObject(forKey: keyDebugLogs)
-        createNewThread(saveOldForMemory: false)
+        forceCreateNewThread()
     }
 
     func addMemory(content: String, category: String = "fact", source: String = "user") {
@@ -637,7 +644,7 @@ final class AgentManager: ObservableObject {
 
     private func ensureCurrentThread() {
         if currentThreadID == nil {
-            createNewThread(saveOldForMemory: false)
+            forceCreateNewThread()
         }
     }
 
@@ -966,7 +973,7 @@ final class AgentManager: ObservableObject {
             session = thread.session
             defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
         } else {
-            createNewThread(saveOldForMemory: false)
+            forceCreateNewThread()
         }
         enforceThreadLimit()
     }

@@ -116,8 +116,12 @@ enum AgentOrchestrator {
         return sections.joined(separator: "\n\n")
     }
 
-    static func fallbackResponse(for input: String) -> AgentChatResponse {
+    static func fallbackResponse(for input: String, weeklySummary: String? = nil) -> AgentChatResponse {
         let clean = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let summary = weeklySummary, !summary.isEmpty, detectsReviewIntent(clean) {
+            let reply = "网络暂时没接上，我先用本地数据帮你看看：\n\n\(summary)"
+            return AgentChatResponse(reply: reply)
+        }
         let reply = clean.isEmpty
             ? "我在。你可以先说一点点，不用整理好。"
             : "我先接住这句。现在网络里的对话服务暂时没接上，但这段话没有丢。你愿意的话，可以再补一句：这件事更像想法、待办，还是一段时间记录？"

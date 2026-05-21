@@ -212,6 +212,22 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
         self.updatedAt = updatedAt
         self.titleGenerated = titleGenerated
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        messages = try c.decodeIfPresent([AgentChatMessage].self, forKey: .messages) ?? []
+        pendingActions = try c.decodeIfPresent([AgentActionDraft].self, forKey: .pendingActions) ?? []
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        titleGenerated = try c.decodeIfPresent(Bool.self, forKey: .titleGenerated) ?? false
+        memoryExtractedCount = try c.decodeIfPresent(Int.self, forKey: .memoryExtractedCount) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, messages, pendingActions, createdAt, updatedAt, titleGenerated, memoryExtractedCount
+    }
 }
 
 struct AgentChatThreadIndexItem: Identifiable, Codable, Equatable {
