@@ -29,6 +29,7 @@ enum AIParser {
     static let workerURL = URL(string: "https://ai.dogdada.com")!
     static var clientSecret: String { Secrets.aiClientSecret }
     static let timeout: TimeInterval = 30
+    private static let maxNetworkAttempts = 3
 
     static func warmUp() {
         var req = URLRequest(url: workerURL)
@@ -200,13 +201,7 @@ enum AIParser {
         req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: req)
-        } catch {
-            throw AIParseError.network(error.localizedDescription)
-        }
+        let (data, response) = try await sendWorkerRequestWithRetry(req)
 
         guard let http = response as? HTTPURLResponse else {
             throw AIParseError.network("no http response")
@@ -218,6 +213,36 @@ enum AIParser {
         }
         guard !data.isEmpty else { throw AIParseError.empty }
         return data
+    }
+
+    private static func sendWorkerRequestWithRetry(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var lastError: Error?
+
+        for attempt in 0..<maxNetworkAttempts {
+            do {
+                return try await URLSession.shared.data(for: request)
+            } catch {
+                lastError = error
+                guard shouldRetryNetworkError(error), attempt < maxNetworkAttempts - 1 else {
+                    throw AIParseError.network(error.localizedDescription)
+                }
+
+                let delayNs = UInt64(350_000_000) * UInt64(attempt + 1)
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+        }
+
+        throw AIParseError.network(lastError?.localizedDescription ?? "request failed")
+    }
+
+    private static func shouldRetryNetworkError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .networkConnectionLost, .timedOut, .cannotConnectToHost, .dnsLookupFailed, .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Local fallbacks
