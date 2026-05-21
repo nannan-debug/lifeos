@@ -207,6 +207,19 @@ export function createTraceServer(options = {}) {
     ].filter(Boolean).join(" ").toLowerCase();
   }
 
+  const MODE_LABELS = { utility: "工具", chat: "对话", quick: "快录", parse: "解析" };
+  const TASK_LABELS = { extract_memories: "提取记忆", suggest_topics: "推荐话题", suggest_title: "生成标题" };
+  function modeTitle(events) {
+    const modeEv = events.find((e) => e.mode || e.payload?.mode);
+    if (!modeEv) return "";
+    const mode = modeEv.mode || modeEv.payload?.mode || "";
+    const taskEv = events.find((e) => e.task || e.payload?.task);
+    const task = taskEv?.task || taskEv?.payload?.task || "";
+    const modeLabel = MODE_LABELS[mode] || mode;
+    const taskLabel = TASK_LABELS[task] || task;
+    return taskLabel ? `[${modeLabel}] ${taskLabel}` : `[${modeLabel}]`;
+  }
+
   function summarizeTrace(traceId, events) {
     const sorted = [...events].sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
     const first = sorted[0] || {};
@@ -229,7 +242,7 @@ export function createTraceServer(options = {}) {
       sources: [...new Set(sorted.map((event) => event.source).filter(Boolean))],
       hasError: Boolean(errorEvent),
       status: errorEvent ? "error" : "ok",
-      title: inputEvent?.payload?.input || responseEvent?.payload?.reply || traceId,
+      title: inputEvent?.payload?.input || responseEvent?.payload?.reply || modeTitle(sorted) || traceId,
       lastEventName: last.eventName || "",
       latencyMs: totalLatency || null,
       usage,
