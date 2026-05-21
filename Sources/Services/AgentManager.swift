@@ -90,6 +90,8 @@ final class AgentManager: ObservableObject {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         ensureCurrentThread()
+        let traceID = UUID().uuidString
+        let threadID = currentThreadID?.uuidString
 
         let request = AgentOrchestrator.makeRequest(
             input: clean,
@@ -107,27 +109,58 @@ final class AgentManager: ObservableObject {
         errorMessage = nil
         let today = AIParser.isoDate()
         let now = AIParser.isoTime()
+        emitTrace(
+            traceID: traceID,
+            eventName: "request_started",
+            payload: [
+                "mode": "chat",
+                "input": clean,
+                "currentDate": today,
+                "currentTime": now,
+                "contextSummary": request.contextSummary,
+                "messages": AgentTracePayload.json(request.messages)
+            ]
+        )
 
         Task { [weak self] in
             guard let self else { return }
+            let startedAt = Date()
             do {
                 let response = try await self.client.chat(
                     input: request.input,
                     messages: request.messages,
                     contextSummary: request.contextSummary,
                     currentDate: today,
-                    currentTime: now
+                    currentTime: now,
+                    traceId: traceID,
+                    sessionId: self.userSuffix,
+                    threadId: threadID
                 )
                 await MainActor.run {
                     let mergedActions = self.actionSuggestionsToMerge(from: response)
                     self.receiveResponse(response, mergedActions: mergedActions)
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "response_merged",
+                        usage: response.usage,
+                        latencyMs: Self.msSince(startedAt),
+                        payload: [
+                            "mode": "chat",
+                            "reply": response.reply,
+                            "followUpQuestion": response.followUpQuestion ?? "",
+                            "actionSuggestions": AgentTracePayload.json(response.actionSuggestions),
+                            "mergedActions": AgentTracePayload.json(mergedActions),
+                            "rawResponse": response.rawBody ?? ""
+                        ]
+                    )
                     self.recordDebugLog(
                         input: clean,
                         request: request,
                         currentDate: today,
                         currentTime: now,
                         response: response,
-                        mergedActions: mergedActions
+                        mergedActions: mergedActions,
+                        traceID: traceID
                     )
                 }
             } catch {
@@ -135,7 +168,30 @@ final class AgentManager: ObservableObject {
                     self.errorMessage = "对话服务暂时没有接上，我先用本地方式陪你。"
                     let fallback = AgentOrchestrator.fallbackResponse(for: clean)
                     let mergedActions = self.actionSuggestionsToMerge(from: fallback)
-                    self.receiveResponse(fallback, mergedActions: mergedActions)
+                    // 错误兜底：只显示给用户，不写入历史，避免污染发送给 AI 的上下文
+                    self.isLoading = false
+                    let pieces = [fallback.reply, fallback.followUpQuestion]
+                        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    let content = pieces.joined(separator: "\n\n")
+                    if !content.isEmpty {
+                        self.session.messages.append(
+                            AgentChatMessage(role: "assistant", content: content, isError: true)
+                        )
+                    }
+                    self.mergeActionSuggestions(mergedActions)
+                    self.saveCurrentThread()
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "request_failed",
+                        latencyMs: Self.msSince(startedAt),
+                        error: AgentTraceErrorInfo(type: String(describing: type(of: error)), message: error.localizedDescription, status: nil),
+                        payload: [
+                            "mode": "chat",
+                            "input": clean,
+                            "fallbackReply": fallback.reply
+                        ]
+                    )
                     self.recordDebugLog(
                         input: clean,
                         request: request,
@@ -143,7 +199,8 @@ final class AgentManager: ObservableObject {
                         currentTime: now,
                         response: fallback,
                         mergedActions: mergedActions,
-                        errorMessage: error.localizedDescription
+                        errorMessage: error.localizedDescription,
+                        traceID: traceID
                     )
                 }
             }
@@ -154,20 +211,36 @@ final class AgentManager: ObservableObject {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         ensureCurrentThread()
+        let traceID = UUID().uuidString
+        let threadID = currentThreadID?.uuidString
         appendMessage(AgentChatMessage(role: "user", content: clean))
         requestTitleIfNeeded(seed: clean)
         isLoading = true
         errorMessage = nil
         let today = AIParser.isoDate()
         let now = AIParser.isoTime()
+        emitTrace(
+            traceID: traceID,
+            eventName: "request_started",
+            payload: [
+                "mode": "quick",
+                "input": clean,
+                "currentDate": today,
+                "currentTime": now
+            ]
+        )
 
         Task { [weak self] in
             guard let self else { return }
+            let startedAt = Date()
             do {
                 let response = try await self.client.quick(
                     input: clean,
                     currentDate: today,
-                    currentTime: now
+                    currentTime: now,
+                    traceId: traceID,
+                    sessionId: self.userSuffix,
+                    threadId: threadID
                 )
                 await MainActor.run {
                     self.isLoading = false
@@ -181,12 +254,36 @@ final class AgentManager: ObservableObject {
                     } else {
                         self.saveCurrentThread()
                     }
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "response_merged",
+                        usage: response.usage,
+                        latencyMs: Self.msSince(startedAt),
+                        payload: [
+                            "mode": "quick",
+                            "reply": response.reply,
+                            "followUpQuestion": response.followUpQuestion ?? "",
+                            "actionSuggestions": AgentTracePayload.json(response.actionSuggestions),
+                            "mergedActions": AgentTracePayload.json(actions),
+                            "rawResponse": response.rawBody ?? ""
+                        ]
+                    )
                 }
             } catch {
                 await MainActor.run {
                     self.isLoading = false
                     self.errorMessage = "快录失败，请重试。"
                     self.saveCurrentThread()
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "request_failed",
+                        latencyMs: Self.msSince(startedAt),
+                        error: AgentTraceErrorInfo(type: String(describing: type(of: error)), message: error.localizedDescription, status: nil),
+                        payload: [
+                            "mode": "quick",
+                            "input": clean
+                        ]
+                    )
                 }
             }
         }
@@ -216,6 +313,33 @@ final class AgentManager: ObservableObject {
         saveCurrentThread()
     }
 
+    private func emitTrace(
+        traceID: String,
+        eventName: String,
+        usage: AgentTokenUsage? = nil,
+        latencyMs: Int? = nil,
+        error: AgentTraceErrorInfo? = nil,
+        payload: [String: String] = [:]
+    ) {
+        let event = AgentTraceEvent(
+            traceId: traceID,
+            sessionId: userSuffix.isEmpty ? nil : userSuffix,
+            threadId: currentThreadID?.uuidString,
+            eventName: eventName,
+            payload: payload,
+            usage: usage,
+            latencyMs: latencyMs,
+            error: error
+        )
+        Task {
+            await AgentTraceLogger.shared.emit(event)
+        }
+    }
+
+    private static func msSince(_ date: Date) -> Int {
+        Int(Date().timeIntervalSince(date) * 1000)
+    }
+
     @discardableResult
     func confirmAction(id: UUID) -> String? {
         guard let action = session.pendingActions.first(where: { $0.id == id }) else {
@@ -235,13 +359,31 @@ final class AgentManager: ObservableObject {
         if result == nil {
             session.pendingActions.removeAll { $0.id == id }
             appendMessage(AgentChatMessage(role: "assistant", content: savedMessage(for: action)))
+            emitTrace(
+                traceID: UUID().uuidString,
+                eventName: "action_confirmed",
+                payload: [
+                    "actionId": id.uuidString,
+                    "action": AgentTracePayload.json(action),
+                    "result": savedMessage(for: action)
+                ]
+            )
         }
         return result
     }
 
     func dismissAction(id: UUID) {
+        let action = session.pendingActions.first(where: { $0.id == id })
         session.pendingActions.removeAll { $0.id == id }
         saveCurrentThread()
+        emitTrace(
+            traceID: UUID().uuidString,
+            eventName: "action_dismissed",
+            payload: [
+                "actionId": id.uuidString,
+                "action": action.map { AgentTracePayload.json($0) } ?? ""
+            ]
+        )
     }
 
     func clearChat() {
@@ -484,8 +626,9 @@ final class AgentManager: ObservableObject {
 
     private func extractMemories(from messages: [AgentChatMessage]) async {
         do {
+            let validMessages = messages.filter { !$0.isError }
             let extracted = try await AIParser.extractMemories(
-                messages: messages.map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
+                messages: validMessages.map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
             )
             await MainActor.run {
                 var added = 0
@@ -853,7 +996,8 @@ final class AgentManager: ObservableObject {
         currentTime: String,
         response: AgentChatResponse,
         mergedActions: [AgentActionDraft],
-        errorMessage: String = ""
+        errorMessage: String = "",
+        traceID: String? = nil
     ) {
         let log = AgentChatDebugLog(
             createdAt: Date(),
@@ -871,6 +1015,28 @@ final class AgentManager: ObservableObject {
             rawResponse: response.debug?.rawModelOutput ?? response.rawBody ?? "",
             errorMessage: errorMessage
         )
+        if AgentTraceConfig.isEnabled {
+            emitTrace(
+                traceID: traceID ?? UUID().uuidString,
+                eventName: "debug_log_created",
+                payload: [
+                    "input": log.input,
+                    "currentDate": log.currentDate,
+                    "currentTime": log.currentTime,
+                    "personaSummary": log.personaSummary,
+                    "userSummary": log.userSummary,
+                    "contextSummary": log.contextSummary,
+                    "messagesSummary": AgentTracePayload.json(log.messagesSummary),
+                    "reply": log.reply,
+                    "followUpQuestion": log.followUpQuestion,
+                    "actionSuggestionsSummary": AgentTracePayload.json(log.actionSuggestionsSummary),
+                    "mergedActionSummary": AgentTracePayload.json(log.mergedActionSummary),
+                    "rawResponse": log.rawResponse,
+                    "errorMessage": log.errorMessage
+                ]
+            )
+            return
+        }
         debugLogs.insert(log, at: 0)
         if debugLogs.count > 20 {
             debugLogs = Array(debugLogs.prefix(20))

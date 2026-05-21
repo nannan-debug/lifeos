@@ -9,4 +9,10 @@ import Foundation
 enum Secrets {
     /// Cloudflare Worker 鉴权 secret（对应 Worker 端 CLIENT_SECRET）
     static let aiClientSecret = "REPLACE_ME_WITH_REAL_SECRET"
+
+    /// Agent trace ingest endpoint（例如 https://trace.dogdada.com/v1/traces/events）
+    static let agentTraceEndpoint = "https://trace.dogdada.com/v1/traces/events"
+
+    /// Agent trace ingest 共享 token（对应服务器 .env 里的 TRACE_TOKEN）
+    static let agentTraceToken = "REPLACE_ME_WITH_TRACE_TOKEN"
 }

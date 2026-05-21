@@ -142,7 +142,7 @@ const CORS_HEADERS = {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -169,24 +169,64 @@ export default {
     }
 
     const mode = body.mode;
+    const trace = makeTrace(env, ctx, body, mode || "parse");
+    trace("worker_received", {
+      payload: {
+        mode: String(mode || "parse"),
+        hasInput: Boolean(body.input || body.text),
+        messagesCount: Array.isArray(body.messages) ? body.messages.length : 0,
+      },
+    });
 
     if (mode === "chat") {
-      return handleChat(body, AI_PROVIDER, apiKey);
+      return handleChat(body, AI_PROVIDER, apiKey, trace);
     }
 
     if (mode === "quick") {
-      return handleQuick(body, AI_PROVIDER, apiKey);
+      return handleQuick(body, AI_PROVIDER, apiKey, trace);
     }
 
     if (mode === "utility") {
-      return handleUtility(body, AI_PROVIDER, apiKey);
+      return handleUtility(body, AI_PROVIDER, apiKey, trace);
     }
 
-    return handleParse(body, AI_PROVIDER, apiKey);
+    return handleParse(body, AI_PROVIDER, apiKey, trace);
   },
 };
 
-async function handleParse(body, provider, apiKey) {
+function makeTrace(env, ctx, body, mode) {
+  const traceId = String(body.traceId || crypto.randomUUID());
+  const sessionId = body.sessionId ? String(body.sessionId) : null;
+  const threadId = body.threadId ? String(body.threadId) : null;
+  return (eventName, fields = {}) => {
+    emitTrace(env, ctx, {
+      traceId,
+      sessionId,
+      threadId,
+      eventName,
+      source: "worker",
+      timestamp: new Date().toISOString(),
+      mode,
+      ...fields,
+    });
+  };
+}
+
+function emitTrace(env, ctx, event) {
+  const url = env.TRACE_INGEST_URL;
+  const token = env.TRACE_INGEST_TOKEN;
+  if (!url || !token || !ctx?.waitUntil) return;
+  ctx.waitUntil(fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-LifeOS-Trace-Token": token,
+    },
+    body: JSON.stringify(event),
+  }).catch(() => undefined));
+}
+
+async function handleParse(body, provider, apiKey, trace) {
   const text = (body.text || body.input || "").trim();
   const currentDate = body.currentDate || "";
   const currentTime = body.currentTime || "";
@@ -197,10 +237,19 @@ async function handleParse(body, provider, apiKey) {
     .replace("{{CURRENT_DATE}}", currentDate)
     .replace("{{CURRENT_TIME}}", currentTime);
 
-  const parsed = await callAIJSON(provider, apiKey, [
+  const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: text },
-  ], 0.2, 700);
+  ];
+  trace("prompt_built", {
+    model: provider.model,
+    provider: "deepseek",
+    temperature: 0.2,
+    maxTokens: 700,
+    payload: { messages },
+  });
+
+  const parsed = await callAIJSON(provider, apiKey, messages, 0.2, 700, 0, trace);
 
   if (parsed.errorResponse) return parsed.errorResponse;
 
@@ -208,11 +257,21 @@ async function handleParse(body, provider, apiKey) {
   const needsClarification = typeof parsed.needsClarification === "string"
     ? parsed.needsClarification
     : null;
+  trace("response_decoded", {
+    model: provider.model,
+    provider: "deepseek",
+    usage: parsed.__usage || null,
+    payload: {
+      records,
+      needsClarification,
+      rawModelOutput: parsed.__rawModelOutput || "",
+    },
+  });
 
   return jsonOk({ records, needsClarification });
 }
 
-async function handleQuick(body, provider, apiKey) {
+async function handleQuick(body, provider, apiKey, trace) {
   const input = (body.input || body.text || "").trim();
   const currentDate = body.currentDate || "";
   const currentTime = body.currentTime || "";
@@ -223,10 +282,19 @@ async function handleQuick(body, provider, apiKey) {
     .replace("{{CURRENT_DATE}}", currentDate)
     .replace("{{CURRENT_TIME}}", currentTime);
 
-  const parsed = await callAIJSON(provider, apiKey, [
+  const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: input },
-  ], 0.3, 500);
+  ];
+  trace("prompt_built", {
+    model: provider.model,
+    provider: "deepseek",
+    temperature: 0.3,
+    maxTokens: 500,
+    payload: { messages },
+  });
+
+  const parsed = await callAIJSON(provider, apiKey, messages, 0.3, 500, 0, trace);
 
   if (parsed.errorResponse) return parsed.errorResponse;
 
@@ -244,10 +312,22 @@ async function handleQuick(body, provider, apiKey) {
       ? parsed.actionSuggestions.map(normalizeActionSuggestion).filter(Boolean).slice(0, 2)
       : [];
 
+  trace("response_decoded", {
+    model: provider.model,
+    provider: "deepseek",
+    usage: parsed.__usage || null,
+    payload: {
+      reply,
+      followUpQuestion,
+      actionSuggestions,
+      rawModelOutput: parsed.__rawModelOutput || "",
+    },
+  });
+
   return jsonOk({ reply, followUpQuestion, actionSuggestions, usage: parsed.__usage || null });
 }
 
-async function handleChat(body, provider, apiKey) {
+async function handleChat(body, provider, apiKey, trace) {
   const input = (body.input || body.text || "").trim();
   const currentDate = body.currentDate || "";
   const currentTime = body.currentTime || "";
@@ -255,7 +335,7 @@ async function handleChat(body, provider, apiKey) {
 
   if (!input) return jsonError(400, "empty_input");
 
-  const history = Array.isArray(body.messages)
+  const rawHistory = Array.isArray(body.messages)
     ? body.messages
         .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .slice(-6)
@@ -264,6 +344,21 @@ async function handleChat(body, provider, apiKey) {
           content: m.content.slice(0, 800),
         }))
     : [];
+
+  // 确保 user/assistant 交替，避免连续同角色消息导致 DeepSeek 返回空
+  const history = [];
+  for (const m of rawHistory) {
+    if (history.length > 0 && history[history.length - 1].role === m.role) {
+      // 同角色连续：合并内容而不是产生连续同角色消息
+      history[history.length - 1].content += "\n" + m.content;
+    } else {
+      history.push({ ...m });
+    }
+  }
+  // 最后一条如果是 user，去掉（因为当前 input 会作为新 user 消息追加）
+  if (history.length > 0 && history[history.length - 1].role === "user") {
+    history.pop();
+  }
 
   const effectiveContext = history.length === 0 ? (contextSummary || "无") : "（已在首轮提供）";
 
@@ -275,11 +370,26 @@ async function handleChat(body, provider, apiKey) {
     .replace("{{CURRENT_TIME}}", currentTime)
     .replace("{{CONTEXT_SUMMARY}}", effectiveContext);
 
-  const parsed = await callAIJSON(provider, apiKey, [
+  const messages = [
     { role: "system", content: systemPrompt },
     ...history,
     { role: "user", content: input },
-  ], 0.5);
+  ];
+  trace("prompt_built", {
+    model: provider.model,
+    provider: "deepseek",
+    temperature: 0.5,
+    maxTokens: 2048,
+    payload: {
+      messages,
+      rawHistory,
+      normalizedHistory: history,
+      contextSummary,
+      effectiveContext,
+    },
+  });
+
+  const parsed = await callAIJSON(provider, apiKey, messages, 0.5, 2048, 0, trace);
 
   if (parsed.errorResponse) return parsed.errorResponse;
 
@@ -302,6 +412,19 @@ async function handleChat(body, provider, apiKey) {
           .slice(0, 2)
       : [];
 
+  trace("response_decoded", {
+    model: provider.model,
+    provider: "deepseek",
+    usage: parsed.__usage || null,
+    payload: {
+      reply,
+      followUpQuestion,
+      shouldSuppressActions,
+      actionSuggestions,
+      rawModelOutput: parsed.__rawModelOutput || "",
+    },
+  });
+
   return jsonOk({
     reply,
     followUpQuestion,
@@ -314,7 +437,7 @@ async function handleChat(body, provider, apiKey) {
   });
 }
 
-async function handleUtility(body, provider, apiKey) {
+async function handleUtility(body, provider, apiKey, trace) {
   const task = (body.task || "").trim();
   if (!task) return jsonError(400, "missing_task");
 
@@ -325,12 +448,26 @@ async function handleUtility(body, provider, apiKey) {
     const prompt = `给以下笔记建议 2-4 个主题标签（中文短语，不带 # 号）。只返回 JSON：{"topics":["标签1","标签2"]}
 标题：${title}
 正文：${content}`;
-    const parsed = await callAIJSON(provider, apiKey, [
+    const messages = [
       { role: "system", content: "你是标签建议工具。只输出 JSON，不要解释。" },
       { role: "user", content: prompt },
-    ], 0.2, 200);
+    ];
+    trace("prompt_built", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature: 0.2,
+      maxTokens: 200,
+      payload: { task, messages },
+    });
+    const parsed = await callAIJSON(provider, apiKey, messages, 0.2, 200, 0, trace);
     if (parsed.errorResponse) return parsed.errorResponse;
     const topics = Array.isArray(parsed.topics) ? parsed.topics.map(t => String(t).trim()).filter(Boolean).slice(0, 5) : [];
+    trace("response_decoded", {
+      model: provider.model,
+      provider: "deepseek",
+      usage: parsed.__usage || null,
+      payload: { task, result: topics, rawModelOutput: parsed.__rawModelOutput || "" },
+    });
     return jsonOk({ result: topics });
   }
 
@@ -339,12 +476,26 @@ async function handleUtility(body, provider, apiKey) {
     if (!content) return jsonError(400, "empty_content");
     const prompt = `给以下笔记内容起一个简短标题（6-12个字，不要标点）。只返回 JSON：{"title":"标题"}
 正文：${content}`;
-    const parsed = await callAIJSON(provider, apiKey, [
+    const messages = [
       { role: "system", content: "你是标题生成工具。只输出 JSON，不要解释。" },
       { role: "user", content: prompt },
-    ], 0.2, 100);
+    ];
+    trace("prompt_built", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature: 0.2,
+      maxTokens: 100,
+      payload: { task, messages },
+    });
+    const parsed = await callAIJSON(provider, apiKey, messages, 0.2, 100, 0, trace);
     if (parsed.errorResponse) return parsed.errorResponse;
     const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+    trace("response_decoded", {
+      model: provider.model,
+      provider: "deepseek",
+      usage: parsed.__usage || null,
+      payload: { task, result: title, rawModelOutput: parsed.__rawModelOutput || "" },
+    });
     return jsonOk({ result: title });
   }
 
@@ -358,10 +509,18 @@ async function handleUtility(body, provider, apiKey) {
 
 对话记录：
 ${transcript}`;
-    const parsed = await callAIJSON(provider, apiKey, [
+    const messagesForModel = [
       { role: "system", content: "你是记忆提取工具。只输出 JSON，不要解释。" },
       { role: "user", content: prompt },
-    ], 0.2, 300);
+    ];
+    trace("prompt_built", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature: 0.2,
+      maxTokens: 300,
+      payload: { task, messages: messagesForModel, originalMessages: messages },
+    });
+    const parsed = await callAIJSON(provider, apiKey, messagesForModel, 0.2, 300, 0, trace);
     if (parsed.errorResponse) return parsed.errorResponse;
     const memories = Array.isArray(parsed.memories)
       ? parsed.memories
@@ -372,14 +531,28 @@ ${transcript}`;
           }))
           .slice(0, 3)
       : [];
+    trace("response_decoded", {
+      model: provider.model,
+      provider: "deepseek",
+      usage: parsed.__usage || null,
+      payload: { task, result: memories, rawModelOutput: parsed.__rawModelOutput || "" },
+    });
     return jsonOk({ result: memories });
   }
 
   return jsonError(400, "unknown_task", { task });
 }
 
-async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2048, _retry = 0) {
+async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2048, _retry = 0, trace = () => {}) {
   let upstream;
+  const startedAt = Date.now();
+  trace("model_call_started", {
+    model: provider.model,
+    provider: "deepseek",
+    temperature,
+    maxTokens,
+    retry: { attempt: _retry },
+  });
   try {
     upstream = await fetch(provider.url, {
       method: "POST",
@@ -397,6 +570,18 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
       }),
     });
   } catch (e) {
+    trace("model_call_failed", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature,
+      maxTokens,
+      latencyMs: Date.now() - startedAt,
+      retry: { attempt: _retry },
+      error: {
+        type: "ai_network_failed",
+        message: String(e).slice(0, 200),
+      },
+    });
     return {
       errorResponse: jsonError(502, "ai_network_failed", {
         message: String(e).slice(0, 200),
@@ -406,6 +591,19 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
 
   if (!upstream.ok) {
     const errText = await upstream.text();
+    trace("model_call_failed", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature,
+      maxTokens,
+      latencyMs: Date.now() - startedAt,
+      retry: { attempt: _retry },
+      error: {
+        type: "ai_upstream_failed",
+        status: upstream.status,
+        detail: errText.slice(0, 500),
+      },
+    });
     return {
       errorResponse: jsonError(502, "ai_upstream_failed", {
         provider: "deepseek",
@@ -420,11 +618,27 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
   const content = (aiData?.choices?.[0]?.message?.content ?? "").trim();
 
   if (!content) {
-    if (_retry < 1) {
-      return callAIJSON(provider, apiKey, messages, temperature, maxTokens, _retry + 1);
+    trace("model_empty_response", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature,
+      maxTokens,
+      usage: aiData.usage || null,
+      latencyMs: Date.now() - startedAt,
+      retry: { attempt: _retry, willRetry: _retry < 2 },
+      error: {
+        type: "ai_empty_response",
+        raw: JSON.stringify(aiData).slice(0, 800),
+      },
+    });
+    if (_retry < 2) {
+      return callAIJSON(provider, apiKey, messages, temperature, maxTokens, _retry + 1, trace);
     }
     return {
-      errorResponse: jsonError(502, "ai_empty_response"),
+      errorResponse: jsonError(502, "ai_empty_response", {
+        raw: JSON.stringify(aiData).slice(0, 300),
+        retried: _retry,
+      }),
     };
   }
 
@@ -432,8 +646,37 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
     const parsed = JSON.parse(content);
     parsed.__rawModelOutput = content;
     parsed.__usage = aiData.usage || null;
+    parsed.__latencyMs = Date.now() - startedAt;
+    parsed.__retryAttempt = _retry;
+    trace("model_call_finished", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature,
+      maxTokens,
+      usage: aiData.usage || null,
+      cache: aiData.usage?.prompt_tokens_details || null,
+      latencyMs: Date.now() - startedAt,
+      retry: { attempt: _retry },
+      payload: {
+        rawResponse: aiData,
+        rawModelOutput: content,
+      },
+    });
     return parsed;
   } catch {
+    trace("model_call_failed", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature,
+      maxTokens,
+      usage: aiData.usage || null,
+      latencyMs: Date.now() - startedAt,
+      retry: { attempt: _retry },
+      error: {
+        type: "ai_response_not_json",
+        sample: content.slice(0, 500),
+      },
+    });
     return {
       errorResponse: jsonError(500, "ai_response_not_json", {
         sample: content.slice(0, 200),

@@ -29,9 +29,10 @@ enum AgentOrchestrator {
         memories: [AgentMemory] = [],
         trigger: AgentTrigger = .userMessage
     ) -> Request {
-        let recentMessages = session.messages.suffix(8).map {
-            AgentChatRequestMessage(role: $0.role, content: $0.content)
-        }
+        let recentMessages = session.messages
+            .filter { !$0.isError }
+            .suffix(8)
+            .map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
         return Request(
             input: input,
             messages: recentMessages,

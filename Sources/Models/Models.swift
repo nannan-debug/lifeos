@@ -166,6 +166,7 @@ struct AgentChatMessage: Identifiable, Codable, Equatable {
     var role: String            // user / assistant
     var content: String
     var createdAt: Date = Date()
+    var isError: Bool = false   // 错误兜底消息，不发送给 AI
 }
 
 struct AgentChatSession: Codable, Equatable {
@@ -243,6 +244,7 @@ struct AgentChatResponse: Decodable, Equatable {
     var actionSuggestions: [AgentActionDraft]
     var debug: AgentChatDebugPayload?
     var rawBody: String?
+    var usage: AgentTokenUsage?
 
     private enum CodingKeys: String, CodingKey {
         case reply
@@ -250,14 +252,16 @@ struct AgentChatResponse: Decodable, Equatable {
         case actionSuggestions
         case actions
         case debug
+        case usage
     }
 
-    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], debug: AgentChatDebugPayload? = nil, rawBody: String? = nil) {
+    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
         self.reply = reply
         self.followUpQuestion = followUpQuestion
         self.actionSuggestions = actionSuggestions
         self.debug = debug
         self.rawBody = rawBody
+        self.usage = usage
     }
 
     init(from decoder: Decoder) throws {
@@ -268,7 +272,22 @@ struct AgentChatResponse: Decodable, Equatable {
             ?? (try? c.decode([AgentActionDraft].self, forKey: .actions))
             ?? []
         debug = try? c.decodeIfPresent(AgentChatDebugPayload.self, forKey: .debug)
+        usage = try? c.decodeIfPresent(AgentTokenUsage.self, forKey: .usage)
         rawBody = nil
+    }
+}
+
+struct AgentTokenUsage: Codable, Equatable {
+    var promptTokens: Int?
+    var completionTokens: Int?
+    var totalTokens: Int?
+    var promptTokenDetails: [String: Int]?
+
+    private enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+        case promptTokenDetails = "prompt_tokens_details"
     }
 }
 
