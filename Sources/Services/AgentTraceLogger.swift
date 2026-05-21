@@ -64,7 +64,9 @@ struct AgentTraceEvent: Codable, Equatable, Identifiable {
 
 enum AgentTraceConfig {
     static let maxPendingEvents = 80
+    static let maxRetries = 3
     static let pendingKey = "ps.agent.trace.pending.v1"
+    static let failCountKey = "ps.agent.trace.failcount.v1"
 
     static var endpoint: URL? {
         URL(string: Secrets.agentTraceEndpoint.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -109,13 +111,24 @@ actor AgentTraceLogger {
 
         while true {
             var pending = loadPending()
-            guard let first = pending.first else { return }
+            guard !pending.isEmpty else {
+                resetFailCount()
+                return
+            }
             do {
-                try await send(first)
+                try await send(pending[0])
                 pending.removeFirst()
                 savePending(pending)
+                resetFailCount()
             } catch {
-                return
+                let count = incrementFailCount()
+                if count >= AgentTraceConfig.maxRetries {
+                    pending.removeFirst()
+                    savePending(pending)
+                    resetFailCount()
+                } else {
+                    return
+                }
             }
         }
     }
@@ -137,6 +150,16 @@ actor AgentTraceLogger {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw AIParseError.network("trace upload failed")
         }
+    }
+
+    private func incrementFailCount() -> Int {
+        let count = defaults.integer(forKey: AgentTraceConfig.failCountKey) + 1
+        defaults.set(count, forKey: AgentTraceConfig.failCountKey)
+        return count
+    }
+
+    private func resetFailCount() {
+        defaults.removeObject(forKey: AgentTraceConfig.failCountKey)
     }
 
     private func loadPending() -> [AgentTraceEvent] {

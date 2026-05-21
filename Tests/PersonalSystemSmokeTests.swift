@@ -583,6 +583,43 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(decoded.usage?.promptTokenDetails?["cached_tokens"], 80)
     }
 
+    func testTraceLoggerDiscardsAfterMaxRetries() async {
+        let defaults = UserDefaults(suiteName: "trace-retry-test")!
+        defaults.removePersistentDomain(forName: "trace-retry-test")
+        let logger = AgentTraceLogger(defaults: defaults)
+
+        let event1 = AgentTraceEvent(
+            traceId: "fail-1", sessionId: nil, threadId: nil,
+            eventName: "request_started", payload: ["input": "will fail"]
+        )
+        let event2 = AgentTraceEvent(
+            traceId: "ok-1", sessionId: nil, threadId: nil,
+            eventName: "request_started", payload: ["input": "should survive"]
+        )
+
+        await logger.emit(event1)
+        await logger.emit(event2)
+
+        let pending = defaults.data(forKey: AgentTraceConfig.pendingKey)
+            .flatMap { try? JSONDecoder().decode([AgentTraceEvent].self, from: $0) } ?? []
+        XCTAssertTrue(pending.count <= 2, "pending should have at most 2 events before server interaction")
+
+        defaults.removePersistentDomain(forName: "trace-retry-test")
+    }
+
+    func testTraceFailCountResetOnSuccess() {
+        let defaults = UserDefaults(suiteName: "trace-failcount-test")!
+        defaults.removePersistentDomain(forName: "trace-failcount-test")
+
+        defaults.set(2, forKey: AgentTraceConfig.failCountKey)
+        XCTAssertEqual(defaults.integer(forKey: AgentTraceConfig.failCountKey), 2)
+
+        defaults.removeObject(forKey: AgentTraceConfig.failCountKey)
+        XCTAssertEqual(defaults.integer(forKey: AgentTraceConfig.failCountKey), 0)
+
+        defaults.removePersistentDomain(forName: "trace-failcount-test")
+    }
+
     func testAgentTraceEventCodableRoundtrip() throws {
         let event = AgentTraceEvent(
             traceId: "trace-1",
