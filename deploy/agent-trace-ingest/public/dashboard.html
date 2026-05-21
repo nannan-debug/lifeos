@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LifeOS Trace</title>
+  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260521b">
+</head>
+<body>
+  <main class="shell">
+    <section class="login-panel" id="loginPanel" hidden>
+      <div class="brand-mark">L</div>
+      <p class="eyebrow">LifeOS Agent Trace</p>
+      <h1>查看每一次 Agent 运行的证据链</h1>
+      <form id="loginForm" class="login-form">
+        <label>
+          <span>账户</span>
+          <input id="loginUser" autocomplete="username" required>
+        </label>
+        <label>
+          <span>密码</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">登录</button>
+      </form>
+      <p class="form-note" id="loginMessage"></p>
+    </section>
+
+    <section class="app" id="appPanel" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LifeOS Agent Trace</p>
+          <h1>Trace Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="session-pill" id="sessionUser"></span>
+          <span class="refresh-state" id="refreshState"></span>
+          <button class="ghost-button" id="refreshButton" type="button">刷新</button>
+          <button class="ghost-button" id="logoutButton" type="button">退出</button>
+        </div>
+      </header>
+
+      <form class="filters" id="traceFilters" aria-label="查询条件">
+        <label>
+          <span>日期</span>
+          <input id="dateInput" type="date">
+        </label>
+        <label class="wide">
+          <span>关键词</span>
+          <input id="searchInput" placeholder="输入、错误、模型输出、threadId">
+        </label>
+        <label class="wide">
+          <span>Trace ID</span>
+          <input id="traceInput" placeholder="粘贴 traceId 精确查询">
+        </label>
+        <label>
+          <span>来源</span>
+          <select id="sourceInput">
+            <option value="all">全部</option>
+            <option value="ios">iOS</option>
+            <option value="worker">Worker</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+        <label class="check-row">
+          <input id="errorsOnlyInput" type="checkbox">
+          <span>只看错误</span>
+        </label>
+        <button class="search-button" id="searchButton" type="submit">搜索</button>
+      </form>
+
+      <section class="workspace">
+        <aside class="trace-list">
+          <div class="panel-title">
+            <span>Traces</span>
+            <small id="traceCount">0</small>
+          </div>
+          <div id="traceList" class="trace-items"></div>
+        </aside>
+
+        <section class="timeline-panel">
+          <div class="panel-title">
+            <span id="selectedTraceTitle">选择一条 trace</span>
+            <small id="selectedTraceMeta"></small>
+          </div>
+          <div id="timeline" class="timeline empty-state">暂无数据</div>
+        </section>
+
+        <aside class="detail-panel">
+          <div class="panel-title">
+            <span>Event Detail</span>
+            <button class="copy-button" id="copyJsonButton" type="button">复制 JSON</button>
+          </div>
+          <div id="eventSummary" class="event-summary empty-state">选择时间线中的事件</div>
+          <pre id="jsonView" class="json-view"></pre>
+        </aside>
+      </section>
+    </section>
+  </main>
+  <script src="/dashboard/dashboard.js?v=20260521b"></script>
+</body>
+</html>
