@@ -306,15 +306,19 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         Task {
             do {
                 try await HealthKitSyncService.shared.requestAuthorization(readSleep: readSleep, readWorkouts: readWorkouts)
-                let blocks = try await HealthKitSyncService.shared.fetchTimeBlocks(readSleep: readSleep, readWorkouts: readWorkouts, since: startDate, until: endDate)
+                let fetchResult = try await HealthKitSyncService.shared.fetchTimeBlocksWithReport(readSleep: readSleep, readWorkouts: readWorkouts, since: startDate, until: endDate)
                 if readSleep {
-                    _ = await WakeDreamReminderService.scheduleIfNeeded(from: blocks)
+                    _ = await WakeDreamReminderService.scheduleIfNeeded(from: fetchResult.blocks)
                 }
                 await MainActor.run {
                     self.isHealthSyncing = false
-                    let imported = self.importHealthKitTimeBlocks(blocks, replacingSleepSince: readSleep ? startDate : nil, until: endDate)
+                    let imported = self.importHealthKitTimeBlocks(fetchResult.blocks, replacingSleepSince: readSleep ? startDate : nil, until: endDate)
                     if imported > 0 {
                         self.healthSyncStatusText = "已同步 \(imported) 条睡眠/运动记录。"
+                    } else if readSleep && fetchResult.rawSleepSampleCount == 0 {
+                        self.healthSyncStatusText = "已检查 Apple 健康，没有读到睡眠样本。请确认 LifeOS 已获得睡眠读取权限。"
+                    } else if readSleep && fetchResult.importableSleepBlockCount == 0 {
+                        self.healthSyncStatusText = "读到 \(fetchResult.rawSleepSampleCount) 条睡眠样本，但没有可导入的睡眠或卧床区间。"
                     } else {
                         self.healthSyncStatusText = "已检查 Apple 健康，没有新的记录。"
                     }

@@ -10,6 +10,12 @@ struct HealthKitTimeBlock {
     let extra: [String: String]
 }
 
+struct HealthKitTimeBlockFetchResult {
+    let blocks: [HealthKitTimeBlock]
+    let rawSleepSampleCount: Int
+    let importableSleepBlockCount: Int
+}
+
 enum HealthKitSyncError: LocalizedError {
     case unavailable
     case noTypesSelected
@@ -44,14 +50,27 @@ final class HealthKitSyncService {
     }
 
     func fetchTimeBlocks(readSleep: Bool, readWorkouts: Bool, since startDate: Date, until endDate: Date) async throws -> [HealthKitTimeBlock] {
+        try await fetchTimeBlocksWithReport(readSleep: readSleep, readWorkouts: readWorkouts, since: startDate, until: endDate).blocks
+    }
+
+    func fetchTimeBlocksWithReport(readSleep: Bool, readWorkouts: Bool, since startDate: Date, until endDate: Date) async throws -> HealthKitTimeBlockFetchResult {
         var blocks: [HealthKitTimeBlock] = []
+        var rawSleepSampleCount = 0
+        var importableSleepBlockCount = 0
         if readSleep {
-            blocks.append(contentsOf: try await fetchSleepBlocks(since: startDate, until: endDate))
+            let sleep = try await fetchSleepBlocks(since: startDate, until: endDate)
+            blocks.append(contentsOf: sleep.blocks)
+            rawSleepSampleCount = sleep.rawSampleCount
+            importableSleepBlockCount = sleep.blocks.count
         }
         if readWorkouts {
             blocks.append(contentsOf: try await fetchWorkoutBlocks(since: startDate, until: endDate))
         }
-        return blocks.sorted { $0.startDate < $1.startDate }
+        return HealthKitTimeBlockFetchResult(
+            blocks: blocks.sorted { $0.startDate < $1.startDate },
+            rawSleepSampleCount: rawSleepSampleCount,
+            importableSleepBlockCount: importableSleepBlockCount
+        )
     }
 
     private func healthTypes(readSleep: Bool, readWorkouts: Bool) throws -> Set<HKObjectType> {
@@ -68,7 +87,7 @@ final class HealthKitSyncService {
         return types
     }
 
-    private func fetchSleepBlocks(since startDate: Date, until endDate: Date) async throws -> [HealthKitTimeBlock] {
+    private func fetchSleepBlocks(since startDate: Date, until endDate: Date) async throws -> (blocks: [HealthKitTimeBlock], rawSampleCount: Int) {
         guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else {
             throw HealthKitSyncError.typeUnavailable
         }
@@ -77,7 +96,7 @@ final class HealthKitSyncService {
         let samples = try await categorySamples(type: sleepType, predicate: predicate, sortDescriptors: [sort])
         let intervals = Self.mergedSleepSessionsForImport(from: samples)
 
-        return intervals.map { interval in
+        let blocks = intervals.map { interval in
             let sourceID = "sleep:\(Self.sourceDateFormatter.string(from: interval.start)):\(Self.sourceDateFormatter.string(from: interval.end))"
             return HealthKitTimeBlock(
                 sourceIdentifier: sourceID,
@@ -92,6 +111,7 @@ final class HealthKitSyncService {
                 ]
             )
         }
+        return (blocks, samples.count)
     }
 
     private func fetchWorkoutBlocks(since startDate: Date, until endDate: Date) async throws -> [HealthKitTimeBlock] {
