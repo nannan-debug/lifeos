@@ -1,13 +1,13 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-05-20
+> 最后更新：2026-05-21
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 1.7.0 (build 11) 已通过审核并上架；1.8.0 (build 12) 已提交 App Review，等待 Apple 审核。**
+**LifeOS 1.8.0 (build 12) 已通过审核并上架；后续 main 已进入 1.8.1 候选开发。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架
@@ -19,11 +19,11 @@
 - ✅ `1.5.2 (build 9)` — 2026-05-13 上架
 - ✅ `1.6.0 (build 10)` — 2026-05-15 上架
 - ✅ `1.7.0 (build 11)` — 2026-05-20 上架（桌面小组件、CloudKit 同步、导出全部数据、延伸思考、醒后梦境提醒）
-- ⏳ `1.8.0 (build 12)` — 已提交 App Review，等待 Apple 审核（AI 全屏对话窗、多会话历史、健康同步与时间记录修复）
+- ✅ `1.8.0 (build 12)` — 2026-05-21 上架（AI 全屏对话窗、多会话历史、健康同步与时间记录修复）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 ~ 1.7.0 均 Ready for Distribution
+- ✅ App Store Connect 状态：1.0.0 ~ 1.8.0 均 Ready for Distribution
 
-**待办：等待 Apple 审核 `1.8.0 (build 12)`。通过并上架后，再打 `v1.8.0` tag 和发 GitHub Release（见 §6.9）。**
+**已完成：`v1.8.0` tag 已 push，GitHub Release 已发布（见 §6.9）。**
 
 **审核期间想做新功能怎么办？** 见 §4.8。
 
@@ -42,8 +42,8 @@
 | 主语言 | 简体中文（zh-Hans） |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
-| 已上架营销版本 | `1.7.0` (build 11) |
-| 当前 main 状态 | `1.8.0` (build 12) 代码已合入并已提交 App Review；等待 Apple 审核 |
+| 已上架营销版本 | `1.8.0` (build 12) |
+| 当前 main 状态 | `1.8.0` 已上架；`main` 已包含后续 Agent Trace 诊断链路改动，可作为 `1.8.1` 候选开发基础 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -392,13 +392,14 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.7.0` 已 push。
 - ✅ GitHub Release [v1.7.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.7.0) 已发布。
 
-### 6.9 1.8.0 审核中
+### 6.9 1.8.0 上架收尾（已完成 ✅）
 
 - ✅ 功能 / 发版 PR 已合入 `main`：`1.8.0 (build 12)` AI 全屏对话窗、多会话文件存储、历史搜索 / 切换 / 删除、Agent 对话视觉优化、Apple 健康睡眠同步修复、时间记录更新事件修复、随手记时间线排序和短标题优化（[#68](https://github.com/nannan-debug/lifeos/pull/68)，merge commit `fe56c50`）。
 - ✅ 用户已手动 Archive / Upload 到 App Store Connect。
 - ✅ ASC 已创建 / 选择 `1.8.0` 新版本，并 Submit to App Review（2026-05-20，用户确认）。
-- ⏳ 当前状态：等待 Apple 审核结果。
-- ⏳ 只有 ASC 显示 Ready for Distribution / 已上架后，才打 `v1.8.0` tag 和发 GitHub Release。
+- ✅ `1.8.0 (build 12)` 已通过审核并上架（2026-05-21，用户确认）。
+- ✅ Tag `v1.8.0` 已 push（指向 `f48daaa`，即 1.8.0 提审状态；不包含后续 1.8.1 候选的 Agent Trace 改动）。
+- ✅ GitHub Release [v1.8.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.8.0) 已发布。
 
 ---
 
@@ -420,4 +421,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 ~ 1.7.0 均已在 App Store 在线。`1.8.0 (build 12)` 已提交 App Review，正在等待 Apple 审核；过审上架后再打 `v1.8.0` tag 和 GitHub Release。**
+**LifeOS 1.0.0 ~ 1.8.0 均已在 App Store 在线。`v1.8.0` tag 和 GitHub Release 已完成；后续 main 已包含 Agent Trace 诊断链路，可按 `1.8.1` 候选继续验证。**
