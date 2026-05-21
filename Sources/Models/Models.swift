@@ -184,6 +184,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var titleGenerated: Bool = false
+    var memoryExtractedCount: Int = 0
 
     var session: AgentChatSession {
         AgentChatSession(
@@ -238,10 +239,16 @@ struct AgentMemory: Identifiable, Codable, Equatable {
     var source: String = "auto" // auto / user
 }
 
+struct AgentToolCall: Codable, Equatable {
+    var name: String
+    var args: [String: String]?
+}
+
 struct AgentChatResponse: Decodable, Equatable {
     var reply: String
     var followUpQuestion: String?
     var actionSuggestions: [AgentActionDraft]
+    var toolCall: AgentToolCall?
     var debug: AgentChatDebugPayload?
     var rawBody: String?
     var usage: AgentTokenUsage?
@@ -251,14 +258,16 @@ struct AgentChatResponse: Decodable, Equatable {
         case followUpQuestion
         case actionSuggestions
         case actions
+        case toolCall
         case debug
         case usage
     }
 
-    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
+    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], toolCall: AgentToolCall? = nil, debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
         self.reply = reply
         self.followUpQuestion = followUpQuestion
         self.actionSuggestions = actionSuggestions
+        self.toolCall = toolCall
         self.debug = debug
         self.rawBody = rawBody
         self.usage = usage
@@ -271,6 +280,7 @@ struct AgentChatResponse: Decodable, Equatable {
         actionSuggestions = (try? c.decode([AgentActionDraft].self, forKey: .actionSuggestions))
             ?? (try? c.decode([AgentActionDraft].self, forKey: .actions))
             ?? []
+        toolCall = try? c.decodeIfPresent(AgentToolCall.self, forKey: .toolCall)
         debug = try? c.decodeIfPresent(AgentChatDebugPayload.self, forKey: .debug)
         usage = try? c.decodeIfPresent(AgentTokenUsage.self, forKey: .usage)
         rawBody = nil

@@ -19,6 +19,11 @@ enum AgentOrchestrator {
         var trigger: AgentTrigger
     }
 
+    static func detectsReviewIntent(_ input: String) -> Bool {
+        let keywords = ["这周", "本周", "最近", "过去几天", "这几天", "周总结", "总结", "状态", "回顾"]
+        return keywords.contains(where: { input.contains($0) })
+    }
+
     static func makeRequest(
         input: String,
         session: AgentChatSession,
@@ -27,7 +32,9 @@ enum AgentOrchestrator {
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
         memories: [AgentMemory] = [],
-        trigger: AgentTrigger = .userMessage
+        trigger: AgentTrigger = .userMessage,
+        weeklySummary: String? = nil,
+        toolResult: String? = nil
     ) -> Request {
         let recentMessages = session.messages
             .filter { !$0.isError }
@@ -41,7 +48,9 @@ enum AgentOrchestrator {
                 tasks: tasks,
                 timeEntries: timeEntries,
                 checks: checks,
-                memories: memories
+                memories: memories,
+                weeklySummary: weeklySummary,
+                toolResult: toolResult
             ),
             trigger: trigger
         )
@@ -52,7 +61,9 @@ enum AgentOrchestrator {
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
-        memories: [AgentMemory] = []
+        memories: [AgentMemory] = [],
+        weeklySummary: String? = nil,
+        toolResult: String? = nil
     ) -> String {
         var sections: [String] = []
 
@@ -89,6 +100,14 @@ enum AgentOrchestrator {
         let memoryLines = memories.prefix(10).map { "- \($0.content)" }
         if !memoryLines.isEmpty {
             sections.append("历史记忆：\n" + memoryLines.joined(separator: "\n"))
+        }
+
+        if let weekly = weeklySummary, !weekly.isEmpty {
+            sections.append(weekly)
+        }
+
+        if let result = toolResult, !result.isEmpty {
+            sections.append("数据查询结果：\n" + result)
         }
 
         if sections.isEmpty {
