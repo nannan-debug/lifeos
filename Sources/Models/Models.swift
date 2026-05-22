@@ -167,6 +167,15 @@ struct AgentChatMessage: Identifiable, Codable, Equatable {
     var content: String
     var createdAt: Date = Date()
     var isError: Bool = false   // 错误兜底消息，不发送给 AI
+    var autoSavedAction: AutoSavedActionRef? = nil  // 自动保存的 action 引用，支持撤销
+}
+
+struct AutoSavedActionRef: Codable, Equatable {
+    var kind: AgentActionKind
+    var title: String
+    var turnId: UUID?       // inbox → turn id
+    var taskId: UUID?       // task → task id
+    var timeEntryId: UUID?  // time → time entry name (用 title 匹配删除)
 }
 
 struct AgentChatSession: Codable, Equatable {

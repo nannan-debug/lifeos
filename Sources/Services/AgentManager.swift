@@ -6,6 +6,8 @@ protocol AgentDataWriter: AnyObject {
     func addTurnDraft(rawText: String, recognizedType: String, targetBucket: String, confidence: Double, payload: [String: String], status: String, fixHint: String, moodScore: Int?, feelingTags: [String]) -> UUID?
     func commitTurn(id: UUID) -> String?
     func addTask(title: String, detail: String, status: String, priority: String, dueDate: String, date: String?, completedAt: Date?, isAllDay: Bool, startTime: String, endTime: String, location: String, sourceNoteId: UUID?, sourceExcerpt: String) -> UUID?
+    func undoTurn(id: UUID)
+    func undoTask(id: UUID)
 }
 
 final class AgentManager: ObservableObject {
@@ -388,7 +390,9 @@ final class AgentManager: ObservableObject {
             session.pendingActions.removeAll()
         }
         for action in suggestions where hasContent(action) {
-            if let existingIndex = session.pendingActions.firstIndex(where: { isSameIntent($0, action) }) {
+            if shouldAutoConfirm(action) {
+                autoConfirmAction(action)
+            } else if let existingIndex = session.pendingActions.firstIndex(where: { isSameIntent($0, action) }) {
                 if completenessScore(action) >= completenessScore(session.pendingActions[existingIndex]) {
                     session.pendingActions[existingIndex] = action
                 }
@@ -397,6 +401,136 @@ final class AgentManager: ObservableObject {
             }
         }
         saveCurrentThread()
+    }
+
+    /// 判断是否自动保存：AI confidence 只做参考，用规则兜底
+    private func shouldAutoConfirm(_ action: AgentActionDraft) -> Bool {
+        // AI 自报 confidence 太低时不自动保存
+        guard action.confidence >= 0.7 else { return false }
+        switch action.kind {
+        case .inbox:
+            // 随手记：有标题或内容就自动存
+            return !action.title.isEmpty || !action.detail.isEmpty
+        case .task:
+            // 待办：必须有标题
+            return !action.title.isEmpty
+        case .time:
+            // 时间记录：必须有标题 + 开始和结束时间
+            return !action.title.isEmpty
+                && action.startTime != nil && !action.startTime!.isEmpty
+                && action.endTime != nil && !action.endTime!.isEmpty
+        }
+    }
+
+    private func autoConfirmAction(_ action: AgentActionDraft) {
+        let ref: AutoSavedActionRef?
+        let result: String?
+        switch action.kind {
+        case .inbox:
+            let turnId = commitInboxActionReturningId(action)
+            ref = turnId.map { AutoSavedActionRef(kind: .inbox, title: action.title, turnId: $0) }
+            result = turnId == nil ? "内容为空，未保存" : nil
+        case .task:
+            let taskId = commitTaskActionReturningId(action)
+            ref = taskId.map { AutoSavedActionRef(kind: .task, title: action.title, taskId: $0) }
+            result = taskId == nil ? "待办标题为空" : nil
+        case .time:
+            let turnId = commitTimeActionReturningId(action)
+            ref = turnId.map { AutoSavedActionRef(kind: .time, title: action.title, turnId: $0) }
+            result = turnId == nil ? "时间记录缺少时间" : nil
+        }
+        if result == nil, let ref {
+            appendMessage(AgentChatMessage(
+                role: "assistant",
+                content: savedMessage(for: action),
+                autoSavedAction: ref
+            ))
+            emitTrace(
+                traceID: UUID().uuidString,
+                eventName: "action_auto_confirmed",
+                payload: [
+                    "actionId": action.id.uuidString,
+                    "action": AgentTracePayload.json(action),
+                    "confidence": String(action.confidence),
+                    "result": savedMessage(for: action)
+                ]
+            )
+        } else {
+            session.pendingActions.append(action)
+        }
+    }
+
+    private func commitInboxActionReturningId(_ action: AgentActionDraft) -> UUID? {
+        guard let writer else { return nil }
+        let recognizedType = inboxType(for: action)
+        guard let id = writer.addTurnDraft(
+            rawText: action.detail.isEmpty ? action.title : action.detail,
+            recognizedType: recognizedType,
+            targetBucket: "inbox",
+            confidence: action.confidence,
+            payload: [
+                "title": action.title.isEmpty ? fallbackTitle(action.detail) : action.title,
+                "detail": action.detail,
+                "status": "待处理",
+                "ai_source": "agent"
+            ],
+            status: "draft",
+            fixHint: "",
+            moodScore: normalizedMood(action.mood),
+            feelingTags: normalizedFeelings(action.feelings)
+        ) else { return nil }
+        let err = writer.commitTurn(id: id)
+        return err == nil ? id : nil
+    }
+
+    private func commitTaskActionReturningId(_ action: AgentActionDraft) -> UUID? {
+        guard let writer else { return nil }
+        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        return writer.addTask(
+            title: title,
+            detail: action.detail,
+            status: "待办",
+            priority: "",
+            dueDate: action.date ?? "",
+            date: writer.selectedDateKey,
+            completedAt: nil,
+            isAllDay: (action.startTime ?? "").isEmpty,
+            startTime: action.startTime ?? "",
+            endTime: action.endTime ?? "",
+            location: "",
+            sourceNoteId: nil,
+            sourceExcerpt: ""
+        )
+    }
+
+    private func commitTimeActionReturningId(_ action: AgentActionDraft) -> UUID? {
+        guard let writer else { return nil }
+        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = action.startTime ?? ""
+        let end = action.endTime ?? ""
+        guard !start.isEmpty, !end.isEmpty else { return nil }
+        guard let id = writer.addTurnDraft(
+            rawText: action.detail.isEmpty ? title : action.detail,
+            recognizedType: "时间记录",
+            targetBucket: "time",
+            confidence: action.confidence,
+            payload: [
+                "name": title.isEmpty ? "时间记录" : title,
+                "start": start,
+                "end": end,
+                "category": timeModule(for: action),
+                "note": action.detail,
+                "date": action.date ?? writer.selectedDateKey,
+                "ai_source": "agent"
+            ],
+            status: "draft",
+            fixHint: "",
+            moodScore: nil,
+            feelingTags: []
+        ) else { return nil }
+        let err = writer.commitTurn(id: id)
+        return err == nil ? id : nil
     }
 
     private func emitTrace(
@@ -468,6 +602,31 @@ final class AgentManager: ObservableObject {
             payload: [
                 "actionId": id.uuidString,
                 "action": action.map { AgentTracePayload.json($0) } ?? ""
+            ]
+        )
+    }
+
+    func undoAutoSavedAction(messageId: UUID) {
+        guard let idx = session.messages.firstIndex(where: { $0.id == messageId }),
+              let ref = session.messages[idx].autoSavedAction else { return }
+        switch ref.kind {
+        case .inbox:
+            if let turnId = ref.turnId { writer?.undoTurn(id: turnId) }
+        case .task:
+            if let taskId = ref.taskId { writer?.undoTask(id: taskId) }
+        case .time:
+            if let turnId = ref.turnId { writer?.undoTurn(id: turnId) }
+        }
+        session.messages[idx].content = "已撤销：\(ref.title)"
+        session.messages[idx].autoSavedAction = nil
+        saveCurrentThread()
+        emitTrace(
+            traceID: UUID().uuidString,
+            eventName: "action_auto_undo",
+            payload: [
+                "messageId": messageId.uuidString,
+                "kind": ref.kind.rawValue,
+                "title": ref.title
             ]
         )
     }

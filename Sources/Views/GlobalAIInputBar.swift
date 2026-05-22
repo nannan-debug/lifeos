@@ -70,7 +70,7 @@ private struct AgentChatPanel: View {
     let onClose: () -> Void
 
     @State private var rawInput = ""
-    @State private var chatMode = true
+    private let chatMode = true
     @State private var showConsent = false
     @State private var pendingAIText: String?
     @State private var showHistory = false
@@ -278,6 +278,8 @@ private struct AgentChatPanel: View {
                             .fill(Color.black.opacity(0.045))
                     )
                     .frame(maxWidth: 285, alignment: .trailing)
+            } else if message.autoSavedAction != nil {
+                autoSavedRow(message)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(message.content)
@@ -291,12 +293,41 @@ private struct AgentChatPanel: View {
         }
     }
 
+    private func autoSavedRow(_ message: AgentChatMessage) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(CreamTheme.green)
+                .font(.system(size: 16))
+            Text(message.content)
+                .font(.callout)
+                .foregroundStyle(CreamTheme.text.opacity(0.9))
+            Spacer()
+            Button {
+                store.undoAutoSavedAgentAction(messageId: message.id)
+            } label: {
+                Text("撤销")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(CreamTheme.green.opacity(0.08))
+        )
+    }
+
     private var thinkingRow: some View {
         HStack(spacing: 10) {
             ProgressView()
                 .scaleEffect(0.75)
                 .tint(CreamTheme.green)
-            Text(chatMode ? "猫猫在想怎么接这句话..." : "正在轻轻整理...")
+            Text("猫猫在想怎么接这句话...")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -385,16 +416,6 @@ private struct AgentChatPanel: View {
 
     private var inputDock: some View {
         VStack(spacing: 9) {
-            HStack(spacing: 6) {
-                modeChip(title: "快录", icon: "bolt.fill", selected: !chatMode) {
-                    chatMode = false
-                }
-                modeChip(title: "对话", icon: "bubble.left.and.bubble.right.fill", selected: chatMode) {
-                    chatMode = true
-                }
-                Spacer()
-            }
-
             HStack(alignment: .center, spacing: 10) {
                 TextField("问问、快速记录或聊聊今天...", text: $rawInput, axis: .vertical)
                     .textFieldStyle(.plain)
