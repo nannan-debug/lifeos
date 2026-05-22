@@ -1798,8 +1798,22 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         agent.threadMatchesSearch(item, query: query)
     }
 
-    func undoTurn(id: UUID) { removeTurn(id: id) }
-    func undoTask(id: UUID) { removeTask(id: id) }
+    func undoTurn(id: UUID) {
+        removeTurn(id: id)
+        objectWillChange.send()
+    }
+    func undoTask(id: UUID) {
+        removeTask(id: id)
+        objectWillChange.send()
+    }
+    func undoTimeFromTurn(id: UUID) {
+        guard let turn = turns.first(where: { $0.id == id }),
+              let teIdStr = turn.payload["committedTimeEntryID"],
+              let teId = UUID(uuidString: teIdStr) else { return }
+        let dateKey = turn.payload["committedDateKey"]
+        removeTimeEntryByID(teId, dateKey: dateKey)
+        objectWillChange.send()
+    }
     func undoAutoSavedAgentAction(messageId: UUID) { agent.undoAutoSavedAction(messageId: messageId) }
 
     var userProfile: String {

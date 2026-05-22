@@ -8,6 +8,7 @@ protocol AgentDataWriter: AnyObject {
     func addTask(title: String, detail: String, status: String, priority: String, dueDate: String, date: String?, completedAt: Date?, isAllDay: Bool, startTime: String, endTime: String, location: String, sourceNoteId: UUID?, sourceExcerpt: String) -> UUID?
     func undoTurn(id: UUID)
     func undoTask(id: UUID)
+    func undoTimeFromTurn(id: UUID)
 }
 
 final class AgentManager: ObservableObject {
@@ -615,7 +616,10 @@ final class AgentManager: ObservableObject {
         case .task:
             if let taskId = ref.taskId { writer?.undoTask(id: taskId) }
         case .time:
-            if let turnId = ref.turnId { writer?.undoTurn(id: turnId) }
+            if let turnId = ref.turnId {
+                writer?.undoTimeFromTurn(id: turnId)
+                writer?.undoTurn(id: turnId)
+            }
         }
         session.messages[idx].content = "已撤销：\(ref.title)"
         session.messages[idx].autoSavedAction = nil
