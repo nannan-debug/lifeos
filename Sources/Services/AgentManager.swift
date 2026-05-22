@@ -680,7 +680,7 @@ final class AgentManager: ObservableObject {
         forceCreateNewThread()
         errorMessage = nil
 
-        if messagesToExtract.count >= 4 && messagesToExtract.count > extractedCount {
+        if messagesToExtract.count >= 10 && messagesToExtract.count > extractedCount {
             memoryStatus = "正在提取记忆..."
             Task { [weak self] in
                 await self?.extractMemories(from: messagesToExtract)
@@ -1003,7 +1003,7 @@ final class AgentManager: ObservableObject {
 
     private func extractMemoriesForCurrentThreadIfNeeded() {
         let messages = session.messages
-        guard messages.count >= 4 else { return }
+        guard messages.count >= 10 else { return }
         let thread = currentThread()
         guard messages.count > (thread?.memoryExtractedCount ?? 0) else { return }
         memoryStatus = "正在提取记忆..."
