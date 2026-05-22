@@ -25,12 +25,15 @@ export function createTraceServer(options = {}) {
   const dashboardSecret = options.dashboardSecret ?? process.env.DASHBOARD_SESSION_SECRET ?? traceToken;
 
   async function writeJSON(res, status, payload) {
+    if (res.writableEnded) return;
     const body = JSON.stringify(payload);
-    res.writeHead(status, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Content-Length": Buffer.byteLength(body),
-    });
-    res.end(body);
+    try {
+      res.writeHead(status, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": Buffer.byteLength(body),
+      });
+      res.end(body);
+    } catch (_) { /* client already disconnected */ }
   }
 
   function isAuthorized(req) {
@@ -419,6 +422,17 @@ export function createTraceServer(options = {}) {
 if (process.argv[1] === __filename) {
   const port = Number(process.env.PORT || DEFAULT_PORT);
   const { server } = createTraceServer();
+
+  process.on("uncaughtException", (err) => {
+    console.error("[uncaughtException]", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection]", reason);
+  });
+  server.on("error", (err) => {
+    console.error("[server error]", err);
+  });
+
   server.listen(port, "0.0.0.0", () => {
     console.log(`lifeos-agent-trace-ingest listening on :${port}`);
   });

@@ -409,7 +409,8 @@ async function handleChat(body, provider, apiKey, trace) {
     history.pop();
   }
 
-  const effectiveContext = history.length === 0 ? (contextSummary || "无") : "（已在首轮提供）";
+  const hasToolResult = contextSummary.includes("数据查询结果：");
+  const effectiveContext = (history.length === 0 || hasToolResult) ? (contextSummary || "无") : "（已在首轮提供）";
 
   const systemPrompt = CHAT_SYSTEM_PROMPT
     .replace("{{AGENT_PERSONA}}", AGENT_PERSONA)
@@ -685,6 +686,8 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
   const content = (msg?.content || msg?.reasoning_content || "").trim();
 
   if (!content) {
+    const rawContent = (msg?.content || "");
+    const isWhitespaceOnly = rawContent.length > 0 && !rawContent.trim();
     trace("model_empty_response", {
       model: provider.model,
       provider: "deepseek",
@@ -692,15 +695,33 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
       maxTokens,
       usage: aiData.usage || null,
       latencyMs: Date.now() - startedAt,
-      retry: { attempt: _retry, willRetry: _retry < 2 },
+      retry: { attempt: _retry, willRetry: _retry < 3 },
       error: {
-        type: "ai_empty_response",
+        type: isWhitespaceOnly ? "ai_whitespace_response" : "ai_empty_response",
         raw: JSON.stringify(aiData).slice(0, 800),
       },
     });
-    if (_retry < 2) {
-      const dropFormat = useJsonFormat && _retry >= 1;
-      return callAIJSON(provider, apiKey, messages, temperature, maxTokens, _retry + 1, trace, dropFormat ? false : useJsonFormat);
+    if (_retry < 3) {
+      // retry 0→1: drop response_format
+      // retry 1→2: add JSON nudge message + lower temperature
+      // retry 2→3: strip to single-turn (system + user only)
+      const dropFormat = useJsonFormat && _retry >= 0;
+      const nextFormat = dropFormat ? false : useJsonFormat;
+      let nextMessages = messages;
+      let nextTemp = temperature;
+      if (_retry >= 1) {
+        nextTemp = 0.3;
+        const nudge = { role: "user", content: "请直接用 JSON 格式回复，不要输出空格或空行。" };
+        nextMessages = [...messages, nudge];
+      }
+      if (_retry >= 2) {
+        // strip to single-turn: keep system + last user message only
+        const system = messages.find(m => m.role === "system");
+        const lastUser = [...messages].reverse().find(m => m.role === "user");
+        nextMessages = [system, { role: "user", content: lastUser.content + "\n\n请直接用 JSON 格式回复。" }].filter(Boolean);
+        nextTemp = 0.1;
+      }
+      return callAIJSON(provider, apiKey, nextMessages, nextTemp, maxTokens, _retry + 1, trace, nextFormat);
     }
     return {
       errorResponse: jsonError(502, "ai_empty_response", {
