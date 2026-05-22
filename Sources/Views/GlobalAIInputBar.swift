@@ -494,9 +494,9 @@ private struct AgentChatPanel: View {
     private func actionCard(_ action: AgentActionDraft) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: actionIcon(for: action.kind))
+                Image(systemName: actionIcon(for: action))
                     .foregroundStyle(CreamTheme.green)
-                Text(actionLabel(for: action.kind))
+                Text(actionLabel(for: action))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
                 Spacer()
@@ -921,16 +921,22 @@ private struct AgentChatPanel: View {
         }
     }
 
-    private func actionLabel(for kind: AgentActionKind) -> String {
-        switch kind {
+    private func actionLabel(for action: AgentActionDraft) -> String {
+        if action.kind == .inbox && action.inboxType == "DBT练习" {
+            return "保存练习记录"
+        }
+        switch action.kind {
         case .inbox: return "建议存随手记"
         case .task: return "建议存待办"
         case .time: return "建议存时间"
         }
     }
 
-    private func actionIcon(for kind: AgentActionKind) -> String {
-        switch kind {
+    private func actionIcon(for action: AgentActionDraft) -> String {
+        if action.kind == .inbox && action.inboxType == "DBT练习" {
+            return "leaf"
+        }
+        switch action.kind {
         case .inbox: return "square.and.pencil"
         case .task: return "checklist"
         case .time: return "clock"

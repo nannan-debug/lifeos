@@ -442,6 +442,8 @@ final class AgentManager: ObservableObject {
     private func shouldAutoConfirm(_ action: AgentActionDraft) -> Bool {
         // AI 自报 confidence 太低时不自动保存
         guard action.confidence >= 0.7 else { return false }
+        // DBT练习记录需要用户确认，不自动保存
+        if action.inboxType == "DBT练习" { return false }
         switch action.kind {
         case .inbox:
             // 随手记：有标题或内容就自动存
