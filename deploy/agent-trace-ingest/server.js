@@ -313,6 +313,9 @@ export function createTraceServer(options = {}) {
   }
 
   const server = http.createServer(async (req, res) => {
+    // 30s 请求超时，防止连接挂起
+    req.setTimeout(30000);
+    res.setTimeout(30000);
     try {
       const url = new URL(req.url || "/", "http://localhost");
 
@@ -432,6 +435,9 @@ if (process.argv[1] === __filename) {
   server.on("error", (err) => {
     console.error("[server error]", err);
   });
+
+  server.keepAliveTimeout = 65000;   // 比 nginx 的 60s 长一点
+  server.headersTimeout = 70000;
 
   server.listen(port, "0.0.0.0", () => {
     console.log(`lifeos-agent-trace-ingest listening on :${port}`);

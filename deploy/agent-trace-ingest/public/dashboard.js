@@ -4,6 +4,7 @@ const state = {
   selectedTraceId: null,
   selectedEventId: null,
   selectedEvent: null,
+  autoRefreshTimer: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -52,23 +53,78 @@ function highlightJSON(value) {
     .replace(/\\t/g, "  ");
 }
 
+// ── 带超时 + 自动重试的 fetch ──
 async function requestJSON(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.error || `HTTP ${response.status}`);
+  const maxRetries = options._retries ?? 2;
+  const timeoutMs = options._timeout ?? 15000;
+  let lastError;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 800 * attempt));
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+      clearTimeout(timer);
+
+      // session 过期 → 重新登录
+      if (response.status === 401) {
+        handleSessionExpired();
+        throw new Error("会话已过期，请重新登录");
+      }
+
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || `HTTP ${response.status}`);
+      }
+      return body;
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error;
+      // 不重试的情况：会话过期 / 非网络错误
+      if (error.message.includes("会话已过期")) throw error;
+      if (error.name !== "AbortError" && error.message !== "Failed to fetch" && !error.message.includes("NetworkError")) {
+        throw error;
+      }
+      // 网络错误或超时 → 继续重试
+    }
   }
-  return body;
+  throw lastError || new Error("网络连接失败");
+}
+
+function handleSessionExpired() {
+  $("loginPanel").hidden = false;
+  $("appPanel").hidden = true;
+  $("loginMessage").textContent = "会话已过期，请重新登录。";
+  stopAutoRefresh();
+}
+
+// ── 自动刷新 ──
+function startAutoRefresh() {
+  stopAutoRefresh();
+  state.autoRefreshTimer = setInterval(() => {
+    loadTraces(true);
+  }, 60000);
+}
+
+function stopAutoRefresh() {
+  if (state.autoRefreshTimer) {
+    clearInterval(state.autoRefreshTimer);
+    state.autoRefreshTimer = null;
+  }
 }
 
 async function loadSession() {
-  const session = await requestJSON("/dashboard/api/session");
+  const session = await requestJSON("/dashboard/api/session", { _retries: 1 });
   $("loginPanel").hidden = session.authenticated;
   $("appPanel").hidden = !session.authenticated;
   if (!session.enabled) {
@@ -80,6 +136,7 @@ async function loadSession() {
   if (session.authenticated) {
     $("sessionUser").textContent = session.user;
     await loadTraces();
+    startAutoRefresh();
   }
 }
 
@@ -98,10 +155,10 @@ function queryURL() {
   return `/dashboard/api/traces?${params}`;
 }
 
-async function loadTraces() {
-  setBusy(true, "查询中...");
+async function loadTraces(silent = false) {
+  if (!silent) setBusy(true, "查询中...");
   try {
-    setLoading("正在读取 trace 摘要...");
+    if (!silent) setLoading("正在读取 trace 摘要...");
     const body = await requestJSON(queryURL());
     state.traces = body.traces || [];
     if (!state.traces.some((trace) => trace.traceId === state.selectedTraceId)) {
@@ -114,7 +171,7 @@ async function loadTraces() {
     renderEventDetail();
     setRefreshState("已更新");
   } catch (error) {
-    showError(error);
+    if (!silent) showError(error);
     setRefreshState("读取失败");
   } finally {
     setBusy(false);
@@ -128,17 +185,22 @@ async function loadSelectedTraceEvents() {
     return;
   }
   setLoading("正在读取完整链路...");
-  const params = new URLSearchParams();
-  params.set("date", $("dateInput").value || todayKey());
-  params.set("traceId", state.selectedTraceId);
-  params.set("limit", "1000");
-  const body = await requestJSON(`/dashboard/api/traces?${params}`);
-  state.events = (body.events || []).map((event, index) => ({ ...event, __id: eventId(event, index) }));
-  if (!state.events.some((event) => event.__id === state.selectedEventId)) {
-    state.selectedEvent = state.events[0] || null;
-    state.selectedEventId = state.selectedEvent?.__id || null;
+  try {
+    const params = new URLSearchParams();
+    params.set("date", $("dateInput").value || todayKey());
+    params.set("traceId", state.selectedTraceId);
+    params.set("limit", "1000");
+    const body = await requestJSON(`/dashboard/api/traces?${params}`);
+    state.events = (body.events || []).map((event, index) => ({ ...event, __id: eventId(event, index) }));
+    if (!state.events.some((event) => event.__id === state.selectedEventId)) {
+      state.selectedEvent = state.events[0] || null;
+      state.selectedEventId = state.selectedEvent?.__id || null;
+    }
+    renderTimeline();
+  } catch (error) {
+    $("timeline").className = "timeline empty-state";
+    $("timeline").innerHTML = `<span>读取失败：${escapeHTML(error.message)}</span> <button class="retry-link" onclick="loadSelectedTraceEvents()">重试</button>`;
   }
-  renderTimeline();
 }
 
 function setLoading(text) {
@@ -269,6 +331,7 @@ async function login(event) {
         user: $("loginUser").value,
         password: $("loginPassword").value,
       }),
+      _retries: 1,
     });
     await loadSession();
   } catch (error) {
@@ -277,7 +340,8 @@ async function login(event) {
 }
 
 async function logout() {
-  await requestJSON("/dashboard/api/logout", { method: "POST", body: "{}" });
+  stopAutoRefresh();
+  await requestJSON("/dashboard/api/logout", { method: "POST", body: "{}", _retries: 0 });
   state.traces = [];
   state.events = [];
   state.selectedTraceId = null;
@@ -294,27 +358,28 @@ async function copyJSON() {
   }, 1200);
 }
 
+function showError(error) {
+  $("timeline").className = "timeline empty-state";
+  $("timeline").innerHTML = `<span>读取失败：${escapeHTML(error.message)}</span> <button class="retry-link" onclick="loadTraces()">重试</button>`;
+}
+
 function bindEvents() {
   $("dateInput").value = todayKey();
   $("loginForm").addEventListener("submit", login);
   $("logoutButton").addEventListener("click", logout);
-  $("refreshButton").addEventListener("click", loadTraces);
+  $("refreshButton").addEventListener("click", () => loadTraces());
   $("traceFilters").addEventListener("submit", (event) => {
     event.preventDefault();
     loadTraces();
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
-  ["dateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => $(id).addEventListener("change", loadTraces));
+  ["dateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => $(id).addEventListener("change", () => loadTraces()));
 }
 
 bindEvents();
-function showError(error) {
-  $("timeline").className = "timeline empty-state";
-  $("timeline").textContent = `读取失败：${error.message}`;
-}
 
 loadSession().catch((error) => {
   $("loginPanel").hidden = false;
   $("appPanel").hidden = true;
-  $("loginMessage").textContent = error.message;
+  $("loginMessage").textContent = `连接失败：${error.message}`;
 });
