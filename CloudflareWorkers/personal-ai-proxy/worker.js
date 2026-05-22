@@ -627,6 +627,7 @@ ${STREAM_JSON_DELIMITER}
   // Transform upstream SSE → downstream SSE
   let reasoningBuf = "";
   let contentBuf = "";
+  let contentForwarded = 0; // how many chars of contentBuf have been sent to client
   let phase = "reasoning"; // "reasoning" | "content"
   let usage = null;
   let reasoningStartedAt = Date.now();
@@ -664,6 +665,16 @@ ${STREAM_JSON_DELIMITER}
           const payload = trimmed.slice(6);
 
           if (payload === "[DONE]") {
+            // Flush any held-back content that isn't part of a delimiter
+            const finalDelimIdx = contentBuf.indexOf(STREAM_JSON_DELIMITER);
+            if (finalDelimIdx === -1 && contentForwarded < contentBuf.length) {
+              const remaining = contentBuf.slice(contentForwarded);
+              if (remaining.trim()) await sendSSE({ type: "content", text: remaining });
+            } else if (finalDelimIdx !== -1 && contentForwarded < finalDelimIdx) {
+              const remaining = contentBuf.slice(contentForwarded, finalDelimIdx).trimEnd();
+              if (remaining) await sendSSE({ type: "content", text: remaining });
+            }
+
             // Stream finished — parse accumulated content
             const reasoningTimeMs = contentStartedAt
               ? contentStartedAt - reasoningStartedAt
@@ -678,7 +689,12 @@ ${STREAM_JSON_DELIMITER}
             const delimIdx = contentBuf.indexOf(STREAM_JSON_DELIMITER);
             if (delimIdx !== -1) {
               replyText = contentBuf.slice(0, delimIdx).trim();
-              const jsonPart = contentBuf.slice(delimIdx + STREAM_JSON_DELIMITER.length).trim();
+              let jsonPart = contentBuf.slice(delimIdx + STREAM_JSON_DELIMITER.length).trim();
+              // Handle case where DeepSeek wraps with closing delimiter: <<<JSON>>>{...}<<<JSON>>>
+              const closingIdx = jsonPart.indexOf(STREAM_JSON_DELIMITER);
+              if (closingIdx !== -1) {
+                jsonPart = jsonPart.slice(0, closingIdx).trim();
+              }
               try {
                 const structured = JSON.parse(jsonPart);
                 followUpQuestion = typeof structured.followUpQuestion === "string" && structured.followUpQuestion.trim()
@@ -763,13 +779,28 @@ ${STREAM_JSON_DELIMITER}
             }
             contentBuf += delta.content;
 
-            // Don't forward <<<JSON>>> delimiter and structured data to client
-            const delimCheck = contentBuf.indexOf(STREAM_JSON_DELIMITER);
-            if (delimCheck === -1) {
-              // No delimiter yet — safe to forward all new content
-              await sendSSE({ type: "content", text: delta.content });
+            // Don't forward <<<JSON>>> delimiter and structured data to client.
+            // Use a "safe forwarded position" approach to handle delimiter arriving
+            // across multiple chunks (e.g. "<<<JSON" in one chunk, ">>>" in next).
+            const delimIdx = contentBuf.indexOf(STREAM_JSON_DELIMITER);
+            if (delimIdx !== -1) {
+              // Delimiter found — only forward up to the delimiter, nothing after
+              if (contentForwarded < delimIdx) {
+                const safe = contentBuf.slice(contentForwarded, delimIdx).trimEnd();
+                if (safe) await sendSSE({ type: "content", text: safe });
+                contentForwarded = contentBuf.length; // stop forwarding forever
+              }
+            } else {
+              // No delimiter yet — forward content but hold back the tail
+              // in case it's a partial delimiter (e.g. ends with "<<<" or "<<<JSON")
+              const holdBack = STREAM_JSON_DELIMITER.length - 1; // 12 chars
+              const safeEnd = contentBuf.length - holdBack;
+              if (safeEnd > contentForwarded) {
+                const safe = contentBuf.slice(contentForwarded, safeEnd);
+                await sendSSE({ type: "content", text: safe });
+                contentForwarded = safeEnd;
+              }
             }
-            // If delimiter found, stop forwarding content tokens (they're structured JSON)
           }
         }
       }
