@@ -21,6 +21,12 @@ final class AgentManager: ObservableObject {
     @Published var memories: [AgentMemory] = []
     @Published var memoryStatus: String? = nil
 
+    // MARK: - Streaming state
+    @Published var streamingPhase: StreamingPhase = .idle
+    @Published var streamingReasoning: String = ""
+    @Published var streamingContent: String = ""
+    @Published var reasoningTimeMs: Int? = nil
+
     private weak var writer: AgentDataWriter?
     private let client: AIClient
     private let defaults: UserDefaults
@@ -133,8 +139,16 @@ final class AgentManager: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let startedAt = Date()
+
+            await MainActor.run {
+                self.streamingPhase = .reasoning
+                self.streamingReasoning = ""
+                self.streamingContent = ""
+                self.reasoningTimeMs = nil
+            }
+
             do {
-                let response = try await self.client.chat(
+                let response = try await self.consumeStream(
                     input: request.input,
                     messages: request.messages,
                     contextSummary: request.contextSummary,
@@ -149,8 +163,18 @@ final class AgentManager: ObservableObject {
                 if let toolCall = response.toolCall, let executor = toolExecutor {
                     await MainActor.run {
                         if !response.reply.isEmpty {
-                            self.appendMessage(AgentChatMessage(role: "assistant", content: response.reply))
+                            self.appendMessage(AgentChatMessage(
+                                role: "assistant",
+                                content: response.reply,
+                                reasoningContent: self.streamingReasoning.isEmpty ? nil : self.streamingReasoning,
+                                reasoningTimeMs: self.reasoningTimeMs
+                            ))
                         }
+                        // Reset streaming state for second round
+                        self.streamingPhase = .reasoning
+                        self.streamingReasoning = ""
+                        self.streamingContent = ""
+                        self.reasoningTimeMs = nil
                     }
                     self.emitTrace(
                         traceID: traceID,
@@ -183,7 +207,7 @@ final class AgentManager: ObservableObject {
                         memories: self.memories,
                         toolResult: toolResult
                     )
-                    let followUpResponse = try await self.client.chat(
+                    let followUpResponse = try await self.consumeStream(
                         input: followUpRequest.input,
                         messages: followUpRequest.messages,
                         contextSummary: followUpRequest.contextSummary,
@@ -196,7 +220,10 @@ final class AgentManager: ObservableObject {
                     )
                     await MainActor.run {
                         let mergedActions = self.actionSuggestionsToMerge(from: followUpResponse)
-                        self.receiveResponse(followUpResponse, mergedActions: mergedActions)
+                        self.finishStreaming(
+                            response: followUpResponse,
+                            mergedActions: mergedActions
+                        )
                         self.emitTrace(
                             traceID: traceID,
                             eventName: "response_merged",
@@ -225,7 +252,10 @@ final class AgentManager: ObservableObject {
                 } else {
                     await MainActor.run {
                         let mergedActions = self.actionSuggestionsToMerge(from: response)
-                        self.receiveResponse(response, mergedActions: mergedActions)
+                        self.finishStreaming(
+                            response: response,
+                            mergedActions: mergedActions
+                        )
                         self.emitTrace(
                             traceID: traceID,
                             eventName: "response_merged",
@@ -253,6 +283,10 @@ final class AgentManager: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
+                    self.streamingPhase = .idle
+                    self.streamingReasoning = ""
+                    self.streamingContent = ""
+
                     let fallback = AgentOrchestrator.fallbackResponse(for: clean, weeklySummary: weeklySummary)
                     self.errorMessage = weeklySummary != nil && AgentOrchestrator.detectsReviewIntent(clean)
                         ? nil
@@ -787,6 +821,109 @@ final class AgentManager: ObservableObject {
         }
         mergeActionSuggestions(mergedActions ?? actionSuggestionsToMerge(from: response))
         saveCurrentThread()
+    }
+
+    // MARK: - Streaming helpers
+
+    /// Consume a streaming response, updating published state on MainActor.
+    /// Returns a synthesized AgentChatResponse when the stream completes.
+    private func consumeStream(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?,
+        userProfile: String?
+    ) async throws -> AgentChatResponse {
+        let stream = client.chatStream(
+            input: input,
+            messages: messages,
+            contextSummary: contextSummary,
+            currentDate: currentDate,
+            currentTime: currentTime,
+            traceId: traceId,
+            sessionId: sessionId,
+            threadId: threadId,
+            userProfile: userProfile
+        )
+
+        var finalResponse: AgentChatResponse?
+
+        for try await event in stream {
+            switch event.type {
+            case .reasoning:
+                if let text = event.text {
+                    await MainActor.run {
+                        self.streamingReasoning += text
+                    }
+                }
+            case .content:
+                if let text = event.text {
+                    await MainActor.run {
+                        if self.streamingPhase == .reasoning {
+                            self.streamingPhase = .content
+                        }
+                        self.streamingContent += text
+                    }
+                }
+            case .done:
+                let reply = event.reply ?? ""
+                let reasoningMs = event.reasoningTimeMs
+                await MainActor.run {
+                    self.streamingPhase = .done
+                    self.reasoningTimeMs = reasoningMs
+                }
+                finalResponse = AgentChatResponse(
+                    reply: reply,
+                    followUpQuestion: event.followUpQuestion,
+                    actionSuggestions: event.actionSuggestions ?? [],
+                    toolCall: event.toolCall,
+                    usage: event.usage
+                )
+            case .error:
+                throw AIParseError.network(event.message ?? "stream error")
+            }
+        }
+
+        guard let response = finalResponse else {
+            // Stream ended without done event — use accumulated content
+            let reply = await MainActor.run { self.streamingContent }
+            return AgentChatResponse(
+                reply: reply.isEmpty ? "我在。你可以继续说一点。" : reply
+            )
+        }
+        return response
+    }
+
+    /// Called on MainActor after streaming completes — persists the message with reasoning.
+    private func finishStreaming(
+        response: AgentChatResponse,
+        mergedActions: [AgentActionDraft]
+    ) {
+        isLoading = false
+        let pieces = [response.reply, response.followUpQuestion]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let content = pieces.joined(separator: "\n\n")
+        if !content.isEmpty {
+            session.messages.append(AgentChatMessage(
+                role: "assistant",
+                content: content,
+                reasoningContent: streamingReasoning.isEmpty ? nil : streamingReasoning,
+                reasoningTimeMs: reasoningTimeMs
+            ))
+        }
+        mergeActionSuggestions(mergedActions)
+        saveCurrentThread()
+
+        // Reset streaming state
+        streamingPhase = .idle
+        streamingReasoning = ""
+        streamingContent = ""
+        reasoningTimeMs = nil
     }
 
     private func appendMessage(_ message: AgentChatMessage) {

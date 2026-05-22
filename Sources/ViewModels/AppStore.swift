@@ -79,6 +79,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var agentDebugLogs: [AgentChatDebugLog] { agent.debugLogs }
     var agentMemories: [AgentMemory] { agent.memories }
     var agentMemoryStatus: String? { agent.memoryStatus }
+    var streamingPhase: StreamingPhase { agent.streamingPhase }
+    var streamingReasoning: String { agent.streamingReasoning }
+    var streamingContent: String { agent.streamingContent }
+    var agentReasoningTimeMs: Int? { agent.reasoningTimeMs }
     func addAgentMemory(content: String) { agent.addMemory(content: content) }
     func removeAgentMemory(id: UUID) { agent.removeMemory(id: id) }
 

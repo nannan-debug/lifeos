@@ -65,6 +65,28 @@ struct ConversationTurn: Identifiable {
     var derivatives: [TurnDerivative] = []
 }
 
+// MARK: - Streaming
+
+enum StreamEventType: String, Decodable {
+    case reasoning, content, done, error
+}
+
+struct StreamEvent: Decodable {
+    let type: StreamEventType
+    let text: String?
+    let reply: String?
+    let followUpQuestion: String?
+    let actionSuggestions: [AgentActionDraft]?
+    let toolCall: AgentToolCall?
+    let usage: AgentTokenUsage?
+    let reasoningTimeMs: Int?
+    let message: String?
+}
+
+enum StreamingPhase {
+    case idle, reasoning, content, done
+}
+
 enum AgentActionKind: String, Codable, Equatable {
     case inbox
     case task
@@ -168,6 +190,8 @@ struct AgentChatMessage: Identifiable, Codable, Equatable {
     var createdAt: Date = Date()
     var isError: Bool = false   // 错误兜底消息，不发送给 AI
     var autoSavedAction: AutoSavedActionRef? = nil  // 自动保存的 action 引用，支持撤销
+    var reasoningContent: String? = nil   // DeepSeek 推理全文，持久化
+    var reasoningTimeMs: Int? = nil       // 推理阶段耗时
 }
 
 struct AutoSavedActionRef: Codable, Equatable {

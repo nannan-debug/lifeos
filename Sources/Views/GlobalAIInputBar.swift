@@ -213,8 +213,9 @@ private struct AgentChatPanel: View {
                             messageRow(message)
                                 .id(message.id)
                         }
-                        if store.isAgentLoading {
-                            thinkingRow
+                        if store.isAgentLoading || store.streamingPhase != .idle {
+                            streamingOrThinkingRow
+                                .id("streaming-row")
                         }
                         if let msg = store.agentErrorMessage {
                             systemNotice(msg)
@@ -234,6 +235,11 @@ private struct AgentChatPanel: View {
             }
             .onChange(of: store.agentSession.pendingActions.count) { _, _ in
                 scrollToBottom(proxy)
+            }
+            .onChange(of: store.streamingContent) { _, _ in
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo("streaming-row", anchor: .bottom)
+                }
             }
             .simultaneousGesture(contentDismissKeyboardDrag)
         }
@@ -281,7 +287,13 @@ private struct AgentChatPanel: View {
             } else if message.autoSavedAction != nil {
                 autoSavedRow(message)
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let reasoning = message.reasoningContent, !reasoning.isEmpty {
+                        persistedReasoningSection(
+                            content: reasoning,
+                            timeMs: message.reasoningTimeMs
+                        )
+                    }
                     Text(message.content)
                         .font(.callout)
                         .lineSpacing(4)
@@ -322,15 +334,130 @@ private struct AgentChatPanel: View {
         )
     }
 
-    private var thinkingRow: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .scaleEffect(0.75)
-                .tint(CreamTheme.green)
-            Text("猫猫在想怎么接这句话...")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    // MARK: - Streaming / Thinking UI
+
+    @ViewBuilder
+    private var streamingOrThinkingRow: some View {
+        let phase = store.streamingPhase
+        switch phase {
+        case .reasoning:
+            streamingReasoningRow
+        case .content, .done:
+            VStack(alignment: .leading, spacing: 8) {
+                // Collapsed reasoning summary
+                if !store.streamingReasoning.isEmpty {
+                    reasoningCollapsedBadge(
+                        text: store.streamingReasoning,
+                        timeMs: store.agentReasoningTimeMs
+                    )
+                }
+                // Streaming content with cursor
+                if !store.streamingContent.isEmpty {
+                    StreamingTextView(text: store.streamingContent, isActive: phase != .done)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .idle:
+            // Fallback: non-streaming loading
+            HStack(spacing: 10) {
+                ProgressView()
+                    .scaleEffect(0.75)
+                    .tint(CreamTheme.green)
+                Text("猫猫在想怎么接这句话...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    private var streamingReasoningRow: some View {
+        DisclosureGroup {
+            Text(store.streamingReasoning)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+        } label: {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(CreamTheme.green)
+                Text("猫猫在想...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .opacity(pulseOpacity)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulseOpacity)
+                    .onAppear { pulseOpacity = 0.4 }
+            }
+        }
+        .tint(.secondary)
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.03))
+        )
+    }
+
+    @State private var pulseOpacity: Double = 1.0
+
+    /// Collapsed reasoning badge for completed reasoning phase
+    private func reasoningCollapsedBadge(text: String, timeMs: Int?) -> some View {
+        DisclosureGroup {
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "brain.head.profile")
+                    .font(.caption2)
+                    .foregroundStyle(CreamTheme.green)
+                Text("思考过程")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let ms = timeMs {
+                    Text("· \(String(format: "%.1f", Double(ms) / 1000))s")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .tint(.secondary)
+        .font(.caption2)
+    }
+
+    /// Reasoning disclosure for persisted messages
+    private func persistedReasoningSection(content: String, timeMs: Int?) -> some View {
+        DisclosureGroup {
+            Text(content)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+                .textSelection(.enabled)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "brain.head.profile")
+                    .font(.caption2)
+                    .foregroundStyle(CreamTheme.green)
+                Text("思考过程")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let ms = timeMs {
+                    Text("· \(String(format: "%.1f", Double(ms) / 1000))s")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .tint(.secondary)
+        .font(.caption2)
     }
 
     private func systemNotice(_ text: String, icon: String = "leaf") -> some View {
@@ -815,5 +942,34 @@ private struct AgentChatPanel: View {
         formatter.locale = Locale(identifier: "zh_Hans")
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Streaming text with blinking cursor
+
+private struct StreamingTextView: View {
+    let text: String
+    let isActive: Bool
+    @State private var showCursor = true
+
+    var body: some View {
+        Text(text + (isActive && showCursor ? "▍" : ""))
+            .font(.callout)
+            .lineSpacing(4)
+            .foregroundStyle(CreamTheme.text.opacity(0.9))
+            .onAppear {
+                guard isActive else { return }
+                startCursorBlink()
+            }
+            .onChange(of: isActive) { _, active in
+                if active { startCursorBlink() }
+            }
+    }
+
+    private func startCursorBlink() {
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+            if !isActive { timer.invalidate(); return }
+            showCursor.toggle()
+        }
     }
 }

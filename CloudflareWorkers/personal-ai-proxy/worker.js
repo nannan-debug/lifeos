@@ -198,6 +198,10 @@ export default {
       },
     });
 
+    if (mode === "chat" && body.stream === true) {
+      return handleChatStream(body, AI_PROVIDER, apiKey, trace);
+    }
+
     if (mode === "chat") {
       return handleChat(body, AI_PROVIDER, apiKey, trace);
     }
@@ -492,6 +496,307 @@ async function handleChat(body, provider, apiKey, trace) {
         : null,
     },
     usage: parsed.__usage || null,
+  });
+}
+
+// ── Streaming chat: DeepSeek SSE → client SSE ──────────────────────────
+
+const STREAM_JSON_DELIMITER = "<<<JSON>>>";
+
+async function handleChatStream(body, provider, apiKey, trace) {
+  const input = (body.input || body.text || "").trim();
+  const currentDate = body.currentDate || "";
+  const currentTime = body.currentTime || "";
+  const contextSummary = String(body.contextSummary || "").slice(0, 4000);
+  const userProfileText = typeof body.userProfile === "string" && body.userProfile.trim()
+    ? body.userProfile.trim().slice(0, 500)
+    : USER_PROFILE;
+
+  if (!input) return jsonError(400, "empty_input");
+
+  // Build history (same logic as handleChat)
+  const rawHistory = Array.isArray(body.messages)
+    ? body.messages
+        .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .slice(-6)
+        .map((m) => ({ role: m.role, content: m.content.slice(0, 800) }))
+    : [];
+
+  const history = [];
+  for (const m of rawHistory) {
+    if (history.length > 0 && history[history.length - 1].role === m.role) {
+      history[history.length - 1].content += "\n" + m.content;
+    } else {
+      history.push({ ...m });
+    }
+  }
+  if (history.length > 0 && history[history.length - 1].role === "user") {
+    history.pop();
+  }
+
+  const hasToolResult = contextSummary.includes("数据查询结果：");
+  const effectiveContext = (history.length === 0 || hasToolResult) ? (contextSummary || "无") : "（已在首轮提供）";
+
+  // Streaming system prompt: same as CHAT_SYSTEM_PROMPT but replaces JSON output format
+  // with plain-text reply + <<<JSON>>> delimiter for structured data
+  const streamSuffix = `
+
+# 输出方式（流式模式）
+先用自然语言回复用户（不要包裹在 JSON 里），回复写完后，如果有结构化数据，换一行写：
+${STREAM_JSON_DELIMITER}
+然后紧跟一个 JSON 对象：{"followUpQuestion":"...或null","actionSuggestions":[...],"toolCall":null}
+如果没有结构化数据要返回，就不写 ${STREAM_JSON_DELIMITER}，只输出自然语言回复。`;
+
+  // Build system prompt: replace the JSON output format section with streaming instructions
+  let systemPrompt = CHAT_SYSTEM_PROMPT
+    .replace("{{AGENT_PERSONA}}", AGENT_PERSONA)
+    .replace("{{USER_PROFILE}}", userProfileText)
+    .replace("{{CHAT_POLICY}}", CHAT_POLICY)
+    .replace("{{CURRENT_DATE}}", currentDate)
+    .replace("{{CURRENT_TIME}}", currentTime)
+    .replace("{{CONTEXT_SUMMARY}}", effectiveContext);
+
+  // Replace the strict JSON output format with streaming format
+  systemPrompt = systemPrompt.replace(
+    /# 输出格式（严格 JSON）\n\{"reply":"自然回复","followUpQuestion":"一个追问或null","actionSuggestions":\[\]\}/,
+    ""
+  ) + streamSuffix;
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...history,
+    { role: "user", content: input },
+  ];
+
+  trace("stream_started", {
+    model: provider.model,
+    provider: "deepseek",
+    temperature: 0.5,
+    maxTokens: 4096,
+    payload: {
+      messages,
+      rawHistory,
+      normalizedHistory: history,
+      contextSummary,
+      effectiveContext,
+    },
+  });
+
+  // Call DeepSeek with stream: true (no response_format)
+  let upstream;
+  const startedAt = Date.now();
+  try {
+    upstream = await fetch(provider.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        messages,
+        temperature: 0.5,
+        max_tokens: 4096,
+        stream: true,
+      }),
+    });
+  } catch (e) {
+    trace("stream_failed", {
+      model: provider.model,
+      provider: "deepseek",
+      latencyMs: Date.now() - startedAt,
+      error: { type: "network", message: String(e).slice(0, 200) },
+    });
+    return jsonError(502, "ai_network_failed", { message: String(e).slice(0, 200) });
+  }
+
+  if (!upstream.ok) {
+    const errText = await upstream.text();
+    trace("stream_failed", {
+      model: provider.model,
+      provider: "deepseek",
+      latencyMs: Date.now() - startedAt,
+      error: { type: "upstream", status: upstream.status, detail: errText.slice(0, 500) },
+    });
+    return jsonError(502, "ai_upstream_failed", {
+      status: upstream.status,
+      detail: errText.slice(0, 200),
+    });
+  }
+
+  // Transform upstream SSE → downstream SSE
+  let reasoningBuf = "";
+  let contentBuf = "";
+  let phase = "reasoning"; // "reasoning" | "content"
+  let usage = null;
+  let reasoningStartedAt = Date.now();
+  let contentStartedAt = null;
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+
+  function sendSSE(obj) {
+    return writer.write(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+  }
+
+  // Process upstream in background
+  const processUpstream = async () => {
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // keep incomplete last line
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue;
+
+          if (!trimmed.startsWith("data: ")) continue;
+          const payload = trimmed.slice(6);
+
+          if (payload === "[DONE]") {
+            // Stream finished — parse accumulated content
+            const reasoningTimeMs = contentStartedAt
+              ? contentStartedAt - reasoningStartedAt
+              : Date.now() - reasoningStartedAt;
+
+            // Extract structured data from content via <<<JSON>>> delimiter
+            let replyText = contentBuf;
+            let followUpQuestion = null;
+            let actionSuggestions = [];
+            let toolCall = null;
+
+            const delimIdx = contentBuf.indexOf(STREAM_JSON_DELIMITER);
+            if (delimIdx !== -1) {
+              replyText = contentBuf.slice(0, delimIdx).trim();
+              const jsonPart = contentBuf.slice(delimIdx + STREAM_JSON_DELIMITER.length).trim();
+              try {
+                const structured = JSON.parse(jsonPart);
+                followUpQuestion = typeof structured.followUpQuestion === "string" && structured.followUpQuestion.trim()
+                  ? structured.followUpQuestion.trim()
+                  : null;
+                toolCall = structured.toolCall && typeof structured.toolCall === "object" && structured.toolCall.name
+                  ? { name: String(structured.toolCall.name), args: structured.toolCall.args || {} }
+                  : null;
+                const shouldSuppressActions = followUpQuestion !== null || toolCall !== null;
+                actionSuggestions = shouldSuppressActions
+                  ? []
+                  : Array.isArray(structured.actionSuggestions)
+                    ? structured.actionSuggestions.map(normalizeActionSuggestion).filter(Boolean).slice(0, 2)
+                    : [];
+              } catch {
+                // JSON parse failed — treat entire content as reply
+                replyText = contentBuf.trim();
+              }
+            }
+
+            if (!replyText) {
+              replyText = "我在。你可以继续说一点，我会慢慢跟上你的节奏。";
+            }
+
+            await sendSSE({
+              type: "done",
+              reply: replyText,
+              followUpQuestion,
+              actionSuggestions,
+              toolCall,
+              usage,
+              reasoningTimeMs,
+            });
+
+            trace("stream_finished", {
+              model: provider.model,
+              provider: "deepseek",
+              usage,
+              latencyMs: Date.now() - startedAt,
+              payload: {
+                reasoningLength: reasoningBuf.length,
+                contentLength: contentBuf.length,
+                replyLength: replyText.length,
+                hasDelimiter: delimIdx !== -1,
+                followUpQuestion,
+                toolCall,
+                actionSuggestionsCount: actionSuggestions.length,
+                reasoningTimeMs,
+              },
+            });
+
+            break;
+          }
+
+          // Parse SSE chunk from DeepSeek
+          let chunk;
+          try {
+            chunk = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+
+          // Capture usage from final chunk (DeepSeek sends it in the last non-[DONE] chunk)
+          if (chunk.usage) {
+            usage = chunk.usage;
+          }
+
+          const delta = chunk.choices?.[0]?.delta;
+          if (!delta) continue;
+
+          // DeepSeek reasoning_content → forward as reasoning events
+          if (delta.reasoning_content) {
+            reasoningBuf += delta.reasoning_content;
+            await sendSSE({ type: "reasoning", text: delta.reasoning_content });
+          }
+
+          // DeepSeek content → forward as content events
+          if (delta.content) {
+            if (phase === "reasoning" && !contentStartedAt) {
+              contentStartedAt = Date.now();
+              phase = "content";
+            }
+            contentBuf += delta.content;
+
+            // Don't forward <<<JSON>>> delimiter and structured data to client
+            const delimCheck = contentBuf.indexOf(STREAM_JSON_DELIMITER);
+            if (delimCheck === -1) {
+              // No delimiter yet — safe to forward all new content
+              await sendSSE({ type: "content", text: delta.content });
+            }
+            // If delimiter found, stop forwarding content tokens (they're structured JSON)
+          }
+        }
+      }
+    } catch (e) {
+      await sendSSE({ type: "error", message: String(e).slice(0, 200) });
+      trace("stream_error", {
+        model: provider.model,
+        provider: "deepseek",
+        latencyMs: Date.now() - startedAt,
+        error: { type: "stream_read", message: String(e).slice(0, 200) },
+      });
+    } finally {
+      await writer.close();
+    }
+  };
+
+  // Don't await — let it run while we return the response
+  processUpstream();
+
+  return new Response(readable, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      ...CORS_HEADERS,
+    },
   });
 }
 
