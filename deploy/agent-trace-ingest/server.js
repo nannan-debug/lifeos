@@ -12,6 +12,7 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const TOKEN_HEADER = "x-lifeos-trace-token";
 const DASHBOARD_COOKIE = "lifeos_trace_session";
 const DASHBOARD_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const CACHE_TTL_MS = 5000; // 5 秒缓存，避免同一秒内重复读磁盘
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,67 @@ export function createTraceServer(options = {}) {
   const dashboardUser = options.dashboardUser ?? process.env.DASHBOARD_USER ?? "";
   const dashboardPassword = options.dashboardPassword ?? process.env.DASHBOARD_PASSWORD ?? "";
   const dashboardSecret = options.dashboardSecret ?? process.env.DASHBOARD_SESSION_SECRET ?? traceToken;
+
+  // ── 内存缓存：{ day -> { events, mtime, cachedAt } } ──
+  const dayCache = new Map();
+
+  async function cachedReadDay(day) {
+    const file = path.join(traceDir, `${day}.jsonl`);
+    const now = Date.now();
+    const cached = dayCache.get(day);
+
+    // 快路径：缓存未过期直接返回
+    if (cached && now - cached.cachedAt < CACHE_TTL_MS) {
+      return cached.events;
+    }
+
+    // 检查文件是否有变化（stat 比 readFile 轻量得多）
+    let stat;
+    try {
+      stat = await fs.stat(file);
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        dayCache.set(day, { events: [], mtime: 0, cachedAt: now });
+        return [];
+      }
+      throw err;
+    }
+    const mtime = stat.mtimeMs;
+
+    // 文件没变 → 刷新 cachedAt 直接返回
+    if (cached && cached.mtime === mtime) {
+      cached.cachedAt = now;
+      return cached.events;
+    }
+
+    // 读文件 + 解析
+    const raw = await fs.readFile(file, "utf8");
+    const events = [];
+    for (const line of raw.split("\n")) {
+      if (!line) continue;
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        // 跳过损坏行，不炸掉整个请求
+        console.warn(`[warn] corrupt line in ${day}.jsonl, skipped`);
+      }
+    }
+
+    dayCache.set(day, { events, mtime, cachedAt: now });
+
+    // 只保留最近 7 天缓存，防内存泄漏
+    if (dayCache.size > 7) {
+      const oldest = [...dayCache.keys()].sort()[0];
+      dayCache.delete(oldest);
+    }
+
+    return events;
+  }
+
+  // 写入后让缓存失效
+  function invalidateCache(day) {
+    dayCache.delete(day);
+  }
 
   async function writeJSON(res, status, payload) {
     if (res.writableEnded) return;
@@ -168,6 +230,7 @@ export function createTraceServer(options = {}) {
     await fs.mkdir(traceDir, { recursive: true });
     const file = path.join(traceDir, `${day}.jsonl`);
     await fs.appendFile(file, `${JSON.stringify(normalized)}\n`, "utf8");
+    invalidateCache(day);
     return normalized;
   }
 
@@ -180,18 +243,8 @@ export function createTraceServer(options = {}) {
     }
     const traceId = String(query.get("traceId") || "").trim();
     const limit = Math.min(Number(query.get("limit") || 200), 1000);
-    const file = path.join(traceDir, `${day}.jsonl`);
-    let raw = "";
-    try {
-      raw = await fs.readFile(file, "utf8");
-    } catch (err) {
-      if (err.code === "ENOENT") return [];
-      throw err;
-    }
-    return raw
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line))
+    const allEvents = await cachedReadDay(day);
+    return allEvents
       .filter((event) => !traceId || event.traceId === traceId)
       .slice(-limit);
   }
@@ -286,14 +339,23 @@ export function createTraceServer(options = {}) {
     return { events, traces };
   }
 
+  // ── 静态文件缓存 ──
+  const staticCache = new Map();
+
   async function serveStatic(res, filePath, contentType) {
     try {
-      const data = await fs.readFile(filePath);
+      const now = Date.now();
+      let cached = staticCache.get(filePath);
+      if (!cached || now - cached.cachedAt > 30000) {
+        const data = await fs.readFile(filePath);
+        cached = { data, cachedAt: now };
+        staticCache.set(filePath, cached);
+      }
       res.writeHead(200, {
         "Content-Type": contentType,
         "Cache-Control": "no-store",
       });
-      res.end(data);
+      res.end(cached.data);
     } catch {
       await writeJSON(res, 404, { error: "not_found" });
     }
@@ -320,7 +382,7 @@ export function createTraceServer(options = {}) {
       const url = new URL(req.url || "/", "http://localhost");
 
       if (req.method === "GET" && url.pathname === "/health") {
-        await writeJSON(res, 200, { ok: true });
+        await writeJSON(res, 200, { ok: true, cacheSize: dayCache.size });
         return;
       }
 
@@ -413,6 +475,7 @@ export function createTraceServer(options = {}) {
 
       await writeJSON(res, 404, { error: "not_found" });
     } catch (err) {
+      console.error(`[${new Date().toISOString()}] ${req.method} ${req.url} → ${err.status || 500} ${err.message}`);
       await writeJSON(res, err.status || 500, {
         error: err.message || "internal_error",
       });
