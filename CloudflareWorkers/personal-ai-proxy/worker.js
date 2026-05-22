@@ -429,7 +429,7 @@ async function handleChat(body, provider, apiKey, trace) {
     model: provider.model,
     provider: "deepseek",
     temperature: 0.5,
-    maxTokens: 2048,
+    maxTokens: 4096,
     payload: {
       messages,
       rawHistory,
@@ -439,7 +439,7 @@ async function handleChat(body, provider, apiKey, trace) {
     },
   });
 
-  const parsed = await callAIJSON(provider, apiKey, messages, 0.5, 2048, 0, trace);
+  const parsed = await callAIJSON(provider, apiKey, messages, 0.5, 4096, 0, trace);
 
   if (parsed.errorResponse) return parsed.errorResponse;
 

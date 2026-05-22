@@ -28,7 +28,7 @@ enum AIParseError: Error, LocalizedError {
 enum AIParser {
     static let workerURL = URL(string: "https://ai.dogdada.com")!
     static var clientSecret: String { Secrets.aiClientSecret }
-    static let timeout: TimeInterval = 30
+    static let timeout: TimeInterval = 60
     private static let maxNetworkAttempts = 3
 
     static func warmUp() {
