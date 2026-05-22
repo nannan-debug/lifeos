@@ -5,6 +5,8 @@ const state = {
   selectedEventId: null,
   selectedEvent: null,
   autoRefreshTimer: null,
+  lastReceivedAt: null,        // 最新 event 的 receivedAt，用于增量检测
+  currentDate: null,           // 当前查询的日期，切日期时重置
 };
 
 const $ = (id) => document.getElementById(id);
@@ -76,7 +78,6 @@ async function requestJSON(url, options = {}) {
       });
       clearTimeout(timer);
 
-      // session 过期 → 重新登录
       if (response.status === 401) {
         handleSessionExpired();
         throw new Error("会话已过期，请重新登录");
@@ -90,12 +91,10 @@ async function requestJSON(url, options = {}) {
     } catch (error) {
       clearTimeout(timer);
       lastError = error;
-      // 不重试的情况：会话过期 / 非网络错误
       if (error.message.includes("会话已过期")) throw error;
       if (error.name !== "AbortError" && error.message !== "Failed to fetch" && !error.message.includes("NetworkError")) {
         throw error;
       }
-      // 网络错误或超时 → 继续重试
     }
   }
   throw lastError || new Error("网络连接失败");
@@ -140,9 +139,13 @@ async function loadSession() {
   }
 }
 
-function queryURL() {
+function currentQueryDate() {
+  return $("dateInput").value || todayKey();
+}
+
+function queryURL(extra = {}) {
   const params = new URLSearchParams();
-  params.set("date", $("dateInput").value || todayKey());
+  params.set("date", currentQueryDate());
   params.set("limit", "500");
   params.set("summaryOnly", "1");
   const q = $("searchInput").value.trim();
@@ -152,15 +155,47 @@ function queryURL() {
   if (traceId) params.set("traceId", traceId);
   if (source !== "all") params.set("source", source);
   if ($("errorsOnlyInput").checked) params.set("errorsOnly", "1");
+  if (extra.since) params.set("since", extra.since);
   return `/dashboard/api/traces?${params}`;
 }
 
+// 从 traces 列表里提取最晚的 receivedAt（用于增量检测）
+function extractLastReceivedAt(traces) {
+  let latest = state.lastReceivedAt || "";
+  for (const trace of traces) {
+    if (trace.lastAt && trace.lastAt > latest) latest = trace.lastAt;
+  }
+  return latest || null;
+}
+
 async function loadTraces(silent = false) {
+  const queryDate = currentQueryDate();
+
+  // ── 增量检测：静默刷新时，先查有没有新数据 ──
+  if (silent && state.lastReceivedAt && state.currentDate === queryDate) {
+    try {
+      const check = await requestJSON(queryURL({ since: state.lastReceivedAt }), { _retries: 1, _timeout: 8000 });
+      const newTraces = check.traces || [];
+      if (newTraces.length === 0) {
+        // 没有新数据，只更新时间戳
+        setRefreshState("无新数据");
+        return;
+      }
+      // 有新数据 → 继续走全量刷新（服务器有缓存，很快）
+    } catch {
+      // 增量检测失败，静默忽略
+      return;
+    }
+  }
+
   if (!silent) setBusy(true, "查询中...");
   try {
     if (!silent) setLoading("正在读取 trace 摘要...");
     const body = await requestJSON(queryURL());
     state.traces = body.traces || [];
+    state.currentDate = queryDate;
+    state.lastReceivedAt = extractLastReceivedAt(state.traces);
+
     if (!state.traces.some((trace) => trace.traceId === state.selectedTraceId)) {
       state.selectedTraceId = state.traces[0]?.traceId || null;
       state.selectedEventId = null;
@@ -187,7 +222,7 @@ async function loadSelectedTraceEvents() {
   setLoading("正在读取完整链路...");
   try {
     const params = new URLSearchParams();
-    params.set("date", $("dateInput").value || todayKey());
+    params.set("date", currentQueryDate());
     params.set("traceId", state.selectedTraceId);
     params.set("limit", "1000");
     const body = await requestJSON(`/dashboard/api/traces?${params}`);
@@ -346,6 +381,8 @@ async function logout() {
   state.events = [];
   state.selectedTraceId = null;
   state.selectedEvent = null;
+  state.lastReceivedAt = null;
+  state.currentDate = null;
   await loadSession();
 }
 
@@ -373,7 +410,14 @@ function bindEvents() {
     loadTraces();
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
-  ["dateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => $(id).addEventListener("change", () => loadTraces()));
+  // 切日期 / 切来源 / 切错误过滤 → 重置增量状态，全量加载
+  ["dateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      state.lastReceivedAt = null;
+      state.currentDate = null;
+      loadTraces();
+    });
+  });
 }
 
 bindEvents();

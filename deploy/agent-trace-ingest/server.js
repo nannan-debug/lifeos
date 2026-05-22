@@ -242,10 +242,12 @@ export function createTraceServer(options = {}) {
       throw err;
     }
     const traceId = String(query.get("traceId") || "").trim();
+    const since = String(query.get("since") || "").trim();
     const limit = Math.min(Number(query.get("limit") || 200), 1000);
     const allEvents = await cachedReadDay(day);
     return allEvents
       .filter((event) => !traceId || event.traceId === traceId)
+      .filter((event) => !since || (event.receivedAt || "") > since)
       .slice(-limit);
   }
 
