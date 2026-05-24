@@ -32,6 +32,7 @@ enum AgentOrchestrator {
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
         memories: [AgentMemory] = [],
+        nearbyTimeEntries: [(String, [TimeEntry])] = [],
         trigger: AgentTrigger = .userMessage,
         weeklySummary: String? = nil,
         toolResult: String? = nil
@@ -49,6 +50,7 @@ enum AgentOrchestrator {
                 timeEntries: timeEntries,
                 checks: checks,
                 memories: memories,
+                nearbyTimeEntries: nearbyTimeEntries,
                 weeklySummary: weeklySummary,
                 toolResult: toolResult
             ),
@@ -62,32 +64,46 @@ enum AgentOrchestrator {
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
         memories: [AgentMemory] = [],
+        nearbyTimeEntries: [(String, [TimeEntry])] = [],
         weeklySummary: String? = nil,
         toolResult: String? = nil
     ) -> String {
         var sections: [String] = []
 
         let recentTurns = turns.prefix(maxContextTurns).map { turn -> String in
+            let shortId = String(turn.id.uuidString.prefix(6)).lowercased()
             let title = turn.payload["title"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let prefix = title.isEmpty ? "\(turn.recognizedType)：" : "\(turn.recognizedType)【\(title)】："
-            return "- \(prefix)\(turn.rawText.prefix(80))"
+            return "- [\(shortId)] \(prefix)\(turn.rawText.prefix(80))"
         }
         if !recentTurns.isEmpty {
             sections.append("近期随手记：\n" + recentTurns.joined(separator: "\n"))
         }
 
         let openTasks = tasks.filter { $0.status != "已完成" }.prefix(maxContextTasks).map {
-            "- \($0.title)\($0.dueDate.isEmpty ? "" : "（\($0.dueDate)）")"
+            let shortId = String($0.id.uuidString.prefix(6)).lowercased()
+            return "- [\(shortId)] \($0.title)\($0.dueDate.isEmpty ? "" : "（\($0.dueDate)）")"
         }
         if !openTasks.isEmpty {
             sections.append("当前待办：\n" + openTasks.joined(separator: "\n"))
         }
 
         let recentTime = timeEntries.prefix(maxContextTimeEntries).map {
-            "- \($0.start)-\($0.end) \($0.name) / \($0.category)"
+            let shortId = String($0.id.uuidString.prefix(6)).lowercased()
+            return "- [\(shortId)] \($0.start)-\($0.end) \($0.name) / \($0.category)"
         }
         if !recentTime.isEmpty {
             sections.append("今天时间记录：\n" + recentTime.joined(separator: "\n"))
+        }
+
+        for (dateKey, entries) in nearbyTimeEntries {
+            let lines = entries.prefix(maxContextTimeEntries).map {
+                let shortId = String($0.id.uuidString.prefix(6)).lowercased()
+                return "- [\(shortId)] \($0.start)-\($0.end) \($0.name) / \($0.category)"
+            }
+            if !lines.isEmpty {
+                sections.append("\(dateKey) 时间记录：\n" + lines.joined(separator: "\n"))
+            }
         }
 
         let checkState = checks.prefix(maxContextChecks).map {

@@ -23,6 +23,19 @@ protocol AIClient {
     ) async throws -> AgentChatResponse
 
     func suggestTitle(content: String) async throws -> String
+
+    func chatStream(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?,
+        userProfile: String?,
+        trigger: String?
+    ) -> AsyncThrowingStream<StreamEvent, Error>
 }
 
 struct DefaultAIClient: AIClient {
@@ -70,5 +83,31 @@ struct DefaultAIClient: AIClient {
 
     func suggestTitle(content: String) async throws -> String {
         try await AIParser.suggestAgentThreadTitle(content: content)
+    }
+
+    func chatStream(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?,
+        userProfile: String?,
+        trigger: String? = nil
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        AIParser.chatStream(
+            input: input,
+            messages: messages,
+            contextSummary: contextSummary,
+            currentDate: currentDate,
+            currentTime: currentTime,
+            traceId: traceId,
+            sessionId: sessionId,
+            threadId: threadId,
+            userProfile: userProfile,
+            trigger: trigger
+        )
     }
 }

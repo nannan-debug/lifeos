@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 protocol AgentDataWriter: AnyObject {
     var selectedDateKey: String { get }
@@ -9,6 +10,16 @@ protocol AgentDataWriter: AnyObject {
     func undoTurn(id: UUID)
     func undoTask(id: UUID)
     func undoTimeFromTurn(id: UUID)
+
+    // MARK: - Mutation support (edit / delete / complete)
+    func resolveTaskId(shortId: String) -> (UUID, TaskEntry)?
+    func resolveTimeEntryId(shortId: String) -> (UUID, TimeEntry, String)?
+    func updateTaskFromAgent(id: UUID, title: String?, detail: String?, priority: String?, dueDate: String?) -> String?
+    func updateTimeEntryFromAgent(id: UUID, name: String?, start: String?, end: String?, category: String?, targetDate: String?) -> String?
+    func removeTaskFromAgent(id: UUID) -> DeletedRecordSnapshot?
+    func removeTimeEntryFromAgent(id: UUID) -> DeletedRecordSnapshot?
+    func toggleTaskFromAgent(id: UUID) -> String?
+    func restoreFromSnapshot(_ snapshot: DeletedRecordSnapshot)
 }
 
 final class AgentManager: ObservableObject {
@@ -21,7 +32,24 @@ final class AgentManager: ObservableObject {
     @Published var memories: [AgentMemory] = []
     @Published var memoryStatus: String? = nil
 
+    // MARK: - Streaming state
+    @Published var streamingPhase: StreamingPhase = .idle
+    @Published var streamingReasoning: String = ""
+    @Published var streamingContent: String = ""
+    @Published var reasoningTimeMs: Int? = nil
+
+    @Published var executionState: ExecutionState = .idle
+
     private weak var writer: AgentDataWriter?
+    private var lastDeletedSnapshot: DeletedRecordSnapshot?
+    private var nearbyTimeEntries: [(String, [TimeEntry])] = []
+    private var currentRequestTask: Task<Void, Never>?
+    @Published var messageQueue: [QueuedMessage] = []
+
+    struct QueuedMessage: Identifiable, Equatable {
+        let id = UUID()
+        let text: String
+    }
     private let client: AIClient
     private let defaults: UserDefaults
     private let fileManager: FileManager
@@ -90,12 +118,14 @@ final class AgentManager: ObservableObject {
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
+        nearbyTimeEntries: [(String, [TimeEntry])] = [],
         weeklySummary: String? = nil,
         toolExecutor: ((AgentToolCall) -> String)? = nil,
         userProfile: String? = nil
     ) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        self.nearbyTimeEntries = nearbyTimeEntries
         ensureCurrentThread()
         let traceID = UUID().uuidString
         let threadID = currentThreadID?.uuidString
@@ -108,6 +138,7 @@ final class AgentManager: ObservableObject {
             timeEntries: timeEntries,
             checks: checks,
             memories: memories,
+            nearbyTimeEntries: nearbyTimeEntries,
             weeklySummary: weeklySummary
         )
         markMemoriesUsed()
@@ -130,27 +161,74 @@ final class AgentManager: ObservableObject {
             ]
         )
 
-        Task { [weak self] in
+        currentRequestTask = Task { [weak self] in
             guard let self else { return }
+            let bgTaskId = await UIApplication.shared.beginBackgroundTask(withName: "AgentChat") {}
+            defer { Task { @MainActor in UIApplication.shared.endBackgroundTask(bgTaskId) } }
             let startedAt = Date()
+
+            await MainActor.run {
+                self.streamingPhase = .reasoning
+                self.streamingReasoning = ""
+                self.streamingContent = ""
+                self.reasoningTimeMs = nil
+            }
+
             do {
-                let response = try await self.client.chat(
-                    input: request.input,
-                    messages: request.messages,
-                    contextSummary: request.contextSummary,
-                    currentDate: today,
-                    currentTime: now,
-                    traceId: traceID,
-                    sessionId: self.userSuffix,
-                    threadId: threadID,
-                    userProfile: userProfile
-                )
+                try Task.checkCancellation()
+                var response: AgentChatResponse
+                do {
+                    response = try await self.consumeStream(
+                        input: request.input,
+                        messages: request.messages,
+                        contextSummary: request.contextSummary,
+                        currentDate: today,
+                        currentTime: now,
+                        traceId: traceID,
+                        sessionId: self.userSuffix,
+                        threadId: threadID,
+                        userProfile: userProfile
+                    )
+                } catch {
+                    if Self.isNetworkLostError(error) {
+                        // 流式断线（后台切出等），用非流式重试一次
+                        await MainActor.run {
+                            self.streamingPhase = .reasoning
+                            self.streamingReasoning = ""
+                            self.streamingContent = ""
+                        }
+                        response = try await self.client.chat(
+                            input: request.input,
+                            messages: request.messages,
+                            contextSummary: request.contextSummary,
+                            currentDate: today,
+                            currentTime: now,
+                            traceId: traceID,
+                            sessionId: self.userSuffix,
+                            threadId: threadID,
+                            userProfile: userProfile
+                        )
+                        await MainActor.run { self.streamingPhase = .done }
+                    } else {
+                        throw error
+                    }
+                }
 
                 if let toolCall = response.toolCall, let executor = toolExecutor {
                     await MainActor.run {
                         if !response.reply.isEmpty {
-                            self.appendMessage(AgentChatMessage(role: "assistant", content: response.reply))
+                            self.appendMessage(AgentChatMessage(
+                                role: "assistant",
+                                content: response.reply,
+                                reasoningContent: self.streamingReasoning.isEmpty ? nil : self.streamingReasoning,
+                                reasoningTimeMs: self.reasoningTimeMs
+                            ))
                         }
+                        // Reset streaming state for second round
+                        self.streamingPhase = .reasoning
+                        self.streamingReasoning = ""
+                        self.streamingContent = ""
+                        self.reasoningTimeMs = nil
                     }
                     self.emitTrace(
                         traceID: traceID,
@@ -183,7 +261,7 @@ final class AgentManager: ObservableObject {
                         memories: self.memories,
                         toolResult: toolResult
                     )
-                    let followUpResponse = try await self.client.chat(
+                    let followUpResponse = try await self.consumeStream(
                         input: followUpRequest.input,
                         messages: followUpRequest.messages,
                         contextSummary: followUpRequest.contextSummary,
@@ -196,7 +274,10 @@ final class AgentManager: ObservableObject {
                     )
                     await MainActor.run {
                         let mergedActions = self.actionSuggestionsToMerge(from: followUpResponse)
-                        self.receiveResponse(followUpResponse, mergedActions: mergedActions)
+                        self.finishStreaming(
+                            response: followUpResponse,
+                            mergedActions: mergedActions
+                        )
                         self.emitTrace(
                             traceID: traceID,
                             eventName: "response_merged",
@@ -225,7 +306,10 @@ final class AgentManager: ObservableObject {
                 } else {
                     await MainActor.run {
                         let mergedActions = self.actionSuggestionsToMerge(from: response)
-                        self.receiveResponse(response, mergedActions: mergedActions)
+                        self.finishStreaming(
+                            response: response,
+                            mergedActions: mergedActions
+                        )
                         self.emitTrace(
                             traceID: traceID,
                             eventName: "response_merged",
@@ -251,8 +335,24 @@ final class AgentManager: ObservableObject {
                         )
                     }
                 }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self.streamingPhase = .idle
+                    self.streamingReasoning = ""
+                    self.streamingContent = ""
+                    self.isLoading = false
+                    self.session.messages.append(
+                        AgentChatMessage(role: "assistant", content: "已取消", isError: true)
+                    )
+                    self.saveCurrentThread()
+                    self.processQueue()
+                }
             } catch {
                 await MainActor.run {
+                    self.streamingPhase = .idle
+                    self.streamingReasoning = ""
+                    self.streamingContent = ""
+
                     let fallback = AgentOrchestrator.fallbackResponse(for: clean, weeklySummary: weeklySummary)
                     self.errorMessage = weeklySummary != nil && AgentOrchestrator.detectsReviewIntent(clean)
                         ? nil
@@ -291,10 +391,113 @@ final class AgentManager: ObservableObject {
                         errorMessage: error.localizedDescription,
                         traceID: traceID
                     )
+                    self.processQueue()
                 }
             }
         }
     }
+
+    func sendNudge(
+        turns: [ConversationTurn],
+        tasks: [TaskEntry],
+        timeEntries: [TimeEntry],
+        checks: [DailyCheckItem],
+        nearbyTimeEntries: [(String, [TimeEntry])] = [],
+        toolExecutor: ((AgentToolCall) -> String)? = nil,
+        userProfile: String? = nil
+    ) {
+        self.nearbyTimeEntries = nearbyTimeEntries
+        ensureCurrentThread()
+        let traceID = UUID().uuidString
+        let threadID = currentThreadID?.uuidString
+
+        let request = AgentOrchestrator.makeRequest(
+            input: "[nudge]",
+            session: session,
+            turns: turns,
+            tasks: tasks,
+            timeEntries: timeEntries,
+            checks: checks,
+            memories: memories,
+            nearbyTimeEntries: nearbyTimeEntries,
+            trigger: .scheduledNudge
+        )
+        markMemoriesUsed()
+        isLoading = true
+        errorMessage = nil
+        let today = AIParser.isoDate()
+        let now = AIParser.isoTime()
+
+        currentRequestTask = Task { [weak self] in
+            guard let self else { return }
+            let bgTaskId = await UIApplication.shared.beginBackgroundTask(withName: "AgentNudge") {}
+            defer { Task { @MainActor in UIApplication.shared.endBackgroundTask(bgTaskId) } }
+
+            await MainActor.run {
+                self.streamingPhase = .reasoning
+                self.streamingReasoning = ""
+                self.streamingContent = ""
+                self.reasoningTimeMs = nil
+            }
+
+            do {
+                try Task.checkCancellation()
+                let response = try await self.consumeStream(
+                    input: "[nudge]",
+                    messages: request.messages,
+                    contextSummary: request.contextSummary,
+                    currentDate: today,
+                    currentTime: now,
+                    traceId: traceID,
+                    sessionId: self.userSuffix,
+                    threadId: threadID,
+                    userProfile: userProfile,
+                    trigger: "scheduledNudge"
+                )
+
+                await MainActor.run {
+                    let mergedActions = self.actionSuggestionsToMerge(from: response)
+                    self.finishStreaming(response: response, mergedActions: mergedActions)
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self.streamingPhase = .idle
+                    self.streamingReasoning = ""
+                    self.streamingContent = ""
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.streamingPhase = .idle
+                    self.streamingReasoning = ""
+                    self.streamingContent = ""
+                    self.isLoading = false
+                    self.errorMessage = "主动触达暂时没有接上"
+                }
+            }
+        }
+    }
+
+    func cancelCurrentRequest() {
+        currentRequestTask?.cancel()
+        currentRequestTask = nil
+    }
+
+    func enqueueMessage(_ text: String) {
+        messageQueue.append(QueuedMessage(text: text))
+    }
+
+    func removeQueuedMessage(id: UUID) {
+        messageQueue.removeAll { $0.id == id }
+    }
+
+    private func processQueue() {
+        guard !messageQueue.isEmpty else { return }
+        let next = messageQueue.removeFirst()
+        queuedMessageHandler?(next.text)
+    }
+
+    var queuedMessageHandler: ((String) -> Void)?
 
     func quickSend(text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -390,8 +593,23 @@ final class AgentManager: ObservableObject {
         if hasConversation && !suggestions.isEmpty {
             session.pendingActions.removeAll()
         }
-        for action in suggestions where hasContent(action) {
-            if shouldAutoConfirm(action) {
+
+        var resolved: [AgentActionDraft] = []
+        for var action in suggestions where hasContent(action) || action.isMutation {
+            if action.isMutation {
+                guard let r = resolveMutationTarget(action) else { continue }
+                action = r
+            }
+            resolved.append(action)
+        }
+
+        let autoConfirmableCreates = resolved.filter { !$0.isMutation && shouldAutoConfirm($0) }
+        let useBatchChecklist = autoConfirmableCreates.count >= 2
+
+        for action in resolved {
+            if useBatchChecklist && !action.isMutation && shouldAutoConfirm(action) {
+                session.pendingActions.append(action)
+            } else if shouldAutoConfirm(action) {
                 autoConfirmAction(action)
             } else if let existingIndex = session.pendingActions.firstIndex(where: { isSameIntent($0, action) }) {
                 if completenessScore(action) >= completenessScore(session.pendingActions[existingIndex]) {
@@ -402,12 +620,94 @@ final class AgentManager: ObservableObject {
             }
         }
         saveCurrentThread()
+
+        if useBatchChecklist {
+            executePendingActions()
+        }
+    }
+
+    /// 解析 mutation action 的 targetId，验证记录存在，填充 before→after 信息到 detail
+    private func resolveMutationTarget(_ action: AgentActionDraft) -> AgentActionDraft? {
+        guard let shortId = action.targetId, !shortId.isEmpty else { return nil }
+        var resolved = action
+
+        switch action.kind {
+        case .editTask, .deleteTask, .completeTask:
+            guard let (fullId, task) = writer?.resolveTaskId(shortId: shortId) else { return nil }
+            resolved.targetId = fullId.uuidString
+            if resolved.title.isEmpty { resolved.title = task.title }
+            // 生成 before→after diff 文本
+            if action.kind == .editTask {
+                var diffs: [String] = []
+                if let newTitle = nonEmpty(action.title), newTitle != task.title {
+                    diffs.append("标题: \(task.title) → \(newTitle)")
+                }
+                if let newDate = nonEmpty(action.date), newDate != task.dueDate {
+                    diffs.append("日期: \(task.dueDate.isEmpty ? "无" : task.dueDate) → \(newDate)")
+                }
+                if let newStart = nonEmpty(action.startTime), newStart != task.startTime {
+                    diffs.append("开始: \(task.startTime.isEmpty ? "无" : task.startTime) → \(newStart)")
+                }
+                if let newEnd = nonEmpty(action.endTime), newEnd != task.endTime {
+                    diffs.append("结束: \(task.endTime.isEmpty ? "无" : task.endTime) → \(newEnd)")
+                }
+                if !diffs.isEmpty {
+                    resolved.detail = diffs.joined(separator: "\n")
+                }
+            } else if action.kind == .deleteTask {
+                resolved.detail = "将删除待办「\(task.title)」"
+            } else if action.kind == .completeTask {
+                let current = task.status == "已完成" ? "已完成 → 未完成" : "未完成 → 已完成"
+                resolved.detail = current
+            }
+
+        case .editTime, .deleteTime:
+            guard let (fullId, entry, sourceDateKey) = writer?.resolveTimeEntryId(shortId: shortId) else { return nil }
+            resolved.targetId = fullId.uuidString
+            if resolved.title.isEmpty { resolved.title = entry.name }
+            if action.kind == .editTime {
+                var diffs: [String] = []
+                if let newDate = nonEmpty(action.date), newDate != sourceDateKey {
+                    diffs.append("日期: \(sourceDateKey) → \(newDate)")
+                }
+                if let newName = nonEmpty(action.title), newName != entry.name {
+                    diffs.append("名称: \(entry.name) → \(newName)")
+                }
+                if let newStart = nonEmpty(action.startTime), newStart != entry.start {
+                    diffs.append("开始: \(entry.start) → \(newStart)")
+                }
+                if let newEnd = nonEmpty(action.endTime), newEnd != entry.end {
+                    diffs.append("结束: \(entry.end) → \(newEnd)")
+                }
+                if let newModule = nonEmpty(action.module), newModule != entry.category {
+                    diffs.append("类别: \(entry.category) → \(newModule)")
+                }
+                if !diffs.isEmpty {
+                    resolved.detail = diffs.joined(separator: "\n")
+                }
+            } else {
+                resolved.detail = "将删除时间记录「\(entry.name)」(\(entry.start)-\(entry.end))"
+            }
+
+        default:
+            return nil
+        }
+        return resolved
+    }
+
+    private func nonEmpty(_ s: String?) -> String? {
+        guard let s, !s.isEmpty else { return nil }
+        return s
     }
 
     /// 判断是否自动保存：AI confidence 只做参考，用规则兜底
     private func shouldAutoConfirm(_ action: AgentActionDraft) -> Bool {
+        // Mutation 操作永不自动确认
+        if action.isMutation { return false }
         // AI 自报 confidence 太低时不自动保存
         guard action.confidence >= 0.7 else { return false }
+        // DBT练习记录需要用户确认，不自动保存
+        if action.inboxType == "DBT练习" { return false }
         switch action.kind {
         case .inbox:
             // 随手记：有标题或内容就自动存
@@ -420,6 +720,8 @@ final class AgentManager: ObservableObject {
             return !action.title.isEmpty
                 && action.startTime != nil && !action.startTime!.isEmpty
                 && action.endTime != nil && !action.endTime!.isEmpty
+        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask:
+            return false  // 已被上面的 guard 拦截，这里兜底
         }
     }
 
@@ -439,6 +741,9 @@ final class AgentManager: ObservableObject {
             let turnId = commitTimeActionReturningId(action)
             ref = turnId.map { AutoSavedActionRef(kind: .time, title: action.title, turnId: $0) }
             result = turnId == nil ? "时间记录缺少时间" : nil
+        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask:
+            ref = nil
+            result = "mutation 不应走 autoConfirm"
         }
         if result == nil, let ref {
             appendMessage(AgentChatMessage(
@@ -561,6 +866,16 @@ final class AgentManager: ObservableObject {
         Int(Date().timeIntervalSince(date) * 1000)
     }
 
+    private static func isNetworkLostError(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            return urlError.code == .networkConnectionLost || urlError.code == .timedOut
+        }
+        if case AIParseError.network(let msg) = error {
+            return msg.contains("connection was lost") || msg.contains("networkConnectionLost")
+        }
+        return false
+    }
+
     @discardableResult
     func confirmAction(id: UUID) -> String? {
         guard let action = session.pendingActions.first(where: { $0.id == id }) else {
@@ -575,11 +890,33 @@ final class AgentManager: ObservableObject {
             result = commitTaskAction(action)
         case .time:
             result = commitTimeAction(action)
+        case .editTask:
+            result = commitEditTask(action)
+        case .editTime:
+            result = commitEditTime(action)
+        case .deleteTask:
+            result = commitDeleteTask(action)
+        case .deleteTime:
+            result = commitDeleteTime(action)
+        case .completeTask:
+            result = commitCompleteTask(action)
         }
 
         if result == nil {
             session.pendingActions.removeAll { $0.id == id }
-            appendMessage(AgentChatMessage(role: "assistant", content: savedMessage(for: action)))
+            // 删除操作带 autoSavedAction 以支持撤销
+            var undoRef: AutoSavedActionRef? = nil
+            if (action.kind == .deleteTask || action.kind == .deleteTime),
+               let snapshot = lastDeletedSnapshot {
+                undoRef = AutoSavedActionRef(kind: action.kind, title: action.title, deletedRecord: snapshot)
+                lastDeletedSnapshot = nil
+            }
+            let msg = AgentChatMessage(
+                role: "assistant",
+                content: savedMessage(for: action),
+                autoSavedAction: undoRef
+            )
+            appendMessage(msg)
             emitTrace(
                 traceID: UUID().uuidString,
                 eventName: "action_confirmed",
@@ -607,6 +944,57 @@ final class AgentManager: ObservableObject {
         )
     }
 
+    func executePendingActions() {
+        let actions = session.pendingActions.filter { !$0.isMutation }
+        guard !actions.isEmpty else { return }
+        executionState = .executing(total: actions.count, completed: 0)
+
+        Task { @MainActor in
+            var succeeded: [String] = []
+            var failed: [String] = []
+            for (index, action) in actions.enumerated() {
+                let err = confirmAction(id: action.id)
+                if let err {
+                    failed.append("\(action.title.isEmpty ? action.detail : action.title)（\(err)）")
+                } else {
+                    succeeded.append(action.title.isEmpty ? action.detail : action.title)
+                }
+                executionState = .executing(total: actions.count, completed: index + 1)
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            executionState = .idle
+
+            // 执行反馈：≥2 条时追加汇总消息
+            if actions.count >= 2 {
+                let summary = buildExecutionSummary(succeeded: succeeded, failed: failed)
+                appendMessage(AgentChatMessage(role: "assistant", content: summary))
+                saveCurrentThread()
+            }
+        }
+    }
+
+    private func buildExecutionSummary(succeeded: [String], failed: [String]) -> String {
+        var lines: [String] = []
+        if !succeeded.isEmpty {
+            lines.append("✅ 已完成 \(succeeded.count) 条")
+        }
+        if !failed.isEmpty {
+            lines.append("⚠️ \(failed.count) 条未成功：")
+            for item in failed { lines.append("  · \(item)") }
+        }
+        if failed.isEmpty && succeeded.count >= 3 {
+            lines.append("全部搞定，有问题随时说。")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    func dismissAllPendingActions() {
+        let actions = session.pendingActions.filter { !$0.isMutation }
+        for action in actions {
+            dismissAction(id: action.id)
+        }
+    }
+
     func undoAutoSavedAction(messageId: UUID) {
         guard let idx = session.messages.firstIndex(where: { $0.id == messageId }),
               let ref = session.messages[idx].autoSavedAction else { return }
@@ -620,6 +1008,12 @@ final class AgentManager: ObservableObject {
                 writer?.undoTimeFromTurn(id: turnId)
                 writer?.undoTurn(id: turnId)
             }
+        case .deleteTask, .deleteTime:
+            if let snapshot = ref.deletedRecord {
+                writer?.restoreFromSnapshot(snapshot)
+            }
+        case .editTask, .editTime, .completeTask:
+            break  // edit/complete 暂不支持撤销
         }
         session.messages[idx].content = "已撤销：\(ref.title)"
         session.messages[idx].autoSavedAction = nil
@@ -646,7 +1040,7 @@ final class AgentManager: ObservableObject {
         forceCreateNewThread()
         errorMessage = nil
 
-        if messagesToExtract.count >= 4 && messagesToExtract.count > extractedCount {
+        if messagesToExtract.count >= 10 && messagesToExtract.count > extractedCount {
             memoryStatus = "正在提取记忆..."
             Task { [weak self] in
                 await self?.extractMemories(from: messagesToExtract)
@@ -789,6 +1183,112 @@ final class AgentManager: ObservableObject {
         saveCurrentThread()
     }
 
+    // MARK: - Streaming helpers
+
+    /// Consume a streaming response, updating published state on MainActor.
+    /// Returns a synthesized AgentChatResponse when the stream completes.
+    private func consumeStream(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?,
+        userProfile: String?,
+        trigger: String? = nil
+    ) async throws -> AgentChatResponse {
+        let stream = client.chatStream(
+            input: input,
+            messages: messages,
+            contextSummary: contextSummary,
+            currentDate: currentDate,
+            currentTime: currentTime,
+            traceId: traceId,
+            sessionId: sessionId,
+            threadId: threadId,
+            userProfile: userProfile,
+            trigger: trigger
+        )
+
+        var finalResponse: AgentChatResponse?
+
+        for try await event in stream {
+            switch event.type {
+            case .reasoning:
+                if let text = event.text {
+                    await MainActor.run {
+                        self.streamingReasoning += text
+                    }
+                }
+            case .content:
+                if let text = event.text {
+                    await MainActor.run {
+                        if self.streamingPhase == .reasoning {
+                            self.streamingPhase = .content
+                        }
+                        self.streamingContent += text
+                    }
+                }
+            case .done:
+                let reply = event.reply ?? ""
+                let reasoningMs = event.reasoningTimeMs
+                await MainActor.run {
+                    self.streamingPhase = .done
+                    self.reasoningTimeMs = reasoningMs
+                }
+                finalResponse = AgentChatResponse(
+                    reply: reply,
+                    followUpQuestion: event.followUpQuestion,
+                    actionSuggestions: event.actionSuggestions ?? [],
+                    toolCall: event.toolCall,
+                    usage: event.usage
+                )
+            case .error:
+                throw AIParseError.network(event.message ?? "stream error")
+            }
+        }
+
+        guard let response = finalResponse else {
+            // Stream ended without done event — use accumulated content
+            let reply = await MainActor.run { self.streamingContent }
+            return AgentChatResponse(
+                reply: reply.isEmpty ? "我在。你可以继续说一点。" : reply
+            )
+        }
+        return response
+    }
+
+    /// Called on MainActor after streaming completes — persists the message with reasoning.
+    private func finishStreaming(
+        response: AgentChatResponse,
+        mergedActions: [AgentActionDraft]
+    ) {
+        isLoading = false
+        let pieces = [response.reply, response.followUpQuestion]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let content = pieces.joined(separator: "\n\n")
+        if !content.isEmpty {
+            session.messages.append(AgentChatMessage(
+                role: "assistant",
+                content: content,
+                reasoningContent: streamingReasoning.isEmpty ? nil : streamingReasoning,
+                reasoningTimeMs: reasoningTimeMs
+            ))
+        }
+        mergeActionSuggestions(mergedActions)
+        saveCurrentThread()
+
+        streamingPhase = .idle
+        streamingReasoning = ""
+        streamingContent = ""
+        reasoningTimeMs = nil
+
+        processQueue()
+    }
+
     private func appendMessage(_ message: AgentChatMessage) {
         session.messages.append(message)
         saveCurrentThread()
@@ -866,7 +1366,7 @@ final class AgentManager: ObservableObject {
 
     private func extractMemoriesForCurrentThreadIfNeeded() {
         let messages = session.messages
-        guard messages.count >= 4 else { return }
+        guard messages.count >= 10 else { return }
         let thread = currentThread()
         guard messages.count > (thread?.memoryExtractedCount ?? 0) else { return }
         memoryStatus = "正在提取记忆..."
@@ -1006,6 +1506,53 @@ final class AgentManager: ObservableObject {
         return writer.commitTurn(id: id)
     }
 
+    // MARK: - Mutation commit methods
+
+    private func commitEditTask(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        return writer.updateTaskFromAgent(
+            id: uuid,
+            title: nonEmpty(action.title),
+            detail: nil,  // detail 存的是 diff 文本，不用于更新
+            priority: nil,
+            dueDate: nonEmpty(action.date)
+        )
+    }
+
+    private func commitEditTime(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        return writer.updateTimeEntryFromAgent(
+            id: uuid,
+            name: nonEmpty(action.title),
+            start: nonEmpty(action.startTime),
+            end: nonEmpty(action.endTime),
+            category: nonEmpty(action.module),
+            targetDate: nonEmpty(action.date)
+        )
+    }
+
+    private func commitDeleteTask(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        lastDeletedSnapshot = writer.removeTaskFromAgent(id: uuid)
+        return lastDeletedSnapshot == nil ? "记录不存在" : nil
+    }
+
+    private func commitDeleteTime(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        lastDeletedSnapshot = writer.removeTimeEntryFromAgent(id: uuid)
+        return lastDeletedSnapshot == nil ? "记录不存在" : nil
+    }
+
+    private func commitCompleteTask(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        return writer.toggleTaskFromAgent(id: uuid)
+    }
+
     private func inboxType(for action: AgentActionDraft) -> String {
         let allowedTypes = ["想法", "感受", "感恩", "做梦"]
         if let inboxType = action.inboxType?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1094,14 +1641,17 @@ final class AgentManager: ObservableObject {
     }
 
     private func savedMessage(for action: AgentActionDraft) -> String {
-        let label: String
-        switch action.kind {
-        case .inbox: label = "随手记"
-        case .task: label = "待办"
-        case .time: label = "时间记录"
-        }
         let title = action.title.isEmpty ? action.detail : action.title
-        return "已创建\(label)：\(title)"
+        switch action.kind {
+        case .inbox: return "已创建随手记：\(title)"
+        case .task: return "已创建待办：\(title)"
+        case .time: return "已创建时间记录：\(title)"
+        case .editTask: return "已修改待办：\(title)"
+        case .editTime: return "已修改时间记录：\(title)"
+        case .deleteTask: return "已删除待办：\(title)"
+        case .deleteTime: return "已删除时间记录：\(title)"
+        case .completeTask: return "已更新待办状态：\(title)"
+        }
     }
 
     func debugSummary(_ action: AgentActionDraft) -> String {

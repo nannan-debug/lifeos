@@ -116,7 +116,11 @@ private struct AgentChatPanel: View {
             .ignoresSafeArea(.container, edges: .bottom)
         }
         .onAppear {
-            if !prefill.isEmpty, rawInput.isEmpty {
+            if prefill == "__nudge__" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    store.submitNudge()
+                }
+            } else if !prefill.isEmpty, rawInput.isEmpty {
                 rawInput = prefill
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -213,8 +217,9 @@ private struct AgentChatPanel: View {
                             messageRow(message)
                                 .id(message.id)
                         }
-                        if store.isAgentLoading {
-                            thinkingRow
+                        if store.isAgentLoading || store.streamingPhase != .idle {
+                            streamingOrThinkingRow
+                                .id("streaming-row")
                         }
                         if let msg = store.agentErrorMessage {
                             systemNotice(msg)
@@ -234,6 +239,11 @@ private struct AgentChatPanel: View {
             }
             .onChange(of: store.agentSession.pendingActions.count) { _, _ in
                 scrollToBottom(proxy)
+            }
+            .onChange(of: store.streamingContent) { _, _ in
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo("streaming-row", anchor: .bottom)
+                }
             }
             .simultaneousGesture(contentDismissKeyboardDrag)
         }
@@ -281,7 +291,13 @@ private struct AgentChatPanel: View {
             } else if message.autoSavedAction != nil {
                 autoSavedRow(message)
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let reasoning = message.reasoningContent, !reasoning.isEmpty {
+                        persistedReasoningSection(
+                            content: reasoning,
+                            timeMs: message.reasoningTimeMs
+                        )
+                    }
                     Text(message.content)
                         .font(.callout)
                         .lineSpacing(4)
@@ -302,6 +318,19 @@ private struct AgentChatPanel: View {
                 .font(.callout)
                 .foregroundStyle(CreamTheme.text.opacity(0.9))
             Spacer()
+            if let ref = message.autoSavedAction, !ref.kind.isMutation {
+                Button {
+                    navigateToRecord(ref)
+                } label: {
+                    Text("查看")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(CreamTheme.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().strokeBorder(CreamTheme.green.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
             Button {
                 store.undoAutoSavedAgentAction(messageId: message.id)
             } label: {
@@ -322,15 +351,178 @@ private struct AgentChatPanel: View {
         )
     }
 
-    private var thinkingRow: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .scaleEffect(0.75)
-                .tint(CreamTheme.green)
-            Text("猫猫在想怎么接这句话...")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func navigateToRecord(_ ref: AutoSavedActionRef) {
+        onClose()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            switch ref.kind {
+            case .inbox:
+                store.pendingNavigation = .capture
+            case .task:
+                store.pendingNavigation = .todo
+            case .time:
+                store.pendingNavigation = .time(dateKey: nil)
+            default:
+                break
+            }
         }
+    }
+
+    private var queuedMessagesBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(store.agentMessageQueue) { queued in
+                HStack(spacing: 8) {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(queued.text)
+                        .font(.caption)
+                        .foregroundStyle(CreamTheme.text.opacity(0.7))
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        store.removeQueuedAgentMessage(id: queued.id)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.orange.opacity(0.08))
+                )
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - Streaming / Thinking UI
+
+    @ViewBuilder
+    private var streamingOrThinkingRow: some View {
+        let phase = store.streamingPhase
+        switch phase {
+        case .reasoning:
+            streamingReasoningRow
+        case .content, .done:
+            VStack(alignment: .leading, spacing: 8) {
+                // Collapsed reasoning summary
+                if !store.streamingReasoning.isEmpty {
+                    reasoningCollapsedBadge(
+                        text: store.streamingReasoning,
+                        timeMs: store.agentReasoningTimeMs
+                    )
+                }
+                // Streaming content with cursor
+                if !store.streamingContent.isEmpty {
+                    StreamingTextView(text: store.streamingContent, isActive: phase != .done)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .idle:
+            // Fallback: non-streaming loading
+            HStack(spacing: 10) {
+                ProgressView()
+                    .scaleEffect(0.75)
+                    .tint(CreamTheme.green)
+                Text("猫猫在想怎么接这句话...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var streamingReasoningRow: some View {
+        DisclosureGroup {
+            Text(store.streamingReasoning)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+        } label: {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(CreamTheme.green)
+                Text("猫猫在想...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .opacity(pulseOpacity)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulseOpacity)
+                    .onAppear { pulseOpacity = 0.4 }
+            }
+        }
+        .tint(.secondary)
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.03))
+        )
+    }
+
+    @State private var pulseOpacity: Double = 1.0
+
+    /// Collapsed reasoning badge for completed reasoning phase
+    private func reasoningCollapsedBadge(text: String, timeMs: Int?) -> some View {
+        DisclosureGroup {
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "brain.head.profile")
+                    .font(.caption2)
+                    .foregroundStyle(CreamTheme.green)
+                Text("思考过程")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let ms = timeMs {
+                    Text("· \(String(format: "%.1f", Double(ms) / 1000))s")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .tint(.secondary)
+        .font(.caption2)
+    }
+
+    /// Reasoning disclosure for persisted messages
+    private func persistedReasoningSection(content: String, timeMs: Int?) -> some View {
+        DisclosureGroup {
+            Text(content)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+                .textSelection(.enabled)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "brain.head.profile")
+                    .font(.caption2)
+                    .foregroundStyle(CreamTheme.green)
+                Text("思考过程")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let ms = timeMs {
+                    Text("· \(String(format: "%.1f", Double(ms) / 1000))s")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .tint(.secondary)
+        .font(.caption2)
     }
 
     private func systemNotice(_ text: String, icon: String = "leaf") -> some View {
@@ -358,18 +550,200 @@ private struct AgentChatPanel: View {
 
     private var actionCards: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(store.agentSession.pendingActions) { action in
+            let creates = store.pendingCreateActions
+            let mutations = store.pendingMutationActions
+
+            if creates.count >= 2 {
+                actionChecklist(creates)
+            } else {
+                ForEach(creates) { action in
+                    actionCard(action)
+                }
+            }
+
+            ForEach(mutations) { action in
                 actionCard(action)
             }
         }
     }
 
+    // MARK: - Checklist UI (≥2 create actions)
+
+    private var executionCompleted: Int {
+        if case .executing(_, let completed) = store.agentExecutionState { return completed }
+        return 0
+    }
+
+    private var isExecuting: Bool {
+        if case .executing = store.agentExecutionState { return true }
+        return false
+    }
+
+    private func actionChecklist(_ actions: [AgentActionDraft]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Image(systemName: "list.bullet.clipboard")
+                    .foregroundStyle(CreamTheme.green)
+                Text("Arya 的计划")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CreamTheme.text)
+                Spacer()
+                if !isExecuting {
+                    Button {
+                        store.dismissAllPendingAgentActions()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
+            ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+                checklistRow(action, index: index)
+            }
+
+            if isExecuting {
+                executionProgress(actions)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            } else {
+                HStack(spacing: 12) {
+                    Button {
+                        store.executeAllPendingAgentActions()
+                    } label: {
+                        Text("开始执行")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(CreamTheme.green))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
+                .padding(.top, 6)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.9))
+                .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 8)
+        )
+    }
+
+    @State private var expandedChecklistId: UUID?
+
+    private func checklistRow(_ action: AgentActionDraft, index: Int) -> some View {
+        let completed = executionCompleted > index
+        let isCurrent = isExecuting && executionCompleted == index
+        let isExpanded = expandedChecklistId == action.id
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    expandedChecklistId = isExpanded ? nil : action.id
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    ZStack {
+                        if completed {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(CreamTheme.green)
+                        } else if isCurrent {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "circle")
+                                .foregroundStyle(.secondary.opacity(0.5))
+                        }
+                    }
+                    .font(.callout)
+                    .frame(width: 20)
+
+                    Image(systemName: actionIcon(for: action))
+                        .font(.caption)
+                        .foregroundStyle(actionTintColor(for: action))
+
+                    Text(action.title.isEmpty ? action.detail : action.title)
+                        .font(.callout)
+                        .foregroundStyle(completed ? .secondary : CreamTheme.text)
+                        .strikethrough(completed)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    if !isExecuting {
+                        Button {
+                            store.dismissAgentAction(id: action.id)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.secondary.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            .disabled(isExecuting)
+
+            if isExpanded, !action.detail.isEmpty, action.detail != action.title {
+                Text(action.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .padding(.horizontal, 14)
+                    .padding(.leading, 30)
+                    .padding(.bottom, 6)
+            }
+
+            if index < (store.pendingCreateActions.count - 1) {
+                Divider()
+                    .padding(.leading, 44)
+            }
+        }
+    }
+
+    private func executionProgress(_ actions: [AgentActionDraft]) -> some View {
+        let total = actions.count
+        let completed = executionCompleted
+        let fraction = total > 0 ? Double(completed) / Double(total) : 0
+
+        return VStack(spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(CreamTheme.green.opacity(0.15))
+                    Capsule()
+                        .fill(CreamTheme.green)
+                        .frame(width: geo.size.width * fraction)
+                        .animation(.easeInOut(duration: 0.3), value: completed)
+                }
+            }
+            .frame(height: 6)
+
+            Text("\(completed)/\(total) 已完成")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Single action card (1 create or mutation)
+
     private func actionCard(_ action: AgentActionDraft) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: actionIcon(for: action.kind))
-                    .foregroundStyle(CreamTheme.green)
-                Text(actionLabel(for: action.kind))
+                Image(systemName: actionIcon(for: action))
+                    .foregroundStyle(actionTintColor(for: action))
+                Text(actionLabel(for: action))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
                 Spacer()
@@ -397,12 +771,13 @@ private struct AgentChatPanel: View {
                     store.agentErrorMessage = err
                 }
             } label: {
-                Text("保存")
+                let tint = actionTintColor(for: action)
+                Text(actionButtonText(for: action))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(CreamTheme.green)
+                    .foregroundStyle(tint)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(Capsule().fill(CreamTheme.green.opacity(0.13)))
+                    .background(Capsule().fill(tint.opacity(0.13)))
             }
             .buttonStyle(.plain)
         }
@@ -416,6 +791,9 @@ private struct AgentChatPanel: View {
 
     private var inputDock: some View {
         VStack(spacing: 9) {
+            if !store.agentMessageQueue.isEmpty {
+                queuedMessagesBar
+            }
             HStack(alignment: .center, spacing: 10) {
                 TextField("问问、快速记录或聊聊今天...", text: $rawInput, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -423,24 +801,37 @@ private struct AgentChatPanel: View {
                     .lineLimit(1...5)
                     .submitLabel(.send)
                     .focused($inputFocused)
-                    .disabled(store.isAgentLoading)
                     .onSubmit {
-                        if canSend { submitAgent() }
+                        if hasText { submitAgent() }
                     }
                     .padding(.vertical, 11)
 
-                Button {
-                    submitAgent()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(canSend ? CreamTheme.green : Color.gray.opacity(0.26)))
+                if store.isAgentLoading && !hasText {
+                    Button {
+                        store.cancelAgentRequest()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Color.red.opacity(0.35)))
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 42, height: 42, alignment: .center)
+                } else {
+                    Button {
+                        submitAgent()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(hasText ? CreamTheme.green : Color.gray.opacity(0.26)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!hasText)
+                    .frame(width: 42, height: 42, alignment: .center)
                 }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-                .frame(width: 42, height: 42, alignment: .center)
             }
             .padding(.leading, 16)
             .padding(.trailing, 8)
@@ -695,9 +1086,7 @@ private struct AgentChatPanel: View {
         !rawInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var canSend: Bool {
-        hasText && !store.isAgentLoading
-    }
+    private var canSend: Bool { hasText }
 
     private func submitAgent() {
         let text = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -711,7 +1100,9 @@ private struct AgentChatPanel: View {
     }
 
     private func submitAI(_ text: String) {
-        if chatMode {
+        if store.isAgentLoading {
+            store.enqueueAgentMessage(text)
+        } else if chatMode {
             store.submitAgentText(text)
         } else {
             store.submitQuickText(text)
@@ -794,19 +1185,49 @@ private struct AgentChatPanel: View {
         }
     }
 
-    private func actionLabel(for kind: AgentActionKind) -> String {
-        switch kind {
+    private func actionLabel(for action: AgentActionDraft) -> String {
+        if action.kind == .inbox && action.inboxType == "DBT练习" {
+            return "保存练习记录"
+        }
+        switch action.kind {
         case .inbox: return "建议存随手记"
         case .task: return "建议存待办"
         case .time: return "建议存时间"
+        case .editTask: return "建议改待办"
+        case .editTime: return "建议改时间"
+        case .deleteTask: return "建议删待办"
+        case .deleteTime: return "建议删时间"
+        case .completeTask: return "建议标完成"
         }
     }
 
-    private func actionIcon(for kind: AgentActionKind) -> String {
-        switch kind {
+    private func actionIcon(for action: AgentActionDraft) -> String {
+        if action.kind == .inbox && action.inboxType == "DBT练习" {
+            return "leaf"
+        }
+        switch action.kind {
         case .inbox: return "square.and.pencil"
         case .task: return "checklist"
         case .time: return "clock"
+        case .editTask, .editTime: return "pencil"
+        case .deleteTask, .deleteTime: return "trash"
+        case .completeTask: return "checkmark.circle"
+        }
+    }
+
+    private func actionButtonText(for action: AgentActionDraft) -> String {
+        switch action.kind {
+        case .editTask, .editTime: return "确认修改"
+        case .deleteTask, .deleteTime: return "确认删除"
+        case .completeTask: return "确认"
+        default: return "保存"
+        }
+    }
+
+    private func actionTintColor(for action: AgentActionDraft) -> Color {
+        switch action.kind {
+        case .deleteTask, .deleteTime: return .red
+        default: return CreamTheme.green
         }
     }
 
@@ -815,5 +1236,34 @@ private struct AgentChatPanel: View {
         formatter.locale = Locale(identifier: "zh_Hans")
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Streaming text with blinking cursor
+
+private struct StreamingTextView: View {
+    let text: String
+    let isActive: Bool
+    @State private var showCursor = true
+
+    var body: some View {
+        Text(text + (isActive && showCursor ? "▍" : ""))
+            .font(.callout)
+            .lineSpacing(4)
+            .foregroundStyle(CreamTheme.text.opacity(0.9))
+            .onAppear {
+                guard isActive else { return }
+                startCursorBlink()
+            }
+            .onChange(of: isActive) { _, active in
+                if active { startCursorBlink() }
+            }
+    }
+
+    private func startCursorBlink() {
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+            if !isActive { timer.invalidate(); return }
+            showCursor.toggle()
+        }
     }
 }

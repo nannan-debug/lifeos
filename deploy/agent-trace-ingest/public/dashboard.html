@@ -41,19 +41,17 @@
       </header>
 
       <form class="filters" id="traceFilters" aria-label="查询条件">
-        <label>
-          <span>日期</span>
-          <input id="dateInput" type="date">
+        <label class="filter-date">
+          <span>开始</span>
+          <input id="startDateInput" type="date">
         </label>
-        <label class="wide">
-          <span>关键词</span>
-          <input id="searchInput" placeholder="输入、错误、模型输出、threadId">
+        <label class="filter-date">
+          <span>结束</span>
+          <input id="endDateInput" type="date">
         </label>
-        <label class="wide">
-          <span>Trace ID</span>
-          <input id="traceInput" placeholder="粘贴 traceId 精确查询">
-        </label>
-        <label>
+        <input id="searchInput" type="hidden">
+        <input id="traceInput" type="hidden">
+        <label class="filter-source">
           <span>来源</span>
           <select id="sourceInput">
             <option value="all">全部</option>

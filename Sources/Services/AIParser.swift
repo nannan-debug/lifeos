@@ -181,6 +181,83 @@ enum AIParser {
         return threadFallbackTitle(from: title.isEmpty ? content : title)
     }
 
+    // MARK: - Streaming Chat (SSE)
+
+    static func chatStream(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String? = nil,
+        sessionId: String? = nil,
+        threadId: String? = nil,
+        userProfile: String? = nil,
+        trigger: String? = nil
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    var body: [String: Any] = [
+                        "mode": "chat",
+                        "stream": true,
+                        "input": input,
+                        "messages": messages.map { ["role": $0.role, "content": $0.content] },
+                        "contextSummary": contextSummary,
+                        "currentDate": currentDate,
+                        "currentTime": currentTime,
+                    ]
+                    body["traceId"] = traceId
+                    body["sessionId"] = sessionId
+                    body["threadId"] = threadId
+                    if let userProfile, !userProfile.isEmpty {
+                        body["userProfile"] = userProfile
+                    }
+                    if let trigger, !trigger.isEmpty {
+                        body["trigger"] = trigger
+                    }
+
+                    var req = URLRequest(url: workerURL)
+                    req.httpMethod = "POST"
+                    req.timeoutInterval = 120 // longer for streaming
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.setValue(clientSecret, forHTTPHeaderField: "X-Client-Secret")
+                    req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+
+                    guard let http = response as? HTTPURLResponse else {
+                        throw AIParseError.network("no http response")
+                    }
+                    if http.statusCode == 401 { throw AIParseError.unauthorized }
+                    guard (200...299).contains(http.statusCode) else {
+                        // Collect error body
+                        var errData = Data()
+                        for try await byte in bytes { errData.append(byte) }
+                        let errBody = String(data: errData, encoding: .utf8) ?? ""
+                        throw AIParseError.serverError(http.statusCode, errBody)
+                    }
+
+                    let decoder = JSONDecoder()
+                    for try await line in bytes.lines {
+                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard trimmed.hasPrefix("data: ") else { continue }
+                        let payload = String(trimmed.dropFirst(6))
+                        if payload == "[DONE]" { break }
+                        guard let jsonData = payload.data(using: .utf8) else { continue }
+                        if let event = try? decoder.decode(StreamEvent.self, from: jsonData) {
+                            continuation.yield(event)
+                            if event.type == .done || event.type == .error { break }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     static func isoDate(_ d: Date = Date()) -> String {

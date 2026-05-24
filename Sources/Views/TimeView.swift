@@ -1062,7 +1062,7 @@ struct TimeView: View {
         case "睡觉": return Color(red: 0.608, green: 0.494, blue: 0.647) // #9B7EA5 紫灰
         case "工作": return Color(red: 0.357, green: 0.549, blue: 0.710) // #5B8CB5 蓝灰
         case "运动": return Color(red: 0.353, green: 0.620, blue: 0.435) // #5A9E6F 绿色
-        case "学习": return Color(red: 0.749, green: 0.635, blue: 0.204) // #BFA234 琥珀黄
+        case "学习": return Color(red: 0.710, green: 0.420, blue: 0.490) // #B56B7D 玫瑰粉
         case "社交": return Color(red: 0.408, green: 0.447, blue: 0.671) // #6872AB 靛蓝
         case "娱乐": return Color(red: 0.753, green: 0.529, blue: 0.369) // #C0875E 暖棕
         case "其他": return Color(red: 0.420, green: 0.659, blue: 0.627) // #6BA8A0 青绿
@@ -1076,7 +1076,7 @@ struct TimeView: View {
         case "睡觉": return Color(red: 0.953, green: 0.929, blue: 0.961) // #F3EDF5
         case "工作": return Color(red: 0.922, green: 0.949, blue: 0.973) // #EBF2F8
         case "运动": return Color(red: 0.918, green: 0.961, blue: 0.929) // #EAF5ED
-        case "学习": return Color(red: 0.984, green: 0.965, blue: 0.902) // #FBF6E6
+        case "学习": return Color(red: 0.961, green: 0.918, blue: 0.929) // #F5EAED
         case "社交": return Color(red: 0.929, green: 0.933, blue: 0.961) // #EDEEF5
         case "娱乐": return Color(red: 0.973, green: 0.945, blue: 0.918) // #F8F1EA
         case "其他": return Color(red: 0.918, green: 0.961, blue: 0.953) // #EAF5F3
