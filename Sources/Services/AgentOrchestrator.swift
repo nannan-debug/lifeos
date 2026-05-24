@@ -40,7 +40,7 @@ enum AgentOrchestrator {
     ) -> Request {
         let recentMessages = session.messages
             .filter { !$0.isError }
-            .suffix(8)
+            .suffix(16)
             .map { AgentChatRequestMessage(role: $0.role, content: $0.content) }
         return Request(
             input: input,
