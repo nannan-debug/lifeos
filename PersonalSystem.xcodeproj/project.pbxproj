@@ -55,6 +55,7 @@
 		D2B9D8ACBF20D82EF04311DE /* CloudKitRecordMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C45A2425F0D3BFF4F46BC72 /* CloudKitRecordMapper.swift */; };
 		E7196BB0A6712E14D720A0BB /* AgentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45D49338D8DBCBCD4802B149 /* AgentManager.swift */; };
 		E7F784C38996BCF7DA31FB2E /* AppUpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */; };
+		EAC6CB4E9EA74CDC6963C466 /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 646272612209A465FCA9BFF4 /* CalendarService.swift */; };
 		EECA22D6609959135391624F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4740978737F177B45D684422 /* SettingsView.swift */; };
 		F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */; };
 		F6896693D277FD78E861D75F /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3838D574A4224A4001BCEB /* RootTabView.swift */; };
@@ -116,6 +117,7 @@
 		5713045EBC3AF36FF3FC610D /* TaskIntentDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskIntentDetector.swift; sourceTree = "<group>"; };
 		5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalSystemSmokeTests.swift; sourceTree = "<group>"; };
 		5FAEABDBC12FA418DBEDBD64 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
+		646272612209A465FCA9BFF4 /* CalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarService.swift; sourceTree = "<group>"; };
 		6FFAF1862AB2EC84D861931B /* DataArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataArchive.swift; sourceTree = "<group>"; };
 		70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSyncService.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				F8C51C9E4D24CBEE1F6DE475 /* AIClient.swift */,
 				229491345B70D21BB0902CB5 /* AIParser.swift */,
 				16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */,
+				646272612209A465FCA9BFF4 /* CalendarService.swift */,
 				1C45A2425F0D3BFF4F46BC72 /* CloudKitRecordMapper.swift */,
 				E8EE8416A7C860820E996F38 /* CloudKitSchema.swift */,
 				94F8857927CDD70BD40D9BF0 /* CloudSyncController.swift */,
@@ -446,6 +449,7 @@
 				23CE8BA3F6D48B6C953A8B29 /* BrainCardEditorSheet.swift in Sources */,
 				52179BAD1191EDAEC8B14521 /* BrainCardWallView.swift in Sources */,
 				5CB6CCA5FB108360AD248876 /* CSVExporter.swift in Sources */,
+				EAC6CB4E9EA74CDC6963C466 /* CalendarService.swift in Sources */,
 				1FA257F7D66FC66E583121FA /* CheckWidgetSnapshot.swift in Sources */,
 				D2B9D8ACBF20D82EF04311DE /* CloudKitRecordMapper.swift in Sources */,
 				8288C84BA68CBAA385E82DA9 /* CloudKitSchema.swift in Sources */,

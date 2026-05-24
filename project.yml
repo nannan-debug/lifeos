@@ -38,6 +38,7 @@ targets:
         CFBundleDisplayName: LifeOS
         NSHealthShareUsageDescription: 用于把你授权的睡眠和运动时间同步到 LifeOS 时间记录中。
         NSHealthUpdateUsageDescription: 用于把你授权同步的健康数据转成 LifeOS 本地时间记录。
+        NSCalendarsFullAccessUsageDescription: 用于读取日历安排并创建 Arya 建议的日程事件。
         UIRequiresFullScreen: true
         UIUserInterfaceStyle: Light
         UISupportedInterfaceOrientations:
