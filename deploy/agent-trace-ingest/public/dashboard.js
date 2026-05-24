@@ -11,6 +11,32 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
+const EVENT_LABELS = {
+  // iOS 端
+  request_started: "发起请求",
+  response_merged: "收到回复",
+  request_failed: "请求失败",
+  tool_call_started: "工具调用",
+  tool_call_result: "工具结果",
+  action_auto_confirmed: "自动保存",
+  action_confirmed: "手动确认",
+  action_dismissed: "取消建议",
+  action_auto_undo: "撤销保存",
+  debug_log_created: "调试日志",
+  // Worker 端
+  worker_received: "Worker 收到",
+  prompt_built: "Prompt 组装",
+  response_decoded: "响应解析",
+  stream_started: "流式开始",
+  stream_finished: "流式完成",
+  stream_failed: "流式失败",
+  stream_error: "流式异常",
+  model_call_started: "模型调用",
+  model_call_finished: "模型返回",
+  model_call_failed: "模型失败",
+};
+function eventLabel(name) { return EVENT_LABELS[name] ? `${name} ${EVENT_LABELS[name]}` : name; }
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -139,14 +165,18 @@ async function loadSession() {
   }
 }
 
-function currentQueryDate() {
-  return $("dateInput").value || todayKey();
+function currentStartDate() {
+  return $("startDateInput").value || todayKey();
+}
+function currentEndDate() {
+  return $("endDateInput").value || currentStartDate();
 }
 
 function queryURL(extra = {}) {
   const params = new URLSearchParams();
-  params.set("date", currentQueryDate());
-  params.set("limit", "500");
+  params.set("startDate", currentStartDate());
+  params.set("endDate", currentEndDate());
+  params.set("limit", "1000");
   params.set("summaryOnly", "1");
   const q = $("searchInput").value.trim();
   const traceId = $("traceInput").value.trim();
@@ -169,7 +199,7 @@ function extractLastReceivedAt(traces) {
 }
 
 async function loadTraces(silent = false) {
-  const queryDate = currentQueryDate();
+  const queryDate = currentStartDate();
 
   // ── 增量检测：静默刷新时，先查有没有新数据 ──
   if (silent && state.lastReceivedAt && state.currentDate === queryDate) {
@@ -222,7 +252,8 @@ async function loadSelectedTraceEvents() {
   setLoading("正在读取完整链路...");
   try {
     const params = new URLSearchParams();
-    params.set("date", currentQueryDate());
+    params.set("startDate", currentStartDate());
+    params.set("endDate", currentEndDate());
     params.set("traceId", state.selectedTraceId);
     params.set("limit", "1000");
     const body = await requestJSON(`/dashboard/api/traces?${params}`);
@@ -315,7 +346,7 @@ function renderTimeline() {
       <div class="event-time">${escapeHTML(shortTime(event.timestamp || event.receivedAt))}</div>
       <button class="event-card ${event.error ? "error" : ""} ${event.__id === state.selectedEventId ? "active" : ""}" data-event-id="${escapeHTML(event.__id)}">
         <div class="event-head">
-          <span>${escapeHTML(event.eventName)}</span>
+          <span>${escapeHTML(eventLabel(event.eventName))}</span>
           <span class="pill">${escapeHTML(event.source)}</span>
         </div>
         <div class="event-body">
@@ -346,7 +377,7 @@ function renderEventDetail() {
   $("eventSummary").className = "event-summary";
   $("eventSummary").innerHTML = `
     <div class="metric-grid">
-      <div class="metric"><span>Event</span><strong>${escapeHTML(event.eventName)}</strong></div>
+      <div class="metric"><span>Event</span><strong>${escapeHTML(eventLabel(event.eventName))}</strong></div>
       <div class="metric"><span>Source</span><strong>${escapeHTML(event.source)}</strong></div>
       <div class="metric"><span>Latency</span><strong>${event.latencyMs ? formatLatency(event.latencyMs) : "n/a"}</strong></div>
       <div class="metric"><span>Tokens</span><strong>${escapeHTML(event.usage?.total_tokens || event.usage?.totalTokens || "n/a")}</strong></div>
@@ -401,7 +432,8 @@ function showError(error) {
 }
 
 function bindEvents() {
-  $("dateInput").value = todayKey();
+  $("startDateInput").value = todayKey();
+  $("endDateInput").value = todayKey();
   $("loginForm").addEventListener("submit", login);
   $("logoutButton").addEventListener("click", logout);
   $("refreshButton").addEventListener("click", () => loadTraces());
@@ -411,7 +443,7 @@ function bindEvents() {
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
   // 切日期 / 切来源 / 切错误过滤 → 重置增量状态，全量加载
-  ["dateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => {
+  ["startDateInput", "endDateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => {
     $(id).addEventListener("change", () => {
       state.lastReceivedAt = null;
       state.currentDate = null;

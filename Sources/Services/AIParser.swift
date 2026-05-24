@@ -192,7 +192,8 @@ enum AIParser {
         traceId: String? = nil,
         sessionId: String? = nil,
         threadId: String? = nil,
-        userProfile: String? = nil
+        userProfile: String? = nil,
+        trigger: String? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
@@ -211,6 +212,9 @@ enum AIParser {
                     body["threadId"] = threadId
                     if let userProfile, !userProfile.isEmpty {
                         body["userProfile"] = userProfile
+                    }
+                    if let trigger, !trigger.isEmpty {
+                        body["trigger"] = trigger
                     }
 
                     var req = URLRequest(url: workerURL)

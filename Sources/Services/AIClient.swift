@@ -33,7 +33,8 @@ protocol AIClient {
         traceId: String?,
         sessionId: String?,
         threadId: String?,
-        userProfile: String?
+        userProfile: String?,
+        trigger: String?
     ) -> AsyncThrowingStream<StreamEvent, Error>
 }
 
@@ -93,7 +94,8 @@ struct DefaultAIClient: AIClient {
         traceId: String?,
         sessionId: String?,
         threadId: String?,
-        userProfile: String?
+        userProfile: String?,
+        trigger: String? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AIParser.chatStream(
             input: input,
@@ -104,7 +106,8 @@ struct DefaultAIClient: AIClient {
             traceId: traceId,
             sessionId: sessionId,
             threadId: threadId,
-            userProfile: userProfile
+            userProfile: userProfile,
+            trigger: trigger
         )
     }
 }

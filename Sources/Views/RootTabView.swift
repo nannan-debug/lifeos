@@ -60,6 +60,22 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: DailyStateReminderService.notificationName)) { notification in
             openCaptureFromReminder(prefill: notification.object as? String)
         }
+        .onChange(of: store.pendingNavigation) { nav in
+            guard let nav else { return }
+            store.pendingNavigation = nil
+            switch nav {
+            case .capture:
+                selectedTab = .capture
+            case .todo:
+                selectedTab = .today
+                store.todaySegment = "todo"
+            case .time(let dateKey):
+                if let dateKey, let date = Self.parseDate(dateKey) {
+                    store.selectedDate = date
+                }
+                selectedTab = .time
+            }
+        }
     }
 
     private var shouldShowAIInputBar: Bool {
@@ -71,7 +87,7 @@ struct RootTabView: View {
 
     private func openCaptureFromReminderIfNeeded() {
         if DailyStateReminderService.consumePendingOpen() {
-            openCaptureFromReminder()
+            openCaptureFromReminder(prefill: "__nudge__")
         } else if let prompt = WakeDreamReminderService.consumePendingOpenPrompt() {
             openCaptureFromReminder(prefill: prompt)
         }
@@ -82,6 +98,12 @@ struct RootTabView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             NotificationCenter.default.post(name: GlobalAIInputBar.openComposerNotification, object: prefill)
         }
+    }
+
+    private static func parseDate(_ dateKey: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: dateKey)
     }
 
     private func handleDeepLink(_ url: URL) {

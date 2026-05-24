@@ -87,10 +87,40 @@ enum StreamingPhase {
     case idle, reasoning, content, done
 }
 
+enum ExecutionState: Equatable {
+    case idle
+    case executing(total: Int, completed: Int)
+}
+
 enum AgentActionKind: String, Codable, Equatable {
     case inbox
     case task
     case time
+    // Mutation kinds
+    case editTask
+    case editTime
+    case deleteTask
+    case deleteTime
+    case completeTask
+
+    var isMutation: Bool {
+        switch self {
+        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask: return true
+        default: return false
+        }
+    }
+}
+
+struct DeletedRecordSnapshot: Codable, Equatable {
+    var recordType: String   // "task" / "timeEntry"
+    var title: String
+    var detail: String
+    var date: String
+    var startTime: String
+    var endTime: String
+    var category: String     // timeEntry 的 module
+    var priority: String     // task 的优先级
+    var dueDate: String      // task 的 dueDate
 }
 
 struct AgentActionDraft: Identifiable, Codable, Equatable {
@@ -108,6 +138,14 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
     var confidence: Double
     var reason: String
     var createdAt: Date = Date()
+    var targetId: String?            // mutation 用：AI 返回 shortId，iOS 解析后替换为完整 UUID
+
+    var isMutation: Bool {
+        switch kind {
+        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask: return true
+        default: return false
+        }
+    }
 
     init(
         id: UUID = UUID(),
@@ -123,7 +161,8 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
         endTime: String? = nil,
         confidence: Double,
         reason: String,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        targetId: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -139,6 +178,7 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
         self.confidence = confidence
         self.reason = reason
         self.createdAt = createdAt
+        self.targetId = targetId
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -156,6 +196,7 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
         case confidence
         case reason
         case createdAt
+        case targetId
     }
 
     private enum AlternateCodingKeys: String, CodingKey {
@@ -180,6 +221,7 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
         confidence = (try? c.decode(Double.self, forKey: .confidence)) ?? 0.6
         reason = (try? c.decode(String.self, forKey: .reason)) ?? ""
         createdAt = (try? c.decode(Date.self, forKey: .createdAt)) ?? Date()
+        targetId = try? c.decodeIfPresent(String.self, forKey: .targetId)
     }
 }
 
@@ -200,6 +242,7 @@ struct AutoSavedActionRef: Codable, Equatable {
     var turnId: UUID?       // inbox → turn id
     var taskId: UUID?       // task → task id
     var timeEntryId: UUID?  // time → time entry name (用 title 匹配删除)
+    var deletedRecord: DeletedRecordSnapshot?  // 删除撤销用
 }
 
 struct AgentChatSession: Codable, Equatable {

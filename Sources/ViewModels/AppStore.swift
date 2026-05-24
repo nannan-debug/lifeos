@@ -85,9 +85,20 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var agentReasoningTimeMs: Int? { agent.reasoningTimeMs }
     func addAgentMemory(content: String) { agent.addMemory(content: content) }
     func removeAgentMemory(id: UUID) { agent.removeMemory(id: id) }
+    var agentMessageQueue: [AgentManager.QueuedMessage] { agent.messageQueue }
+    func cancelAgentRequest() { agent.cancelCurrentRequest() }
+    func enqueueAgentMessage(_ text: String) { agent.enqueueMessage(text) }
+    func removeQueuedAgentMessage(id: UUID) { agent.removeQueuedMessage(id: id) }
 
     // TodayView 当前 segment（"check" / "todo"），供 RootTabView 控制 AI 输入框可见性
     @Published var todaySegment: String = "check"
+    @Published var pendingNavigation: NavigationTarget? = nil
+
+    enum NavigationTarget: Equatable {
+        case capture
+        case todo
+        case time(dateKey: String?)
+    }
     @Published var isICloudSyncEnabled: Bool
     @Published var iCloudSyncStatusText: String
     @Published var isHealthSleepSyncEnabled: Bool
@@ -185,6 +196,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         loadAIFailureLogs()
         let uid = defaults.string(forKey: authUserIdKey) ?? ""
         agent = AgentManager(writer: self, userIdSuffix: uid)
+        agent.queuedMessageHandler = { [weak self] text in
+            self?.submitAgentText(text)
+        }
         agentCancellable = agent.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -269,6 +283,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
     func refreshAfterAppBecameActive(now: Date = Date()) {
         publishCheckWidgetSnapshot(now: now)
+        DailyStateReminderService.rescheduleIfNeeded()
         guard shouldSyncHealthKitAfterAppBecameActive(now: now) else { return }
         syncHealthKitNow(referenceDate: now)
     }
@@ -1820,9 +1835,190 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
     func undoAutoSavedAgentAction(messageId: UUID) { agent.undoAutoSavedAction(messageId: messageId) }
 
+    // MARK: - Mutation support (AgentDataWriter)
+
+    func resolveTaskId(shortId: String) -> (UUID, TaskEntry)? {
+        let lower = shortId.lowercased()
+        return tasks.first { $0.id.uuidString.lowercased().hasPrefix(lower) }
+            .map { ($0.id, $0) }
+    }
+
+    func resolveTimeEntryId(shortId: String) -> (UUID, TimeEntry, String)? {
+        let lower = shortId.lowercased()
+        if let match = timeEntries.first(where: { $0.id.uuidString.lowercased().hasPrefix(lower) }) {
+            return (match.id, match, selectedDateKey)
+        }
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        for (key, rows) in map {
+            for row in rows {
+                if let idStr = row["id"], idStr.lowercased().hasPrefix(lower), let uuid = UUID(uuidString: idStr) {
+                    return (uuid, timeEntry(from: row), key)
+                }
+            }
+        }
+        return nil
+    }
+
+    func updateTaskFromAgent(id: UUID, title: String?, detail: String?, priority: String?, dueDate: String?) -> String? {
+        guard let idx = tasks.firstIndex(where: { $0.id == id }) else { return "记录不存在" }
+        if let t = title { tasks[idx].title = t }
+        if let d = detail { tasks[idx].detail = d }
+        if let p = priority { tasks[idx].priority = p }
+        if let dd = dueDate { tasks[idx].dueDate = dd }
+        saveTasks()
+        return nil
+    }
+
+    func updateTimeEntryFromAgent(id: UUID, name: String?, start: String?, end: String?, category: String?, targetDate: String?) -> String? {
+        if let idx = timeEntries.firstIndex(where: { $0.id == id }) {
+            if let n = name { timeEntries[idx].name = n }
+            if let s = start { timeEntries[idx].start = s }
+            if let e = end { timeEntries[idx].end = e }
+            if let c = category { timeEntries[idx].category = c }
+
+            if let targetDate, !targetDate.isEmpty, targetDate != selectedDateKey {
+                let entry = timeEntries[idx]
+                timeEntries.remove(at: idx)
+                saveTimeForDate()
+                var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+                var targetDay = map[targetDate] ?? []
+                targetDay.insert(row(from: entry), at: 0)
+                map[targetDate] = targetDay
+                defaults.set(map, forKey: keyTime)
+                syncICloudAfterLocalChange()
+            } else {
+                saveTimeForDate()
+            }
+            return nil
+        }
+
+        var map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        let idStr = id.uuidString
+        var sourceKey: String?
+        for (key, rows) in map {
+            if rows.contains(where: { $0["id"] == idStr }) { sourceKey = key; break }
+        }
+        guard let sourceKey, var rows = map[sourceKey] else { return "记录不存在" }
+        guard var rowIdx = rows.firstIndex(where: { $0["id"] == idStr }) else { return "记录不存在" }
+
+        if let n = name { rows[rowIdx]["name"] = n }
+        if let s = start { rows[rowIdx]["start"] = s }
+        if let e = end { rows[rowIdx]["end"] = e }
+        if let c = category { rows[rowIdx]["category"] = c }
+
+        let destKey = (targetDate != nil && !targetDate!.isEmpty) ? targetDate! : sourceKey
+        if destKey != sourceKey {
+            let updatedRow = rows[rowIdx]
+            rows.remove(at: rowIdx)
+            map[sourceKey] = rows
+            var destRows = map[destKey] ?? []
+            destRows.insert(updatedRow, at: 0)
+            map[destKey] = destRows
+        } else {
+            map[sourceKey] = rows
+        }
+        defaults.set(map, forKey: keyTime)
+        syncICloudAfterLocalChange()
+        return nil
+    }
+
+    func removeTaskFromAgent(id: UUID) -> DeletedRecordSnapshot? {
+        guard let task = tasks.first(where: { $0.id == id }) else { return nil }
+        let snapshot = DeletedRecordSnapshot(
+            recordType: "task",
+            title: task.title,
+            detail: task.detail,
+            date: task.date,
+            startTime: task.startTime,
+            endTime: task.endTime,
+            category: "",
+            priority: task.priority,
+            dueDate: task.dueDate
+        )
+        removeTask(id: id)
+        return snapshot
+    }
+
+    func removeTimeEntryFromAgent(id: UUID) -> DeletedRecordSnapshot? {
+        if let entry = timeEntries.first(where: { $0.id == id }) {
+            let snapshot = DeletedRecordSnapshot(
+                recordType: "timeEntry", title: entry.name, detail: "",
+                date: selectedDateKey, startTime: entry.start, endTime: entry.end,
+                category: entry.category, priority: "", dueDate: ""
+            )
+            removeTimeEntryByID(id, dateKey: selectedDateKey)
+            return snapshot
+        }
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        let idStr = id.uuidString
+        for (key, rows) in map {
+            if let row = rows.first(where: { $0["id"] == idStr }) {
+                let entry = timeEntry(from: row)
+                let snapshot = DeletedRecordSnapshot(
+                    recordType: "timeEntry", title: entry.name, detail: "",
+                    date: key, startTime: entry.start, endTime: entry.end,
+                    category: entry.category, priority: "", dueDate: ""
+                )
+                removeTimeEntryByID(id, dateKey: key)
+                return snapshot
+            }
+        }
+        return nil
+    }
+
+    func toggleTaskFromAgent(id: UUID) -> String? {
+        guard let task = tasks.first(where: { $0.id == id }) else { return "记录不存在" }
+        toggleTask(task)
+        return nil
+    }
+
+    func restoreFromSnapshot(_ snapshot: DeletedRecordSnapshot) {
+        switch snapshot.recordType {
+        case "task":
+            _ = addTask(
+                title: snapshot.title,
+                detail: snapshot.detail,
+                status: "待办",
+                priority: snapshot.priority,
+                dueDate: snapshot.dueDate,
+                date: snapshot.date,
+                completedAt: nil,
+                isAllDay: snapshot.startTime.isEmpty,
+                startTime: snapshot.startTime,
+                endTime: snapshot.endTime,
+                location: "",
+                sourceNoteId: nil,
+                sourceExcerpt: ""
+            )
+        case "timeEntry":
+            _ = addTimeEntry(
+                name: snapshot.title,
+                start: snapshot.startTime,
+                end: snapshot.endTime,
+                category: snapshot.category
+            )
+        default:
+            break
+        }
+    }
+
     var userProfile: String {
         get { defaults.string(forKey: keyUserProfile) ?? "" }
         set { defaults.set(newValue, forKey: keyUserProfile) }
+    }
+
+    func submitNudge() {
+        agent.createNewThread(saveOldForMemory: true)
+        let profile = userProfile.isEmpty ? nil : userProfile
+        agent.sendNudge(
+            turns: turns,
+            tasks: tasks,
+            timeEntries: timeEntries,
+            checks: checkItems,
+            nearbyTimeEntries: loadNearbyTimeEntries(days: 3),
+            toolExecutor: { [weak self] call in self?.executeAgentTool(call) ?? "" },
+            userProfile: profile
+        )
     }
 
     func submitAgentText(_ text: String) {
@@ -1834,10 +2030,30 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             tasks: tasks,
             timeEntries: timeEntries,
             checks: checkItems,
+            nearbyTimeEntries: loadNearbyTimeEntries(days: 3),
             weeklySummary: weeklySummary.flatMap { $0.isEmpty ? nil : $0 },
             toolExecutor: { [weak self] call in self?.executeAgentTool(call) ?? "" },
             userProfile: profile
         )
+    }
+
+    /// 加载选中日期前后几天的时间记录（不含当天，当天已在 timeEntries 里）
+    private func loadNearbyTimeEntries(days: Int) -> [(String, [TimeEntry])] {
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        var result: [(String, [TimeEntry])] = []
+        for offset in -days...days where offset != 0 {
+            guard let date = Calendar.current.date(byAdding: .day, value: offset, to: selectedDate) else { continue }
+            let key = f.string(from: date)
+            guard let rows = map[key], !rows.isEmpty else { continue }
+            let entries = rows.map(timeEntry(from:))
+                .filter { !isZeroLengthCrossDayContinuation($0) }
+            if !entries.isEmpty {
+                result.append((key, entries))
+            }
+        }
+        return result.sorted { $0.0 < $1.0 }
     }
 
     func submitQuickText(_ text: String) {
@@ -1861,6 +2077,25 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         agent.dismissAction(id: id)
     }
 
+    func executeAllPendingAgentActions() {
+        agent.executePendingActions()
+    }
+
+    func dismissAllPendingAgentActions() {
+        agent.dismissAllPendingActions()
+    }
+
+    var agentExecutionState: ExecutionState {
+        agent.executionState
+    }
+
+    var pendingCreateActions: [AgentActionDraft] {
+        agent.session.pendingActions.filter { !$0.isMutation }
+    }
+
+    var pendingMutationActions: [AgentActionDraft] {
+        agent.session.pendingActions.filter { $0.isMutation }
+    }
 
     private func encodeDerivatives(_ arr: [TurnDerivative]) -> String {
         let encoder = JSONEncoder()

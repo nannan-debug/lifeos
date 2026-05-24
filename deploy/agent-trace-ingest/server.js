@@ -234,17 +234,33 @@ export function createTraceServer(options = {}) {
     return normalized;
   }
 
-  async function listEvents(query) {
-    const day = String(query.get("date") || new Date().toISOString().slice(0, 10));
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+  function dateRange(query) {
+    const startDate = String(query.get("startDate") || query.get("date") || new Date().toISOString().slice(0, 10));
+    const endDate = String(query.get("endDate") || startDate);
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!datePattern.test(startDate) || !datePattern.test(endDate)) {
       const err = new Error("invalid_date");
       err.status = 400;
       throw err;
     }
+    const days = [];
+    let cursor = startDate;
+    while (cursor <= endDate && days.length <= 31) {
+      days.push(cursor);
+      const d = new Date(cursor + "T00:00:00");
+      d.setDate(d.getDate() + 1);
+      cursor = d.toISOString().slice(0, 10);
+    }
+    return days;
+  }
+
+  async function listEvents(query) {
+    const days = dateRange(query);
     const traceId = String(query.get("traceId") || "").trim();
     const since = String(query.get("since") || "").trim();
-    const limit = Math.min(Number(query.get("limit") || 200), 1000);
-    const allEvents = await cachedReadDay(day);
+    const limit = Math.min(Number(query.get("limit") || 200), 2000);
+    const chunks = await Promise.all(days.map((d) => cachedReadDay(d).catch(() => [])));
+    const allEvents = chunks.flat();
     return allEvents
       .filter((event) => !traceId || event.traceId === traceId)
       .filter((event) => !since || (event.receivedAt || "") > since)
@@ -278,6 +294,20 @@ export function createTraceServer(options = {}) {
     return taskLabel ? `[${modeLabel}] ${taskLabel}` : `[${modeLabel}]`;
   }
 
+  const IOS_EVENT_LABELS = {
+    action_auto_confirmed: "自动保存",
+    action_confirmed: "手动确认",
+    action_dismissed: "取消建议",
+    action_auto_undo: "撤销保存",
+  };
+  function iosActionTitle(events) {
+    const ev = events.find((e) => IOS_EVENT_LABELS[e.eventName]);
+    if (!ev) return "";
+    const label = IOS_EVENT_LABELS[ev.eventName];
+    const result = ev.payload?.result || "";
+    return result ? `${result}` : label;
+  }
+
   function summarizeTrace(traceId, events) {
     const sorted = [...events].sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
     const first = sorted[0] || {};
@@ -300,7 +330,7 @@ export function createTraceServer(options = {}) {
       sources: [...new Set(sorted.map((event) => event.source).filter(Boolean))],
       hasError: Boolean(errorEvent),
       status: errorEvent ? "error" : "ok",
-      title: inputEvent?.payload?.input || responseEvent?.payload?.reply || modeTitle(sorted) || traceId,
+      title: inputEvent?.payload?.input || responseEvent?.payload?.reply || modeTitle(sorted) || iosActionTitle(sorted) || traceId,
       lastEventName: last.eventName || "",
       latencyMs: totalLatency || null,
       usage,
