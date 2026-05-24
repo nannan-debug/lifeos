@@ -318,7 +318,7 @@ private struct AgentChatPanel: View {
                 .font(.callout)
                 .foregroundStyle(CreamTheme.text.opacity(0.9))
             Spacer()
-            if let ref = message.autoSavedAction, !ref.kind.isMutation {
+            if let ref = message.autoSavedAction, !ref.kind.isMutation, ref.kind != .calendarEvent {
                 Button {
                     navigateToRecord(ref)
                 } label: {
@@ -1193,6 +1193,7 @@ private struct AgentChatPanel: View {
         case .inbox: return "建议存随手记"
         case .task: return "建议存待办"
         case .time: return "建议存时间"
+        case .calendarEvent: return "建议加日历"
         case .editTask: return "建议改待办"
         case .editTime: return "建议改时间"
         case .deleteTask: return "建议删待办"
@@ -1209,6 +1210,7 @@ private struct AgentChatPanel: View {
         case .inbox: return "square.and.pencil"
         case .task: return "checklist"
         case .time: return "clock"
+        case .calendarEvent: return "calendar.badge.plus"
         case .editTask, .editTime: return "pencil"
         case .deleteTask, .deleteTime: return "trash"
         case .completeTask: return "checkmark.circle"
@@ -1220,6 +1222,7 @@ private struct AgentChatPanel: View {
         case .editTask, .editTime: return "确认修改"
         case .deleteTask, .deleteTime: return "确认删除"
         case .completeTask: return "确认"
+        case .calendarEvent: return "添加到日历"
         default: return "保存"
         }
     }
@@ -1227,6 +1230,7 @@ private struct AgentChatPanel: View {
     private func actionTintColor(for action: AgentActionDraft) -> Color {
         switch action.kind {
         case .deleteTask, .deleteTime: return .red
+        case .calendarEvent: return .blue
         default: return CreamTheme.green
         }
     }

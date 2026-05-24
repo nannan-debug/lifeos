@@ -128,6 +128,8 @@ const QUICK_SYSTEM_PROMPT = `把用户的一句话快速分类为可保存的记
 inbox: {"kind":"inbox","inboxType":"想法|感受|感恩|做梦","title":"","detail":"","date":"YYYY-MM-DD","mood":1-5或null,"feelings":[],"confidence":0.8,"reason":""}
 task: {"kind":"task","title":"","detail":"","date":"YYYY-MM-DD","startTime":"HH:mm","confidence":0.8,"reason":""}
 time: {"kind":"time","title":"","detail":"","date":"YYYY-MM-DD","module":"工作|学习|运动|休息|社交|其他","startTime":"HH:mm","endTime":"HH:mm","confidence":0.8,"reason":""}
+calendarEvent: {"kind":"calendarEvent","title":"","detail":"","date":"YYYY-MM-DD","startTime":"HH:mm","endTime":"HH:mm","confidence":0.9,"reason":""}
+全天事件 startTime/endTime 留空。
 
 feelings 词表：开心/满足/兴奋/激动/感动/平静/放松/疲惫/焦虑/烦躁/沮丧/难过/失望/愤怒/孤独/困惑/无聊/好奇/自豪/遗憾（最多3个）
 
@@ -224,6 +226,10 @@ feelings 词表：开心/满足/兴奋/激动/感动/平静/放松/疲惫/焦虑
 
 ## completeTask — 标记待办完成/取消完成
 {“kind”:”completeTask”,”targetId”:”d4e5f6”,”title”:”任务名”,”confidence”:0.9,”reason”:”用户说已完成”}
+
+## calendarEvent — 创建日历事件
+{“kind”:”calendarEvent”,”title”:”团队周会”,”detail”:””,”date”:”YYYY-MM-DD”,”startTime”:”HH:mm”,”endTime”:”HH:mm”,”confidence”:0.9,”reason”:”用户要求加日程”}
+全天事件 startTime/endTime 留空。用于帮用户往系统日历添加日程。contextSummary 中”今日日历”段落列出了用户当前的日历安排，利用它来避免时间冲突。
 
 # 输出格式（严格 JSON）
 {“reply”:”自然回复”,”followUpQuestion”:”一个追问或null”,”actionSuggestions”:[]}
@@ -1255,7 +1261,7 @@ function normalizeActionSuggestion(action) {
   if (!action || typeof action !== "object") return null;
 
   const kind = String(action.kind || "").trim();
-  const validKinds = ["inbox", "task", "time", "editTask", "editTime", "deleteTask", "deleteTime", "completeTask"];
+  const validKinds = ["inbox", "task", "time", "calendarEvent", "editTask", "editTime", "deleteTask", "deleteTime", "completeTask"];
   if (!validKinds.includes(kind)) return null;
 
   const isMutation = kind.startsWith("edit") || kind.startsWith("delete") || kind === "completeTask";
@@ -1290,7 +1296,7 @@ function normalizeActionSuggestion(action) {
 /** Limit actions: max 8 create, max 3 mutation, mutations + creates don't mix */
 function limitActionSuggestions(actions) {
   const mutations = actions.filter(a => ["editTask","editTime","deleteTask","deleteTime","completeTask"].includes(a.kind));
-  const creates = actions.filter(a => ["inbox","task","time"].includes(a.kind));
+  const creates = actions.filter(a => ["inbox","task","time","calendarEvent"].includes(a.kind));
   if (mutations.length > 0) return mutations.slice(0, 3);
   return creates.slice(0, 8);
 }

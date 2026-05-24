@@ -96,6 +96,7 @@ enum AgentActionKind: String, Codable, Equatable {
     case inbox
     case task
     case time
+    case calendarEvent
     // Mutation kinds
     case editTask
     case editTime
@@ -243,6 +244,7 @@ struct AutoSavedActionRef: Codable, Equatable {
     var taskId: UUID?       // task → task id
     var timeEntryId: UUID?  // time → time entry name (用 title 匹配删除)
     var deletedRecord: DeletedRecordSnapshot?  // 删除撤销用
+    var calendarEventId: String?  // calendarEvent → EKEvent identifier（撤销用）
 }
 
 struct AgentChatSession: Codable, Equatable {

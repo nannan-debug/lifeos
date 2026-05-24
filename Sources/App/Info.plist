@@ -33,6 +33,8 @@
 	<string>13</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>用于读取日历安排并创建 Arya 建议的日程事件。</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>用于把你授权的睡眠和运动时间同步到 LifeOS 时间记录中。</string>
 	<key>NSHealthUpdateUsageDescription</key>

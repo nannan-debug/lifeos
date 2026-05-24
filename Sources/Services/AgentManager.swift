@@ -42,6 +42,7 @@ final class AgentManager: ObservableObject {
 
     private weak var writer: AgentDataWriter?
     private var lastDeletedSnapshot: DeletedRecordSnapshot?
+    private var lastCalendarEventId: String?
     private var nearbyTimeEntries: [(String, [TimeEntry])] = []
     private var currentRequestTask: Task<Void, Never>?
     @Published var messageQueue: [QueuedMessage] = []
@@ -119,6 +120,7 @@ final class AgentManager: ObservableObject {
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
         nearbyTimeEntries: [(String, [TimeEntry])] = [],
+        calendarEvents: [CalendarEventBlock] = [],
         weeklySummary: String? = nil,
         toolExecutor: ((AgentToolCall) -> String)? = nil,
         userProfile: String? = nil
@@ -139,6 +141,7 @@ final class AgentManager: ObservableObject {
             checks: checks,
             memories: memories,
             nearbyTimeEntries: nearbyTimeEntries,
+            calendarEvents: calendarEvents,
             weeklySummary: weeklySummary
         )
         markMemoriesUsed()
@@ -403,6 +406,7 @@ final class AgentManager: ObservableObject {
         timeEntries: [TimeEntry],
         checks: [DailyCheckItem],
         nearbyTimeEntries: [(String, [TimeEntry])] = [],
+        calendarEvents: [CalendarEventBlock] = [],
         toolExecutor: ((AgentToolCall) -> String)? = nil,
         userProfile: String? = nil
     ) {
@@ -420,6 +424,7 @@ final class AgentManager: ObservableObject {
             checks: checks,
             memories: memories,
             nearbyTimeEntries: nearbyTimeEntries,
+            calendarEvents: calendarEvents,
             trigger: .scheduledNudge
         )
         markMemoriesUsed()
@@ -720,6 +725,9 @@ final class AgentManager: ObservableObject {
             return !action.title.isEmpty
                 && action.startTime != nil && !action.startTime!.isEmpty
                 && action.endTime != nil && !action.endTime!.isEmpty
+        case .calendarEvent:
+            // 日历事件写入系统日历，始终需要用户确认
+            return false
         case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask:
             return false  // 已被上面的 guard 拦截，这里兜底
         }
@@ -741,6 +749,9 @@ final class AgentManager: ObservableObject {
             let turnId = commitTimeActionReturningId(action)
             ref = turnId.map { AutoSavedActionRef(kind: .time, title: action.title, turnId: $0) }
             result = turnId == nil ? "时间记录缺少时间" : nil
+        case .calendarEvent:
+            ref = nil
+            result = "calendarEvent 不走 autoConfirm"
         case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask:
             ref = nil
             result = "mutation 不应走 autoConfirm"
@@ -890,6 +901,8 @@ final class AgentManager: ObservableObject {
             result = commitTaskAction(action)
         case .time:
             result = commitTimeAction(action)
+        case .calendarEvent:
+            result = commitCalendarEvent(action)
         case .editTask:
             result = commitEditTask(action)
         case .editTime:
@@ -904,12 +917,15 @@ final class AgentManager: ObservableObject {
 
         if result == nil {
             session.pendingActions.removeAll { $0.id == id }
-            // 删除操作带 autoSavedAction 以支持撤销
+            // 撤销支持
             var undoRef: AutoSavedActionRef? = nil
             if (action.kind == .deleteTask || action.kind == .deleteTime),
                let snapshot = lastDeletedSnapshot {
                 undoRef = AutoSavedActionRef(kind: action.kind, title: action.title, deletedRecord: snapshot)
                 lastDeletedSnapshot = nil
+            } else if action.kind == .calendarEvent, let eventId = lastCalendarEventId {
+                undoRef = AutoSavedActionRef(kind: .calendarEvent, title: action.title, calendarEventId: eventId)
+                lastCalendarEventId = nil
             }
             let msg = AgentChatMessage(
                 role: "assistant",
@@ -1011,6 +1027,10 @@ final class AgentManager: ObservableObject {
         case .deleteTask, .deleteTime:
             if let snapshot = ref.deletedRecord {
                 writer?.restoreFromSnapshot(snapshot)
+            }
+        case .calendarEvent:
+            if let eventId = ref.calendarEventId {
+                try? CalendarService.shared.deleteEvent(identifier: eventId)
             }
         case .editTask, .editTime, .completeTask:
             break  // edit/complete 暂不支持撤销
@@ -1553,6 +1573,48 @@ final class AgentManager: ObservableObject {
         return writer.toggleTaskFromAgent(id: uuid)
     }
 
+    private func commitCalendarEvent(_ action: AgentActionDraft) -> String? {
+        let status = CalendarService.shared.authorizationStatus
+        guard status == .fullAccess || status == .authorized else {
+            return "未授权日历访问，请在系统设置中允许"
+        }
+
+        let dateStr = action.date ?? AIParser.isoDate()
+        let startTimeStr = action.startTime ?? ""
+        let endTimeStr = action.endTime ?? ""
+        let isAllDay = startTimeStr.isEmpty && endTimeStr.isEmpty
+
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        let startDate: Date
+        let endDate: Date
+
+        if isAllDay {
+            fmt.dateFormat = "yyyy-MM-dd"
+            startDate = fmt.date(from: dateStr) ?? Date()
+            endDate = Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate
+        } else {
+            fmt.dateFormat = "yyyy-MM-dd HH:mm"
+            startDate = fmt.date(from: "\(dateStr) \(startTimeStr.isEmpty ? "09:00" : startTimeStr)") ?? Date()
+            endDate = fmt.date(from: "\(dateStr) \(endTimeStr.isEmpty ? "10:00" : endTimeStr)") ?? Date()
+        }
+
+        do {
+            let eventId = try CalendarService.shared.createEvent(
+                title: action.title,
+                startDate: startDate,
+                endDate: endDate,
+                isAllDay: isAllDay,
+                location: nil,
+                notes: action.detail.isEmpty ? nil : action.detail
+            )
+            lastCalendarEventId = eventId
+            return nil
+        } catch {
+            return "创建日历事件失败：\(error.localizedDescription)"
+        }
+    }
+
     private func inboxType(for action: AgentActionDraft) -> String {
         let allowedTypes = ["想法", "感受", "感恩", "做梦"]
         if let inboxType = action.inboxType?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1646,6 +1708,7 @@ final class AgentManager: ObservableObject {
         case .inbox: return "已创建随手记：\(title)"
         case .task: return "已创建待办：\(title)"
         case .time: return "已创建时间记录：\(title)"
+        case .calendarEvent: return "已创建日历事件：\(title)"
         case .editTask: return "已修改待办：\(title)"
         case .editTime: return "已修改时间记录：\(title)"
         case .deleteTask: return "已删除待办：\(title)"

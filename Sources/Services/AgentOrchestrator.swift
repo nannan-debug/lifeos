@@ -33,6 +33,7 @@ enum AgentOrchestrator {
         checks: [DailyCheckItem],
         memories: [AgentMemory] = [],
         nearbyTimeEntries: [(String, [TimeEntry])] = [],
+        calendarEvents: [CalendarEventBlock] = [],
         trigger: AgentTrigger = .userMessage,
         weeklySummary: String? = nil,
         toolResult: String? = nil
@@ -51,6 +52,7 @@ enum AgentOrchestrator {
                 checks: checks,
                 memories: memories,
                 nearbyTimeEntries: nearbyTimeEntries,
+                calendarEvents: calendarEvents,
                 weeklySummary: weeklySummary,
                 toolResult: toolResult
             ),
@@ -65,6 +67,7 @@ enum AgentOrchestrator {
         checks: [DailyCheckItem],
         memories: [AgentMemory] = [],
         nearbyTimeEntries: [(String, [TimeEntry])] = [],
+        calendarEvents: [CalendarEventBlock] = [],
         weeklySummary: String? = nil,
         toolResult: String? = nil
     ) -> String {
@@ -111,6 +114,20 @@ enum AgentOrchestrator {
         }
         if !checkState.isEmpty {
             sections.append("今日打卡：\n" + checkState.joined(separator: "\n"))
+        }
+
+        let timeFmt = DateFormatter()
+        timeFmt.dateFormat = "HH:mm"
+        let calendarLines = calendarEvents.prefix(8).map { event -> String in
+            if event.isAllDay {
+                return "- [全天] \(event.title)\(event.location.map { "（\($0)）" } ?? "")"
+            }
+            let start = timeFmt.string(from: event.startDate)
+            let end = timeFmt.string(from: event.endDate)
+            return "- \(start)-\(end) \(event.title)\(event.location.map { "（\($0)）" } ?? "")"
+        }
+        if !calendarLines.isEmpty {
+            sections.append("今日日历：\n" + calendarLines.joined(separator: "\n"))
         }
 
         let memoryLines = memories.prefix(10).map { "- \($0.content)" }

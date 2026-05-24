@@ -2016,6 +2016,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             timeEntries: timeEntries,
             checks: checkItems,
             nearbyTimeEntries: loadNearbyTimeEntries(days: 3),
+            calendarEvents: loadCalendarEvents(),
             toolExecutor: { [weak self] call in self?.executeAgentTool(call) ?? "" },
             userProfile: profile
         )
@@ -2031,10 +2032,21 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             timeEntries: timeEntries,
             checks: checkItems,
             nearbyTimeEntries: loadNearbyTimeEntries(days: 3),
+            calendarEvents: loadCalendarEvents(),
             weeklySummary: weeklySummary.flatMap { $0.isEmpty ? nil : $0 },
             toolExecutor: { [weak self] call in self?.executeAgentTool(call) ?? "" },
             userProfile: profile
         )
+    }
+
+    /// 读取今天和明天的日历事件（已授权时）
+    private func loadCalendarEvents() -> [CalendarEventBlock] {
+        let status = CalendarService.shared.authorizationStatus
+        guard status == .fullAccess || status == .authorized else { return [] }
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        guard let dayAfterTomorrow = cal.date(byAdding: .day, value: 2, to: todayStart) else { return [] }
+        return CalendarService.shared.fetchEvents(from: todayStart, to: dayAfterTomorrow)
     }
 
     /// 加载选中日期前后几天的时间记录（不含当天，当天已在 timeEntries 里）
