@@ -12,7 +12,12 @@
 
 ## 最近完成
 
-- AI 全屏对话窗 + 多会话历史 — 随 `1.8.0 (build 12)` 上架（2026-05-21），已归档到 [`docs/archived-features/agent-fullscreen-chat.md`](docs/archived-features/agent-fullscreen-chat.md)。
-- Agent Trace 全量上传链路 — [#71](https://github.com/nannan-debug/lifeos/pull/71) 已合入 `main`，当前作为 `1.8.1` 候选验证内容。
+- 中英文双语支持 — `1.11.0 (build 15)` 已提交审核（2026-05-25）。[#83](https://github.com/nannan-debug/lifeos/pull/83)。
+  - 轻量 i18n 方案：`Sources/Localization/L.swift` 集中管理 ~150 个双语字符串，`UserDefaults("app.language")` 切换
+  - 设置页语言 Picker + 全 App UI 替换 + AI 语言匹配 + 70 条英文每日语录
+  - 数据存储层不受影响（分类/标签等仍以中文存储，display mapping 函数在显示时翻译）
+- Usage Analytics Dashboard — 随 `1.10.0 (build 14)` 合入 main。[#82](https://github.com/nannan-debug/lifeos/pull/82)。
+- AI 全屏对话窗 + 多会话历史 — 随 `1.8.0 (build 12)` 上架（2026-05-21）。
+- Agent Trace 全量上传链路 — [#71](https://github.com/nannan-debug/lifeos/pull/71) 已合入 `main`。
 - Agent V2 — 分层交互 + 轻量 Memory（PR #63/#65/#66，2026-05-20）。
 - iCloud 同步迁移到 CloudKit — 随 `1.7.0 (build 11)` 上架（2026-05-20）。

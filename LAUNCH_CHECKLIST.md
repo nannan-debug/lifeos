@@ -1,13 +1,13 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-05-21
+> 最后更新：2026-05-25
 
 ---
 
 ## 0. 当前结论
 
-**LifeOS 1.8.0 (build 12) 已通过审核并上架；后续 main 已进入 1.8.1 候选开发。**
+**LifeOS 1.11.0 (build 15) 已提交审核，等待 Apple Review。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架
@@ -18,12 +18,13 @@
 - ✅ `1.5.1 (build 8)` — 2026-05-11 上架
 - ✅ `1.5.2 (build 9)` — 2026-05-13 上架
 - ✅ `1.6.0 (build 10)` — 2026-05-15 上架
-- ✅ `1.7.0 (build 11)` — 2026-05-20 上架（桌面小组件、CloudKit 同步、导出全部数据、延伸思考、醒后梦境提醒）
-- ✅ `1.8.0 (build 12)` — 2026-05-21 上架（AI 全屏对话窗、多会话历史、健康同步与时间记录修复）
+- ✅ `1.7.0 (build 11)` — 2026-05-20 上架
+- ✅ `1.8.0 (build 12)` — 2026-05-21 上架
+- ⏳ `1.11.0 (build 15)` — 2026-05-25 已提交审核（中英文双语支持 + AI 语言匹配）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 ~ 1.8.0 均 Ready for Distribution
+- ✅ App Store Connect 状态：1.0.0 ~ 1.8.0 均 Ready for Distribution；1.11.0 审核中
 
-**已完成：`v1.8.0` tag 已 push，GitHub Release 已发布（见 §6.9）。**
+**注：1.9.0 (build 13) 和 1.10.0 (build 14) 已合入 main 但未单独发版上架，功能随 1.11.0 一起发布。**
 
 **审核期间想做新功能怎么办？** 见 §4.8。
 
@@ -39,11 +40,12 @@
 | iOS 最低支持 | iOS 17.0 |
 | Swift 版本 | 5.9 |
 | Xcode project | XcodeGen 生成（源头是 `project.yml`） |
-| 主语言 | 简体中文（zh-Hans） |
+| 主语言 | 简体中文（zh-Hans），应用内支持中英文切换 |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.8.0` (build 12) |
-| 当前 main 状态 | `1.8.0` 已上架；`main` 已包含后续 Agent Trace 诊断链路改动，可作为 `1.8.1` 候选开发基础 |
+| 当前提审版本 | `1.11.0` (build 15) — 中英文双语支持 |
+| 当前 main 状态 | `1.11.0 (build 15)` 已提交审核；`main` 包含 1.9.0~1.11.0 全部改动 |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -401,6 +403,20 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ Tag `v1.8.0` 已 push（指向 `f48daaa`，即 1.8.0 提审状态；不包含后续 1.8.1 候选的 Agent Trace 改动）。
 - ✅ GitHub Release [v1.8.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.8.0) 已发布。
 
+### 6.10 1.11.0 上架收尾（审核中 ⏳）
+
+- ✅ 功能 PR 已合入 `main`：中英文双语支持 + AI 语言匹配（[#83](https://github.com/nannan-debug/lifeos/pull/83)，squash merge `5c96898`）。
+- ✅ 版本号已 bump：`1.11.0 (build 15)`，commit `036d3c6`，已 push main。
+- ✅ 用户已手动 Archive / Upload 到 App Store Connect 并 Submit to App Review（2026-05-25）。
+- ⏳ 等待 Apple Review 通过。
+- 通过后需要：打 `v1.11.0` tag + 发 GitHub Release + 更新本文件。
+
+**关键改动清单（供 What's New 参考）：**
+- 设置新增语言切换（中文/English）
+- AI 自动匹配用户语言回复
+- 全界面中英文双语支持
+- 每日一言 70 条英文原版语录
+
 ---
 
 ## 7. 仓库内与上架最相关的文件
@@ -421,4 +437,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 ~ 1.8.0 均已在 App Store 在线。`v1.8.0` tag 和 GitHub Release 已完成；后续 main 已包含 Agent Trace 诊断链路，可按 `1.8.1` 候选继续验证。**
+**LifeOS 1.0.0 ~ 1.8.0 均已在 App Store 在线。`1.11.0 (build 15)` 已提交审核（中英文双语支持 + AI 语言匹配）。审核通过后需打 tag、发 GitHub Release、更新本文件。**

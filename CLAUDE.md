@@ -25,6 +25,7 @@ Sources/
   ViewModels/   # AppStore（全局状态）
   Services/     # AgentManager + AIParser + AIClient + Secrets（Secrets.swift 已 gitignore）
   Views/        # 所有 SwiftUI 页面
+  Localization/ # L.swift — 双语字符串中心（中/英）
 CloudflareWorkers/
   personal-ai-proxy/  # Cloudflare Worker（AI 代理 + prompt 管理）
 Tests/          # 单元测试
@@ -43,6 +44,7 @@ Secrets.example.swift  # Secrets 模板，真实文件不进仓库
 - `Sources/Views/RootTabView.swift` — Tab 容器
 - `CloudflareWorkers/personal-ai-proxy/worker.js` — AI 代理（prompt、路由、工具端点）
 - `scripts/agent_lab.py` — Python 快速实验脚本（测 prompt 不需要 Xcode rebuild）
+- `Sources/Localization/L.swift` — 双语字符串管理（~150 对中英文），新增 UI 文案在这里加
 - `project.yml` — XcodeGen 配置，改依赖/Target 时在这里改
 
 ---
@@ -233,6 +235,31 @@ Worker 返回 → AgentChatResponse（reply + actionSuggestions）
 - ✅ 新页面必须有空状态设计
 
 **代码 review 时**：有任何改动触碰上述约束，直接 reject。
+
+---
+
+## 多语言（i18n）
+
+LifeOS 使用轻量双语方案，不走 Apple 原生 `.lproj` 本地化。
+
+**核心文件：** `Sources/Localization/L.swift`
+
+```swift
+enum L {
+    static var lang: String { UserDefaults.standard.string(forKey: "app.language") ?? "zh" }
+    static var isEn: Bool { lang == "en" }
+    private static func s(_ zh: String, _ en: String) -> String { isEn ? en : zh }
+    // 约 150 个字符串，按页面分组
+}
+```
+
+**使用规则：**
+- 所有用户可见字符串用 `L.xxx` 引用，不硬编码中文
+- 数据存储值（分类 "工作"、标签 "想法" 等）不翻译，只翻译显示层：`L.displayCategory("工作")` → "Work"
+- 新增页面时在 `L.swift` 对应 MARK 区添加字符串对
+- 设置页用 `@AppStorage("app.language")` + `.id(appLanguage)` 强制 SwiftUI 重建
+- 日期格式用 `L.localeId`（"en_US" / "zh_CN"）和条件化 dateFormat
+- Worker prompt 有语言匹配规则：AI 跟随用户消息语言回复
 
 ---
 
