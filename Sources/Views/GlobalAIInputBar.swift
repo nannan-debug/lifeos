@@ -135,7 +135,7 @@ private struct AgentChatPanel: View {
                 }
             }
         }
-        .alert("删除这段对话？", isPresented: Binding(
+        .alert(L.deleteConversation, isPresented: Binding(
             get: { pendingDelete != nil },
             set: { if !$0 { pendingDelete = nil } }
         )) {
@@ -149,7 +149,7 @@ private struct AgentChatPanel: View {
                 pendingDelete = nil
             }
         } message: {
-            Text("这只会删除这段猫猫对话，不会影响已经保存到随手记、待办或时间里的内容。")
+            Text(L.deleteConversationHint)
         }
     }
 
@@ -267,7 +267,7 @@ private struct AgentChatPanel: View {
                     .frame(width: 108, height: 108, alignment: .center)
                     .offset(y: 6)
             }
-            Text("可以快速记一件事，也可以慢慢聊清楚。")
+            Text(L.aiEmptyHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -326,7 +326,7 @@ private struct AgentChatPanel: View {
                 Button {
                     navigateToRecord(ref)
                 } label: {
-                    Text("查看")
+                    Text(L.view)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(CreamTheme.green)
                         .padding(.horizontal, 10)
@@ -338,7 +338,7 @@ private struct AgentChatPanel: View {
             Button {
                 store.undoAutoSavedAgentAction(messageId: message.id)
             } label: {
-                Text("撤销")
+                Text(L.undo)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
@@ -432,7 +432,7 @@ private struct AgentChatPanel: View {
                 ProgressView()
                     .scaleEffect(0.75)
                     .tint(CreamTheme.green)
-                Text("猫猫在想怎么接这句话...")
+                Text(L.aiThinking)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -452,7 +452,7 @@ private struct AgentChatPanel: View {
                 ProgressView()
                     .scaleEffect(0.6)
                     .tint(CreamTheme.green)
-                Text("猫猫在想...")
+                Text(L.aiThinkingShort)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .opacity(pulseOpacity)
@@ -486,7 +486,7 @@ private struct AgentChatPanel: View {
                 Image(systemName: "brain.head.profile")
                     .font(.caption2)
                     .foregroundStyle(CreamTheme.green)
-                Text("思考过程")
+                Text(L.thinkingProcess)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 if let ms = timeMs {
@@ -515,7 +515,7 @@ private struct AgentChatPanel: View {
                 Image(systemName: "brain.head.profile")
                     .font(.caption2)
                     .foregroundStyle(CreamTheme.green)
-                Text("思考过程")
+                Text(L.thinkingProcess)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 if let ms = timeMs {
@@ -588,7 +588,7 @@ private struct AgentChatPanel: View {
             HStack {
                 Image(systemName: "list.bullet.clipboard")
                     .foregroundStyle(CreamTheme.green)
-                Text("Arya 的计划")
+                Text(L.aryaPlan)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
                 Spacer()
@@ -620,7 +620,7 @@ private struct AgentChatPanel: View {
                     Button {
                         store.executeAllPendingAgentActions()
                     } label: {
-                        Text("开始执行")
+                        Text(L.startExecution)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -734,7 +734,7 @@ private struct AgentChatPanel: View {
             }
             .frame(height: 6)
 
-            Text("\(completed)/\(total) 已完成")
+            Text("\(completed)/\(total) \(L.nOfMCompleted)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -799,7 +799,7 @@ private struct AgentChatPanel: View {
                 queuedMessagesBar
             }
             HStack(alignment: .center, spacing: 10) {
-                TextField("问问、快速记录或聊聊今天...", text: $rawInput, axis: .vertical)
+                TextField(L.aiInputPlaceholder, text: $rawInput, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.callout)
                     .lineLimit(1...5)
@@ -906,7 +906,7 @@ private struct AgentChatPanel: View {
                 .frame(width: 38, height: 4)
                 .padding(.top, 12)
 
-            Text("对话")
+            Text(L.conversationTitle)
                 .font(.title2.weight(.bold))
                 .foregroundStyle(CreamTheme.text)
                 .frame(maxWidth: .infinity)
@@ -920,7 +920,7 @@ private struct AgentChatPanel: View {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("搜索", text: $searchText)
+                TextField(L.search, text: $searchText)
                     .font(.callout)
                     .textFieldStyle(.plain)
             }
@@ -952,12 +952,12 @@ private struct AgentChatPanel: View {
     private var undoDeleteBanner: some View {
         if let thread = recentlyDeletedThread {
             HStack(spacing: 10) {
-                Text("已移除「\(thread.title.isEmpty ? "新的对话" : thread.title)」")
+                Text(L.removedThread(thread.title))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                Button("撤销") {
+                Button(L.undo) {
                     store.restoreAgentThread(thread)
                     recentlyDeletedThread = nil
                 }
@@ -982,7 +982,7 @@ private struct AgentChatPanel: View {
                     historySection("更早", items: olderThreads(items))
                 }
                 if items.isEmpty {
-                    Text("还没有留下对话。新的想法可以从这里开始。")
+                    Text(L.emptyConversationHint)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.top, 20)
@@ -1033,7 +1033,7 @@ private struct AgentChatPanel: View {
                 }
             } label: {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(item.title.isEmpty ? "新的对话" : item.title)
+                    Text(item.title.isEmpty ? L.newConversation : item.title)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CreamTheme.text)
                         .lineLimit(1)
@@ -1191,20 +1191,20 @@ private struct AgentChatPanel: View {
 
     private func actionLabel(for action: AgentActionDraft) -> String {
         if action.kind == .inbox && action.inboxType == "DBT练习" {
-            return "保存练习记录"
+            return L.savePractice
         }
         switch action.kind {
-        case .inbox: return "建议存随手记"
-        case .task: return "建议存待办"
-        case .time: return "建议存时间"
-        case .calendarEvent: return "建议加日历"
-        case .editTask: return "建议改待办"
-        case .editTime: return "建议改时间"
-        case .editInbox: return "建议改随手记"
-        case .deleteTask: return "建议删待办"
-        case .deleteTime: return "建议删时间"
-        case .deleteInbox: return "建议删随手记"
-        case .completeTask: return "建议标完成"
+        case .inbox: return L.suggestInbox
+        case .task: return L.suggestTask
+        case .time: return L.suggestTime
+        case .calendarEvent: return L.suggestCalendar
+        case .editTask: return L.suggestEditTask
+        case .editTime: return L.suggestEditTime
+        case .editInbox: return L.suggestEditInbox
+        case .deleteTask: return L.suggestDeleteTask
+        case .deleteTime: return L.suggestDeleteTime
+        case .deleteInbox: return L.suggestDeleteInbox
+        case .completeTask: return L.suggestComplete
         }
     }
 
@@ -1225,11 +1225,11 @@ private struct AgentChatPanel: View {
 
     private func actionButtonText(for action: AgentActionDraft) -> String {
         switch action.kind {
-        case .editTask, .editTime, .editInbox: return "确认修改"
-        case .deleteTask, .deleteTime, .deleteInbox: return "确认删除"
-        case .completeTask: return "确认"
-        case .calendarEvent: return "添加到日历"
-        default: return "保存"
+        case .editTask, .editTime, .editInbox: return L.confirmEdit
+        case .deleteTask, .deleteTime, .deleteInbox: return L.confirmDelete
+        case .completeTask: return L.confirm
+        case .calendarEvent: return L.addToCalendar
+        default: return L.save
         }
     }
 
@@ -1243,7 +1243,7 @@ private struct AgentChatPanel: View {
 
     private func relativeDate(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: "zh_Hans")
+        formatter.locale = Locale(identifier: L.localeId)
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
     }

@@ -28,6 +28,7 @@
 		4B11AD25147CC85448686112 /* AIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8C51C9E4D24CBEE1F6DE475 /* AIClient.swift */; };
 		4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */; };
 		52179BAD1191EDAEC8B14521 /* BrainCardWallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */; };
+		557C4F5307109669D8DC1B9D /* L.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE767D0A1D80C1C80C61325 /* L.swift */; };
 		59420AFF6BFE0D3477E30E51 /* CreamCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */; };
 		5CB6CCA5FB108360AD248876 /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FA5B208AC5DD3B7020F3D2 /* CSVExporter.swift */; };
 		5CCA53188B3EADB00514E2DE /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADC4BEB4F2A2472C71401985 /* ExportView.swift */; };
@@ -152,9 +153,18 @@
 		E8EE8416A7C860820E996F38 /* CloudKitSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitSchema.swift; sourceTree = "<group>"; };
 		F8C51C9E4D24CBEE1F6DE475 /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
 		F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */ = {isa = PBXFileReference; path = "cat-lay.svg"; sourceTree = "<group>"; };
+		FDE767D0A1D80C1C80C61325 /* L.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		0E0867D59F75D4DD55B45AFB /* Localization */ = {
+			isa = PBXGroup;
+			children = (
+				FDE767D0A1D80C1C80C61325 /* L.swift */,
+			);
+			path = Localization;
+			sourceTree = "<group>";
+		};
 		1D4D04C4520C793DD37BF0BE /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -251,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				6CA902177BB6AC6791D4C562 /* App */,
+				0E0867D59F75D4DD55B45AFB /* Localization */,
 				F9BE08755323B70F4DA3CD99 /* Models */,
 				1D4D04C4520C793DD37BF0BE /* Services */,
 				EAB769EA7BDE1F21BEBC14D1 /* ViewModels */,
@@ -464,6 +475,7 @@
 				5CCA53188B3EADB00514E2DE /* ExportView.swift in Sources */,
 				0BE52857AA88AC63F2AD3350 /* GlobalAIInputBar.swift in Sources */,
 				4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */,
+				557C4F5307109669D8DC1B9D /* L.swift in Sources */,
 				804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */,
 				1282ACB00F9A6EEB2F100955 /* PersonalSystemApp.swift in Sources */,
 				F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */,

@@ -7,30 +7,32 @@ struct RootTabView: View {
 
     private enum Tab: Hashable { case today, time, capture, review, settings }
     @State private var selectedTab: Tab = .today
+    @AppStorage("app.language") private var appLanguage = "zh"
 
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $selectedTab) {
                 TodayView().environmentObject(store)
-                    .tabItem { Label("今日", systemImage: "sun.max") }
+                    .tabItem { Label(L.tabToday, systemImage: "sun.max") }
                     .tag(Tab.today)
 
                 TimeView().environmentObject(store)
-                    .tabItem { Label("时间", systemImage: "clock") }
+                    .tabItem { Label(L.tabTime, systemImage: "clock") }
                     .tag(Tab.time)
 
                 QuickCaptureView().environmentObject(store)
-                    .tabItem { Label("随记", systemImage: "square.and.pencil") }
+                    .tabItem { Label(L.tabCapture, systemImage: "square.and.pencil") }
                     .tag(Tab.capture)
 
                 ReviewHubView().environmentObject(store)
-                    .tabItem { Label("复盘", systemImage: "moon.stars") }
+                    .tabItem { Label(L.tabReview, systemImage: "moon.stars") }
                     .tag(Tab.review)
 
                 SettingsView().environmentObject(store)
-                    .tabItem { Label("设置", systemImage: "gearshape") }
+                    .tabItem { Label(L.tabSettings, systemImage: "gearshape") }
                     .tag(Tab.settings)
             }
+            .id(appLanguage) // force rebuild when language changes
             .tint(Color(red: 0.24, green: 0.65, blue: 0.36))
 
             // 全局 AI 输入框可见性：
@@ -128,7 +130,7 @@ struct QuickCaptureView: View {
     @State private var editingText = ""
     @State private var editingType = "想法"
     @State private var previewDate = Date()
-    @State private var previewFilter = "全部"
+    @State private var previewFilter = "__all__"
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var displayMonth = Date()
@@ -145,13 +147,13 @@ struct QuickCaptureView: View {
 
     private let intentOptions = ["想法", "感受", "感恩", "做梦"]
 
-    private let moodLevels: [(score: Int, emoji: String, label: String)] = [
-        (1, "😣", "非常不愉快"),
-        (2, "😔", "不愉快"),
-        (3, "😐", "平静"),
-        (4, "🙂", "愉快"),
-        (5, "😄", "非常愉快"),
-    ]
+    private var moodLevels: [(score: Int, emoji: String, label: String)] {[
+        (1, "😣", L.moodVeryBad),
+        (2, "😔", L.moodBad),
+        (3, "😐", L.moodNeutral),
+        (4, "🙂", L.moodGood),
+        (5, "😄", L.moodVeryGood),
+    ]}
 
     private let positiveFeelings = ["感恩", "平静", "满足", "兴奋", "自信", "被爱", "有动力", "好奇", "放松", "成就感"]
     private let negativeFeelings = ["焦虑", "烦躁", "无力", "愤怒", "孤独", "内疚", "自责", "迷茫", "压抑", "疲惫"]
@@ -164,7 +166,7 @@ struct QuickCaptureView: View {
         }
         // 时间记录和待办都有自己的主模块，随手记只展示观察类记录。
         result = result.filter { $0.targetBucket == "inbox" }
-        if previewFilter != "全部" {
+        if previewFilter != "__all__" {
             result = result.filter { $0.recognizedType == previewFilter }
         }
         // 过滤掉今天已隐藏的
@@ -225,23 +227,23 @@ struct QuickCaptureView: View {
                 }
             }
             // Animation driven by withAnimation() in calendar toggle button
-            .alert("处理失败", isPresented: $showError) {
-                Button("知道了", role: .cancel) {}
+            .alert(L.processFailed, isPresented: $showError) {
+                Button(L.gotIt, role: .cancel) {}
             } message: {
                 Text(errorMessage)
             }
-            .confirmationDialog("确认删除这条记录？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-                Button("删除", role: .destructive) {
+            .confirmationDialog(L.confirmDeleteRecord, isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                Button(L.delete, role: .destructive) {
                     if let id = deleteTurnID {
                         store.removeCommittedTurn(id: id)
                     }
                     deleteTurnID = nil
                 }
-                Button("取消", role: .cancel) {
+                Button(L.cancel, role: .cancel) {
                     deleteTurnID = nil
                 }
             } message: {
-                Text("删除后将从记录中移除。")
+                Text(L.deleteRecordHint)
             }
             .sheet(isPresented: Binding(
                 get: { moodEditTurnID != nil },
@@ -266,7 +268,7 @@ struct QuickCaptureView: View {
     private var dayViewContent: some View {
                 Section {
                     if turnsForPreview.isEmpty {
-                        Text("这一天还没有记录")
+                        Text(L.captureEmpty)
                             .foregroundStyle(.secondary)
                     }
 
@@ -292,7 +294,7 @@ struct QuickCaptureView: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: TurnTypeStyle.icon(for: turn.recognizedType))
                                             .font(.caption2)
-                                        Text(turn.recognizedType)
+                                        Text(L.displayInboxType(turn.recognizedType))
                                             .font(.caption.weight(.semibold))
                                     }
                                     .foregroundStyle(TurnTypeStyle.color(for: turn.recognizedType))
@@ -319,7 +321,7 @@ struct QuickCaptureView: View {
                                         }
                                         if !turn.feelingTags.isEmpty {
                                             ForEach(turn.feelingTags, id: \.self) { tag in
-                                                Text(tag)
+                                                Text(L.displayFeeling(tag))
                                                     .font(.caption2.weight(.medium))
                                                     .foregroundStyle(TurnTypeStyle.color(for: turn.recognizedType).opacity(0.8))
                                                     .padding(.horizontal, 6)
@@ -361,12 +363,12 @@ struct QuickCaptureView: View {
                                 deleteTurnID = turn.id
                                 showDeleteConfirm = true
                             } label: {
-                                Label("删除", systemImage: "trash")
+                                Label(L.delete, systemImage: "trash")
                             }
                             Button {
                                 beginEdit(turn)
                             } label: {
-                                Label("再编辑", systemImage: "pencil")
+                                Label(L.reEdit, systemImage: "pencil")
                             }
                             .tint(CreamTheme.green)
                         }
@@ -377,29 +379,29 @@ struct QuickCaptureView: View {
                                 moodPickerFeelings = Set(turn.feelingTags)
                                 showFeelingExpand = false
                             } label: {
-                                Label("心情", systemImage: "face.smiling")
+                                Label(L.moodTitle, systemImage: "face.smiling")
                             }
                             .tint(Color(red: 0.627, green: 0.502, blue: 0.361))
                         }
                         .contextMenu {
-                            Button { beginEdit(turn) } label: { Label("编辑", systemImage: "pencil") }
+                            Button { beginEdit(turn) } label: { Label(L.edit, systemImage: "pencil") }
                             Button {
                                 moodEditTurnID = turn.id
                                 moodPickerScore = turn.moodScore ?? 0
                                 moodPickerFeelings = Set(turn.feelingTags)
                                 showFeelingExpand = false
-                            } label: { Label("记录心情", systemImage: "face.smiling") }
+                            } label: { Label(L.recordMood, systemImage: "face.smiling") }
                             Divider()
-                            Menu("Review 状态") {
-                                Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "pending") } label: { Label("待处理", systemImage: "tray") }
-                                Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "archived") } label: { Label("已处理", systemImage: "checkmark.circle") }
-                                Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "dismissed") } label: { Label("划掉", systemImage: "xmark.circle") }
+                            Menu(L.reviewStatusMenu) {
+                                Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "pending") } label: { Label(L.pendingStatus, systemImage: "tray") }
+                                Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "archived") } label: { Label(L.archivedStatus, systemImage: "checkmark.circle") }
+                                Button { store.updateTurnReviewStatus(id: turn.id, reviewStatus: "dismissed") } label: { Label(L.dismissedStatus, systemImage: "xmark.circle") }
                             }
                             Divider()
                             Button(role: .destructive) {
                                 deleteTurnID = turn.id
                                 showDeleteConfirm = true
-                            } label: { Label("删除", systemImage: "trash") }
+                            } label: { Label(L.delete, systemImage: "trash") }
                         }
                     }
                 }
@@ -421,14 +423,14 @@ struct QuickCaptureView: View {
     private func aiConfirmationRow(_ turn: ConversationTurn) -> some View {
         if turn.payload["ai_confirmation"] == "task" {
             VStack(alignment: .leading, spacing: 8) {
-                Text("我先记到随手记了。也可以改成待办。")
+                Text(L.aiConfirmationHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     Button {
                         store.dismissAIConfirmation(id: turn.id)
                     } label: {
-                        Label("保持", systemImage: "checkmark")
+                        Label(L.keepCurrent, systemImage: "checkmark")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -441,7 +443,7 @@ struct QuickCaptureView: View {
                             showError = true
                         }
                     } label: {
-                        Label("改成待办", systemImage: "checklist")
+                        Label(L.convertToTodo, systemImage: "checklist")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -457,36 +459,36 @@ struct QuickCaptureView: View {
     private var editSheet: some View {
         NavigationStack {
             Form {
-                Section("标题") {
-                    TextField("简短主题", text: $editingTitle)
+                Section(L.titleLabel) {
+                    TextField(L.titlePlaceholder, text: $editingTitle)
                 }
-                Section("内容") {
-                    TextField("文本内容", text: $editingText, axis: .vertical)
+                Section(L.contentLabel) {
+                    TextField(L.contentPlaceholder, text: $editingText, axis: .vertical)
                         .lineLimit(3...8)
                 }
-                Section("标签") {
-                    Picker("识别标签", selection: $editingType) {
+                Section(L.tagLabel) {
+                    Picker(L.tagPickerLabel, selection: $editingType) {
                         ForEach(intentOptions, id: \.self) { type in
-                            Label(type, systemImage: TurnTypeStyle.icon(for: type))
+                            Label(L.displayInboxType(type), systemImage: TurnTypeStyle.icon(for: type))
                                 .foregroundStyle(TurnTypeStyle.color(for: type))
                                 .tag(type)
                         }
                     }
                 }
                 Section {
-                    Button("删除这条", role: .destructive) {
+                    Button(L.deleteThisEntry, role: .destructive) {
                         if let id = editingTurnID { store.removeTurn(id: id) }
                         editingTurnID = nil
                     }
                 }
             }
-            .navigationTitle("编辑记录")
+            .navigationTitle(L.editRecord)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { editingTurnID = nil }
+                    Button(L.cancel) { editingTurnID = nil }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(L.save) {
                         guard let id = editingTurnID else { return }
                         let err = store.reviseCommittedTurn(
                             id: id,
@@ -511,7 +513,7 @@ struct QuickCaptureView: View {
         VStack(spacing: 10) {
             // 第一行：标题 + 日期
             HStack(spacing: 10) {
-                Text("随手记")
+                Text(L.captureTitle)
                     .font(.headline.weight(.semibold))
 
                 Spacer()
@@ -544,9 +546,9 @@ struct QuickCaptureView: View {
             // 第二行：类型筛选
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    filterChip("全部", icon: "line.3.horizontal.decrease.circle", color: CreamTheme.green, bg: Color(red: 0.95, green: 0.97, blue: 0.95))
+                    filterChip("__all__", display: L.all, icon: "line.3.horizontal.decrease.circle", color: CreamTheme.green, bg: Color(red: 0.95, green: 0.97, blue: 0.95))
                     ForEach(intentOptions, id: \.self) { type in
-                        filterChip(type, icon: TurnTypeStyle.icon(for: type), color: TurnTypeStyle.color(for: type), bg: TurnTypeStyle.bgColor(for: type))
+                        filterChip(type, display: L.displayInboxType(type), icon: TurnTypeStyle.icon(for: type), color: TurnTypeStyle.color(for: type), bg: TurnTypeStyle.bgColor(for: type))
                     }
                 }
             }
@@ -566,17 +568,17 @@ struct QuickCaptureView: View {
         .padding(.top, 6)
     }
 
-    private func filterChip(_ label: String, icon: String, color: Color, bg: Color) -> some View {
-        let isSelected = previewFilter == label
+    private func filterChip(_ value: String, display: String, icon: String, color: Color, bg: Color) -> some View {
+        let isSelected = previewFilter == value
         return Button {
             withAnimation(.easeInOut(duration: 0.15)) {
-                previewFilter = label
+                previewFilter = value
             }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
-                Text(label)
+                Text(display)
                     .font(.caption.weight(.semibold))
             }
             .foregroundStyle(isSelected ? color : .secondary.opacity(0.6))
@@ -624,13 +626,13 @@ struct QuickCaptureView: View {
         let color: Color
         switch status {
         case "committed":
-            title = "已写入"
+            title = L.statusCommitted
             color = CreamTheme.green
         case "needs_fix":
-            title = "待修正"
+            title = L.statusNeedsFix
             color = .orange
         default:
-            title = "处理中"
+            title = L.statusProcessing
             color = .blue
         }
         return Text(title)
@@ -660,7 +662,7 @@ struct QuickCaptureView: View {
 
     private var moodPickerSheet: some View {
         VStack(spacing: 20) {
-            Text("记录心情")
+            Text(L.moodTitle)
                 .font(.headline.weight(.semibold))
                 .padding(.top, 8)
 
@@ -699,7 +701,7 @@ struct QuickCaptureView: View {
                     withAnimation { showFeelingExpand.toggle() }
                 } label: {
                     HStack {
-                        Text("感受词")
+                        Text(L.feelingLabel)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                         if !moodPickerFeelings.isEmpty {
@@ -716,8 +718,8 @@ struct QuickCaptureView: View {
                 .buttonStyle(.plain)
 
                 if showFeelingExpand {
-                    feelingTagSection("正向", tags: positiveFeelings, color: CreamTheme.green)
-                    feelingTagSection("负向", tags: negativeFeelings, color: Color(red: 0.627, green: 0.502, blue: 0.361))
+                    feelingTagSection(L.positiveLabel, tags: positiveFeelings, color: CreamTheme.green)
+                    feelingTagSection(L.negativeLabel, tags: negativeFeelings, color: Color(red: 0.627, green: 0.502, blue: 0.361))
                 }
             }
             .padding(.horizontal, 4)
@@ -733,7 +735,7 @@ struct QuickCaptureView: View {
                 }
                 moodEditTurnID = nil
             } label: {
-                Text("保存")
+                Text(L.save)
                     .font(.headline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -761,7 +763,7 @@ struct QuickCaptureView: View {
                             if selected { moodPickerFeelings.remove(tag) } else { moodPickerFeelings.insert(tag) }
                         }
                     } label: {
-                        Text(tag)
+                        Text(L.displayFeeling(tag))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(selected ? color : .secondary)
                             .padding(.vertical, 6)
@@ -1010,7 +1012,7 @@ enum QuickCaptureParser {
         var cleaned = text
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return "随手记" }
+        guard !cleaned.isEmpty else { return L.captureTitle }
 
         let separators = CharacterSet(charactersIn: "，,。.!！？?；;")
         if let first = cleaned.rangeOfCharacter(from: separators) {
@@ -1028,7 +1030,7 @@ enum QuickCaptureParser {
             .replacingOccurrences(of: "  ", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if cleaned.isEmpty { return "随手记" }
+        if cleaned.isEmpty { return L.captureTitle }
         if cleaned.count > 10 { return String(cleaned.prefix(10)) }
         return cleaned
     }

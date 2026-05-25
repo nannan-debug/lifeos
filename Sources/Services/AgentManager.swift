@@ -1797,23 +1797,23 @@ final class AgentManager: ObservableObject {
 
     private func localTitle(from text: String) -> String {
         let title = AIParser.threadFallbackTitle(from: text)
-        return title.isEmpty ? "新的对话" : title
+        return title.isEmpty ? L.newConversation : title
     }
 
     private func savedMessage(for action: AgentActionDraft) -> String {
         let title = action.title.isEmpty ? action.detail : action.title
         switch action.kind {
-        case .inbox: return "已创建随手记：\(title)"
-        case .task: return "已创建待办：\(title)"
-        case .time: return "已创建时间记录：\(title)"
-        case .calendarEvent: return "已创建日历事件：\(title)"
-        case .editTask: return "已修改待办：\(title)"
-        case .editTime: return "已修改时间记录：\(title)"
-        case .editInbox: return "已修改随手记：\(title)"
-        case .deleteTask: return "已删除待办：\(title)"
-        case .deleteTime: return "已删除时间记录：\(title)"
-        case .deleteInbox: return "已删除随手记：\(title)"
-        case .completeTask: return "已更新待办状态：\(title)"
+        case .inbox: return L.savedInbox(title)
+        case .task: return L.savedTask(title)
+        case .time: return L.savedTime(title)
+        case .calendarEvent: return L.savedCalendar(title)
+        case .editTask: return L.savedEditTask(title)
+        case .editTime: return L.savedEditTime(title)
+        case .editInbox: return L.savedEditInbox(title)
+        case .deleteTask: return L.savedDeleteTask(title)
+        case .deleteTime: return L.savedDeleteTime(title)
+        case .deleteInbox: return L.savedDeleteInbox(title)
+        case .completeTask: return L.savedCompleteTask(title)
         }
     }
 

@@ -12,12 +12,12 @@ struct ExportView: View {
     var body: some View {
         Form {
             Section {
-                DatePicker("起始日期", selection: $startDate, displayedComponents: .date)
-                DatePicker("结束日期", selection: $endDate, in: startDate..., displayedComponents: .date)
+                DatePicker(L.startDate, selection: $startDate, displayedComponents: .date)
+                DatePicker(L.endDate, selection: $endDate, in: startDate..., displayedComponents: .date)
             } header: {
-                Text("时间区间")
+                Text(L.exportDateSection)
             } footer: {
-                Text("将导出区间内的「时间记录」「随手记」「打卡」CSV 文件。")
+                Text(L.exportDateFooter)
             }
 
             Section {
@@ -27,13 +27,13 @@ struct ExportView: View {
                     HStack {
                         Spacer()
                         Image(systemName: "square.and.arrow.up")
-                        Text("导出 CSV").font(.body.weight(.semibold))
+                        Text(L.exportCSVButton).font(.body.weight(.semibold))
                         Spacer()
                     }
                 }
                 .tint(CreamTheme.green)
             } footer: {
-                Text("导出后会弹出系统分享面板，可选择「存到 文件 / iCloud Drive」或其它目标。文件用 UTF-8 BOM 编码，中文 Excel 直接打开不乱码。")
+                Text(L.exportShareFooter)
             }
 
             Section {
@@ -43,27 +43,27 @@ struct ExportView: View {
                     HStack {
                         Spacer()
                         Image(systemName: "tray.and.arrow.up")
-                        Text("导出全部数据").font(.body.weight(.semibold))
+                        Text(L.exportAll).font(.body.weight(.semibold))
                         Spacer()
                     }
                 }
                 .tint(CreamTheme.green)
             } header: {
-                Text("完整备份")
+                Text(L.fullBackup)
             } footer: {
-                Text("把全部打卡、时间记录、待办、AI 对话、第二大脑和打卡项配置打包成一个 JSON 文件，不受上面的时间区间限制。建议定期存到「文件 / iCloud Drive」留一份底。")
+                Text(L.exportAllFooter)
             }
         }
-        .navigationTitle("导出")
+        .navigationTitle(L.exportTitle)
         .navigationBarTitleDisplayMode(.inline)
         .scrollContentBackground(.hidden)
         .background(CreamTheme.glassStrong)
         .creamBackground()
-        .alert("无法导出", isPresented: Binding(
+        .alert(L.cannotExport, isPresented: Binding(
             get: { alertMessage != nil },
             set: { if !$0 { alertMessage = nil } }
         )) {
-            Button("好") { alertMessage = nil }
+            Button(L.ok) { alertMessage = nil }
         } message: {
             Text(alertMessage ?? "")
         }
@@ -77,7 +77,7 @@ struct ExportView: View {
         }
         let urls = [result.timeURL, result.inboxURL, result.checkURL].compactMap { $0 }
         guard !urls.isEmpty else {
-            alertMessage = "所选区间没有可导出的内容"
+            alertMessage = L.noExportData
             return
         }
         Self.presentShareSheet(items: urls)
@@ -85,7 +85,7 @@ struct ExportView: View {
 
     private func runFullExport() {
         guard let url = store.exportFullDataFile() else {
-            alertMessage = "当前没有可备份的数据"
+            alertMessage = L.noExportData
             return
         }
         Self.presentShareSheet(items: [url])
