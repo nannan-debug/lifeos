@@ -482,7 +482,8 @@ async function handleQuick(body, provider, apiKey, trace) {
   const actionSuggestions = followUpQuestion !== null
     ? []
     : Array.isArray(parsed.actionSuggestions)
-      ? limitActionSuggestions(parsed.actionSuggestions.map(normalizeActionSuggestion).filter(Boolean))
+      ? limitActionSuggestions(parsed.actionSuggestions.map(normalizeActionSuggestion).filter(Boolean)
+          .map(a => validateActionSuggestion(a, text, currentDate)).filter(Boolean))
       : [];
 
   trace("response_decoded", {
@@ -590,6 +591,8 @@ async function handleChat(body, provider, apiKey, trace) {
     : Array.isArray(parsed.actionSuggestions)
       ? limitActionSuggestions(parsed.actionSuggestions
           .map(normalizeActionSuggestion)
+          .filter(Boolean)
+          .map(a => validateActionSuggestion(a, input, currentDate))
           .filter(Boolean))
       : [];
 
@@ -849,7 +852,9 @@ ${STREAM_JSON_DELIMITER}
                 actionSuggestions = shouldSuppressActions
                   ? []
                   : Array.isArray(structured.actionSuggestions)
-                    ? limitActionSuggestions(structured.actionSuggestions.map(normalizeActionSuggestion).filter(Boolean))
+                    ? limitActionSuggestions(structured.actionSuggestions
+                        .map(normalizeActionSuggestion).filter(Boolean)
+                        .map(a => validateActionSuggestion(a, input, currentDate)).filter(Boolean))
                     : [];
               } catch {
                 // JSON parse failed — treat entire content as reply
@@ -1257,6 +1262,58 @@ async function callAIJSON(provider, apiKey, messages, temperature, maxTokens = 2
     });
     return fallback;
   }
+}
+
+// ── Self-correction Layer 1: Rule-based validation ──────────────────────
+// Zero-cost checks that catch obvious LLM mistakes before they reach the user.
+// Returns the action with adjusted confidence, or null if fatally wrong.
+function validateActionSuggestion(action, userInput, currentDate) {
+  if (!action) return null;
+  let conf = action.confidence;
+  const issues = [];
+
+  // 1. Date sanity: action date should be within ±30 days of today
+  if (action.date) {
+    const actionDate = new Date(action.date + "T00:00:00");
+    const today = currentDate ? new Date(currentDate + "T00:00:00") : new Date();
+    if (!isNaN(actionDate.getTime()) && !isNaN(today.getTime())) {
+      const diffDays = Math.abs((actionDate - today) / 86400000);
+      if (diffDays > 30) {
+        issues.push("date_out_of_range");
+        conf = Math.min(conf, 0.3);
+      }
+    }
+  }
+
+  // 2. Time logic: endTime should be after startTime (same day)
+  if (action.startTime && action.endTime) {
+    const [sh, sm] = action.startTime.split(":").map(Number);
+    const [eh, em] = action.endTime.split(":").map(Number);
+    if (sh * 60 + sm > eh * 60 + em) {
+      issues.push("end_before_start");
+      conf = Math.min(conf, 0.4);
+    }
+  }
+
+  // 3. Title faithfulness: for create actions, at least one keyword from
+  //    the title should appear in the user's input (prevents fabrication)
+  if (userInput && action.title && !["editTask","editTime","deleteTask","deleteTime","completeTask"].includes(action.kind)) {
+    const titleWords = action.title.replace(/[^一-鿿\w]/g, " ").split(/\s+/).filter(w => w.length >= 2);
+    const inputLower = userInput.toLowerCase();
+    const matchCount = titleWords.filter(w => inputLower.includes(w.toLowerCase())).length;
+    if (titleWords.length > 0 && matchCount === 0) {
+      issues.push("title_not_in_input");
+      conf = Math.min(conf, 0.5);
+    }
+  }
+
+  // 4. Empty critical fields
+  if (action.kind === "time" && (!action.startTime || !action.endTime)) {
+    issues.push("time_missing_range");
+    conf = Math.min(conf, 0.5);
+  }
+
+  return { ...action, confidence: conf, _validationIssues: issues.length > 0 ? issues : undefined };
 }
 
 function normalizeActionSuggestion(action) {

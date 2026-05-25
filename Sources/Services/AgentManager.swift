@@ -45,6 +45,7 @@ final class AgentManager: ObservableObject {
     private var lastCalendarEventId: String?
     private var nearbyTimeEntries: [(String, [TimeEntry])] = []
     private var currentRequestTask: Task<Void, Never>?
+    private var lastUserInput: String = ""
     @Published var messageQueue: [QueuedMessage] = []
 
     struct QueuedMessage: Identifiable, Equatable {
@@ -144,6 +145,7 @@ final class AgentManager: ObservableObject {
             calendarEvents: calendarEvents,
             weeklySummary: weeklySummary
         )
+        lastUserInput = clean
         markMemoriesUsed()
         appendMessage(AgentChatMessage(role: "user", content: clean))
         requestTitleIfNeeded(seed: clean)
@@ -605,6 +607,8 @@ final class AgentManager: ObservableObject {
                 guard let r = resolveMutationTarget(action) else { continue }
                 action = r
             }
+            // Self-correction: validate and adjust confidence
+            action = validateAction(action)
             resolved.append(action)
         }
 
@@ -703,6 +707,53 @@ final class AgentManager: ObservableObject {
     private func nonEmpty(_ s: String?) -> String? {
         guard let s, !s.isEmpty else { return nil }
         return s
+    }
+
+    // MARK: - Self-correction Layer 2: local validation
+
+    /// 本地规则校验 action，发现问题则降低 confidence，让用户手动确认
+    private func validateAction(_ action: AgentActionDraft) -> AgentActionDraft {
+        var a = action
+        let input = lastUserInput
+
+        // 1. 标题忠实性：title 关键词应出现在用户输入中
+        if !a.isMutation && !input.isEmpty && !a.title.isEmpty {
+            let keywords = a.title.components(separatedBy: .whitespaces)
+                .flatMap { $0.map { String($0) } }  // 拆成单字
+                .filter { $0.count >= 2 }
+            // 提取连续的2字词
+            let titleBigrams = stride(from: 0, to: max(0, a.title.count - 1), by: 1).compactMap { i -> String? in
+                let start = a.title.index(a.title.startIndex, offsetBy: i)
+                let end = a.title.index(start, offsetBy: 2, limitedBy: a.title.endIndex) ?? a.title.endIndex
+                guard a.title.distance(from: start, to: end) == 2 else { return nil }
+                return String(a.title[start..<end])
+            }
+            let matchCount = titleBigrams.filter { input.contains($0) }.count
+            if titleBigrams.count >= 2 && matchCount == 0 {
+                a.confidence = min(a.confidence, 0.5)
+            }
+        }
+
+        // 2. 日期合理性：±30天以外的日期降 confidence
+        if let dateStr = a.date {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            fmt.locale = Locale(identifier: "en_US_POSIX")
+            if let actionDate = fmt.date(from: dateStr) {
+                let daysDiff = abs(Calendar.current.dateComponents([.day], from: Date(), to: actionDate).day ?? 0)
+                if daysDiff > 30 {
+                    a.confidence = min(a.confidence, 0.3)
+                }
+            }
+        }
+
+        // 3. 时间逻辑：endTime 应在 startTime 之后
+        if let start = a.startTime, let end = a.endTime,
+           !start.isEmpty, !end.isEmpty, end < start {
+            a.confidence = min(a.confidence, 0.4)
+        }
+
+        return a
     }
 
     /// 判断是否自动保存：AI confidence 只做参考，用规则兜底
