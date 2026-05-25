@@ -255,8 +255,8 @@ struct TodayView: View {
 
     private var segmentPicker: some View {
         Picker("", selection: $segment) {
-            Text("打卡").tag("check")
-            Text("待办").tag("todo")
+            Text(L.segmentCheck).tag("check")
+            Text(L.segmentTodo).tag("todo")
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 12)
@@ -1113,7 +1113,7 @@ struct TodayView: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(CreamTheme.green)
-                    Text("每日一言")
+                    Text(L.dailyQuoteLabel)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(CreamTheme.green)
 
@@ -1182,105 +1182,17 @@ struct TodayView: View {
 
     // MARK: - Famous Quotes
 
-    private struct Quote {
-        let text: String
-        let author: String
-    }
+    private typealias Quote = L.Quote
 
     private var dailyQuote: Quote {
-        let quotes: [Quote] = [
-            // Warren Buffett
-            Quote(text: "别人贪婪时我恐惧，别人恐惧时我贪婪。", author: "巴菲特"),
-            Quote(text: "如果你不愿持有一只股票十年，那就连十分钟也不要持有。", author: "巴菲特"),
-            Quote(text: "永远不要用借来的钱去投资。", author: "巴菲特"),
-            Quote(text: "最好的投资就是投资你自己。", author: "巴菲特"),
-            Quote(text: "诚实是一种非常昂贵的天赋，别指望从廉价的人那里得到。", author: "巴菲特"),
-            Quote(text: "风险来自于你不知道自己在做什么。", author: "巴菲特"),
-            Quote(text: "你人生中最重要的决定，是跟什么人结婚。", author: "巴菲特"),
-            // Elon Musk
-            Quote(text: "当某件事足够重要时，即使胜算不在你这边，你也要去做。", author: "马斯克"),
-            Quote(text: "坚持是最重要的，除非你被迫放弃，否则永远不要放弃。", author: "马斯克"),
-            Quote(text: "失败是一种选项，如果你从未失败，说明你不够创新。", author: "马斯克"),
-            Quote(text: "第一步是确认某件事是可能的，然后概率自然会发生。", author: "马斯克"),
-            Quote(text: "我宁愿乐观地犯错，也不愿悲观地正确。", author: "马斯克"),
-            Quote(text: "生活不能只是关于解决一个又一个糟糕的问题，你需要那些让你每天早上兴奋醒来的事。", author: "马斯克"),
-            // Steve Jobs
-            Quote(text: "求知若饥，虚心若愚。", author: "乔布斯"),
-            Quote(text: "你的时间有限，不要浪费在过别人的生活上。", author: "乔布斯"),
-            Quote(text: "你无法预先把点点滴滴串连起来，唯有回头看时才会明白那些点滴如何串在一起。", author: "乔布斯"),
-            Quote(text: "创新就是把事物区分为领导者和追随者。", author: "乔布斯"),
-            Quote(text: "如果今天是我生命的最后一天，我会想做我今天要做的事吗？", author: "乔布斯"),
-            Quote(text: "伟大的事业不是靠力气完成的，而是靠坚持。", author: "乔布斯"),
-            // Jeff Bezos
-            Quote(text: "聪明是一种天赋，善良是一种选择。", author: "贝佐斯"),
-            Quote(text: "如果你从不犯错，说明你没有足够努力。", author: "贝佐斯"),
-            Quote(text: "你的品牌就是别人不在场时对你的评价。", author: "贝佐斯"),
-            Quote(text: "在某个时刻你不再是为了简历而工作，而是为了你的人生清单。", author: "贝佐斯"),
-            Quote(text: "固执于愿景，灵活于细节。", author: "贝佐斯"),
-            // Charlie Munger
-            Quote(text: "想要得到某样东西，最可靠的办法是让自己配得上它。", author: "芒格"),
-            Quote(text: "嫉妒是七宗罪中最愚蠢的，因为它不会给你带来任何乐趣。", author: "芒格"),
-            Quote(text: "反过来想，总是反过来想。", author: "芒格"),
-            Quote(text: "你不需要非常多的聪明才智，你需要的是耐心和纪律。", author: "芒格"),
-            Quote(text: "在手里拿着锤子的人看来，什么东西都像钉子。", author: "芒格"),
-            // Naval Ravikant
-            Quote(text: "如果你不能想象自己为它工作一辈子，就不要开始。", author: "Naval"),
-            Quote(text: "真正的财富是在睡觉时也在增长的资产。", author: "Naval"),
-            Quote(text: "阅读不是为了炫耀，而是为了找到你自己。", author: "Naval"),
-            Quote(text: "忙碌不是美德，清晰才是。", author: "Naval"),
-            // Ray Dalio
-            Quote(text: "痛苦加上反思等于进步。", author: "达利欧"),
-            Quote(text: "最大的威胁不是错误本身，而是没有从错误中学习。", author: "达利欧"),
-            Quote(text: "原则是处理反复出现的事情的方式。", author: "达利欧"),
-            Quote(text: "如果你不担心自己可能犯错，你就可能犯很多错。", author: "达利欧"),
-            // Marcus Aurelius
-            Quote(text: "你有控制自己思想的力量，而不是外界的事件。认识到这一点，你就找到了力量。", author: "马可·奥勒留"),
-            Quote(text: "幸福取决于你的思想品质。", author: "马可·奥勒留"),
-            Quote(text: "阻碍行动的障碍反而推动了行动，挡在路上的东西成了路。", author: "马可·奥勒留"),
-            Quote(text: "不要浪费时间争论一个好人应该是什么样子，做一个就好。", author: "马可·奥勒留"),
-            // Albert Einstein
-            Quote(text: "想象力比知识更重要。", author: "爱因斯坦"),
-            Quote(text: "不是我有多聪明，只是我和问题相处的时间够久。", author: "爱因斯坦"),
-            Quote(text: "疯狂就是一遍又一遍做同样的事情，却期待不同的结果。", author: "爱因斯坦"),
-            Quote(text: "逻辑能把你从A带到B，想象力能带你去任何地方。", author: "爱因斯坦"),
-            // Peter Thiel
-            Quote(text: "竞争是留给失败者的。", author: "彼得·蒂尔"),
-            Quote(text: "最成功的公司是那些有核心使命的公司。", author: "彼得·蒂尔"),
-            Quote(text: "做别人没有做过的事，从0到1。", author: "彼得·蒂尔"),
-            // Paul Graham
-            Quote(text: "做不可扩展的事。", author: "保罗·格雷厄姆"),
-            Quote(text: "活着就是为了创造，创造就是为了活着。", author: "保罗·格雷厄姆"),
-            Quote(text: "创业公司最危险的事是做别人已经在做的事。", author: "保罗·格雷厄姆"),
-            // Nassim Taleb
-            Quote(text: "风会熄灭蜡烛，却能助长火焰。", author: "塔勒布"),
-            Quote(text: "你最大的收益不是来自于预测，而是来自于韧性。", author: "塔勒布"),
-            // Sam Altman
-            Quote(text: "长期思考是最大的套利机会之一。", author: "阿尔特曼"),
-            Quote(text: "你能做的最有价值的事就是坚持你的信念。", author: "阿尔特曼"),
-            // Oprah Winfrey
-            Quote(text: "你成为你所相信的。", author: "奥普拉"),
-            Quote(text: "每天做一件让自己害怕的事。", author: "奥普拉"),
-            // Winston Churchill
-            Quote(text: "成功就是从失败走到失败，却依然热情不减。", author: "丘吉尔"),
-            Quote(text: "你永远不可能通过屈服来到达终点。", author: "丘吉尔"),
-            Quote(text: "完美主义是瘫痪的代名词。", author: "丘吉尔"),
-            // Seneca
-            Quote(text: "如果一个人不知道他要驶向哪个港口，那么任何风都不会是顺风。", author: "塞涅卡"),
-            Quote(text: "时间是我们最短缺的资源，也是我们最浪费的资源。", author: "塞涅卡"),
-            Quote(text: "困难会显露出一个人的性格。", author: "塞涅卡"),
-            // Mixed
-            Quote(text: "先做最难的事，你的一天会越来越轻松。", author: "马克·吐温"),
-            Quote(text: "成为你想在这个世界上看到的改变。", author: "甘地"),
-            Quote(text: "真正的强大不是从不跌倒，而是每次跌倒都爬起来。", author: "曼德拉"),
-            Quote(text: "种一棵树最好的时间是二十年前，其次是现在。", author: "谚语"),
-        ]
+        let quotes = L.dailyQuotes
         let dayNumber = Calendar.current.ordinality(of: .day, in: .year, for: store.selectedDate) ?? 0
         return quotes[(dayNumber + quoteOffset) % quotes.count]
     }
 
     private var todayTopDateBar: some View {
         HStack(spacing: 12) {
-            Text(segment == "check" ? "每日打卡" : "待办")
+            Text(segment == "check" ? L.dailyCheckTitle : L.todoTitle)
                 .font(.headline.weight(.semibold))
                 .animation(.easeInOut(duration: 0.15), value: segment)
 

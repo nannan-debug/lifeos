@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: AppStore
     @AppStorage("auth.user") private var user = ""
+    @AppStorage("app.language") private var appLanguage = "zh"
     @AppStorage(DailyStateReminderService.enabledKey) private var dailyReminderEnabled = false
     @AppStorage(DailyStateReminderService.hourKey) private var dailyReminderHour = DailyStateReminderService.defaultHour
     @AppStorage(DailyStateReminderService.minuteKey) private var dailyReminderMinute = DailyStateReminderService.defaultMinute
@@ -19,11 +20,19 @@ struct SettingsView: View {
                 healthKitSection
                 dailyReminderSection
 
-                Section("账号信息") {
-                    editableProfileRow(title: "昵称", value: displayNickname, field: .nickname)
+                Section(L.accountSection) {
+                    editableProfileRow(title: L.nickname, value: displayNickname, field: .nickname)
                 }
 
-                Section("数据") {
+                Section(L.languageSection) {
+                    Picker(L.languageSection, selection: $appLanguage) {
+                        Text("中文").tag("zh")
+                        Text("English").tag("en")
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section(L.dataSection) {
                     NavigationLink {
                         ExportView()
                     } label: {
@@ -39,7 +48,7 @@ struct SettingsView: View {
                             .frame(width: 36, height: 36)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("导出 CSV")
+                                Text(L.exportCSV)
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(CreamTheme.text)
                             }
@@ -62,10 +71,10 @@ struct SettingsView: View {
                             .frame(width: 36, height: 36)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("AI 聊天调试")
+                                Text(L.aiDebug)
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(CreamTheme.text)
-                                Text("导出猫猫对话请求与返回")
+                                Text(L.aiDebugSubtitle)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -88,10 +97,10 @@ struct SettingsView: View {
                             .frame(width: 36, height: 36)
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Agent 记忆")
+                                Text(L.agentMemory)
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(CreamTheme.text)
-                                Text("\(store.agentMemories.count) 条记忆")
+                                Text("\(store.agentMemories.count) \(L.memoryCount)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -100,21 +109,21 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("清空所有数据", role: .destructive) {
+                    Button(L.clearAllData, role: .destructive) {
                         showDeleteConfirm = true
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-            .navigationTitle("设置")
+            .navigationTitle(L.settingsTitle)
             .navigationBarTitleDisplayMode(.inline)
-            .confirmationDialog("将永久删除本设备上的所有记录，是否继续？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-                Button("确认清空", role: .destructive) {
+            .confirmationDialog(L.clearAllConfirm, isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                Button(L.confirmClear, role: .destructive) {
                     wipeAllData()
                 }
-                Button("取消", role: .cancel) {}
+                Button(L.cancel, role: .cancel) {}
             }
-            .alert("同步完成", isPresented: Binding(
+            .alert(L.syncCompleted, isPresented: Binding(
                 get: { store.healthSyncCompletionMessage != nil },
                 set: { isPresented in
                     if !isPresented {
@@ -122,7 +131,7 @@ struct SettingsView: View {
                     }
                 }
             )) {
-                Button("知道了") {
+                Button(L.gotIt) {
                     store.healthSyncCompletionMessage = nil
                 }
             } message: {
@@ -150,7 +159,7 @@ struct SettingsView: View {
                     syncGlyph
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("iCloud 同步")
+                        Text(L.iCloudSync)
                             .font(.body.weight(.semibold))
                             .foregroundStyle(CreamTheme.text)
                         Text(store.iCloudSyncStatusText)
@@ -161,7 +170,7 @@ struct SettingsView: View {
             }
             .tint(CreamTheme.green)
         } header: {
-            Text("同步")
+            Text(L.syncSection)
         }
     }
 
@@ -186,7 +195,7 @@ struct SettingsView: View {
             )) {
                 healthKitRow(
                     icon: "bed.double",
-                    title: "同步睡眠",
+                    title: L.syncSleep,
                     subtitle: store.healthSyncStatusText
                 )
             }
@@ -198,7 +207,7 @@ struct SettingsView: View {
             )) {
                 healthKitRow(
                     icon: "figure.run",
-                    title: "同步运动"
+                    title: L.syncWorkout
                 )
             }
             .tint(CreamTheme.green)
@@ -209,7 +218,7 @@ struct SettingsView: View {
             )) {
                 healthKitRow(
                     icon: "cloud.moon",
-                    title: "醒后梦境提醒"
+                    title: L.wakeDreamReminder
                 )
             }
             .tint(CreamTheme.green)
@@ -219,7 +228,7 @@ struct SettingsView: View {
                 store.syncHealthKitNow(showCompletionAlert: true)
             } label: {
                 HStack {
-                    Text(store.isHealthSyncing ? "同步中..." : "立即同步")
+                    Text(store.isHealthSyncing ? L.syncing : L.syncNow)
                         .font(.body.weight(.semibold))
                     Spacer()
                     if store.isHealthSyncing {
@@ -234,7 +243,7 @@ struct SettingsView: View {
             }
             .disabled(store.isHealthSyncing || (!store.isHealthSleepSyncEnabled && !store.isHealthWorkoutSyncEnabled))
         } header: {
-            Text("Apple 健康")
+            Text(L.healthSection)
         }
     }
 
@@ -283,7 +292,7 @@ struct SettingsView: View {
 
             if dailyReminderEnabled {
                 DatePicker(
-                    "提醒时间",
+                    L.reminderTime,
                     selection: Binding(
                         get: {
                             DailyStateReminderService.reminderDate(hour: dailyReminderHour, minute: dailyReminderMinute)
@@ -299,7 +308,7 @@ struct SettingsView: View {
                 )
             }
         } header: {
-            Text("提醒")
+            Text(L.reminderSection)
         }
     }
 
@@ -316,7 +325,7 @@ struct SettingsView: View {
             .frame(width: 36, height: 36)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("每日状态提醒")
+                Text(L.dailyReminder)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
             }
@@ -348,7 +357,7 @@ struct SettingsView: View {
         let raw = store.currentAuthUserId
         let suffixSource = raw.isEmpty ? "LOCAL" : raw
         let suffix = String(suffixSource.suffix(4)).uppercased()
-        return "用户-\(suffix)"
+        return L.defaultNickname(suffix)
     }
 
     @ViewBuilder
@@ -375,13 +384,13 @@ struct SettingsView: View {
             Form {
                 TextField(field.title, text: $draftValue)
             }
-            .navigationTitle("修改\(field.title)")
+            .navigationTitle(L.editNickname)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { editingField = nil }
+                    Button(L.cancel) { editingField = nil }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(L.save) {
                         saveDraftValue(for: field)
                         editingField = nil
                     }
@@ -420,7 +429,7 @@ private enum ProfileField: String, Identifiable {
 
     var title: String {
         switch self {
-        case .nickname: return "昵称"
+        case .nickname: return L.nickname
         }
     }
 }
@@ -433,7 +442,7 @@ private struct AgentMemoryListView: View {
         List {
             Section {
                 HStack {
-                    TextField("手动添加一条记忆", text: $newMemoryText)
+                    TextField(L.addMemoryPlaceholder, text: $newMemoryText)
                         .textFieldStyle(.plain)
                     Button {
                         store.addAgentMemory(content: newMemoryText)
@@ -448,7 +457,7 @@ private struct AgentMemoryListView: View {
 
             Section {
                 if store.agentMemories.isEmpty {
-                    Text("还没有记忆")
+                    Text(L.noMemories)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(store.agentMemories) { memory in
@@ -462,7 +471,7 @@ private struct AgentMemoryListView: View {
                                     .padding(.vertical, 2)
                                     .background(Capsule().fill(Color.purple.opacity(0.1)))
                                     .foregroundStyle(.purple)
-                                Text(memory.source == "auto" ? "自动提取" : "手动添加")
+                                Text(memory.source == "auto" ? L.autoExtracted : L.manuallyAdded)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Spacer()
@@ -481,7 +490,7 @@ private struct AgentMemoryListView: View {
                 }
             }
         }
-        .navigationTitle("Agent 记忆")
+        .navigationTitle(L.agentMemoryTitle)
     }
 }
 
@@ -494,7 +503,7 @@ private struct AgentDebugLogListView: View {
         List {
             Section {
                 if store.agentDebugLogs.isEmpty {
-                    Text("还没有 AI 聊天调试记录")
+                    Text(L.noDebugLogs)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(store.agentDebugLogs) { log in
@@ -506,35 +515,35 @@ private struct AgentDebugLogListView: View {
                     }
                 }
             } header: {
-                Text("最近记录")
+                Text(L.recentLogs)
             } footer: {
-                Text("未配置云端 Agent Trace 时，这里保留最近 20 条本机调试记录；配置后完整日志会统一上传到 trace 服务。")
+                Text(L.debugFooter)
             }
         }
-        .navigationTitle("AI 聊天调试")
+        .navigationTitle(L.agentDebugTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 if let exportFileURL, !store.agentDebugLogs.isEmpty {
                     ShareLink(item: exportFileURL) {
-                        Text("导出")
+                        Text(L.export)
                     }
                 } else {
-                    Button("导出") {}
+                    Button(L.export) {}
                         .disabled(true)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("清空") { showClearConfirm = true }
+                Button(L.clearLabel) { showClearConfirm = true }
                     .disabled(store.agentDebugLogs.isEmpty)
             }
         }
-        .confirmationDialog("清空本机 AI 聊天调试记录？", isPresented: $showClearConfirm, titleVisibility: .visible) {
-            Button("清空", role: .destructive) {
+        .confirmationDialog(L.clearDebugConfirm, isPresented: $showClearConfirm, titleVisibility: .visible) {
+            Button(L.clearLabel, role: .destructive) {
                 store.clearAgentDebugLogs()
                 refreshExportFile()
             }
-            Button("取消", role: .cancel) {}
+            Button(L.cancel, role: .cancel) {}
         }
         .onAppear { refreshExportFile() }
         .onChange(of: store.agentDebugLogs) { _ in refreshExportFile() }
@@ -559,7 +568,7 @@ private struct AgentDebugLogListView: View {
                 Text("\(log.actionSuggestionsSummary.count) suggested")
                 Text("\(log.mergedActionSummary.count) merged")
                 if !log.errorMessage.isEmpty {
-                    Text("失败")
+                    Text(L.failed)
                 }
             }
             .font(.caption)
