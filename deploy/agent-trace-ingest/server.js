@@ -247,8 +247,8 @@ export function createTraceServer(options = {}) {
     let cursor = startDate;
     while (cursor <= endDate && days.length <= 31) {
       days.push(cursor);
-      const d = new Date(cursor + "T00:00:00");
-      d.setDate(d.getDate() + 1);
+      const d = new Date(cursor + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + 1);
       cursor = d.toISOString().slice(0, 10);
     }
     return days;

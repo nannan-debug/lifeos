@@ -449,12 +449,23 @@ function showError(error) {
 // ── Usage Analytics ──
 async function loadUsage() {
   try {
-    const body = await requestJSON(
-      `/dashboard/api/usage?startDate=${currentStartDate()}&endDate=${currentEndDate()}`
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(
+      `/dashboard/api/usage?startDate=${currentStartDate()}&endDate=${currentEndDate()}`,
+      { signal: controller.signal, credentials: "same-origin", headers: { "Content-Type": "application/json" } }
     );
+    clearTimeout(timer);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${response.status}`);
+    }
+    const body = await response.json();
     renderUsage(body);
   } catch (error) {
     $("usageSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
+    $("usageFeatures").innerHTML = "";
+    $("usageUsers").innerHTML = "";
   }
 }
 
