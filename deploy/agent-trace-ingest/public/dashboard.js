@@ -11,6 +11,21 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
+const USAGE_LABELS = {
+  usage_app_open: "打开 App",
+  usage_tab_switch: "切换 Tab",
+  usage_turn_created: "新随手记",
+  usage_task_created: "新待办",
+  usage_task_completed: "完成待办",
+  usage_time_created: "新时间记录",
+  usage_check_toggled: "打卡",
+  usage_ai_chat_sent: "Arya 对话",
+  usage_calendar_created: "新日历事件",
+  usage_review_opened: "打开复盘",
+  usage_braincard_viewed: "查看第二大脑",
+  usage_export: "导出",
+};
+
 const EVENT_LABELS = {
   // iOS 端
   request_started: "发起请求",
@@ -431,6 +446,118 @@ function showError(error) {
   $("timeline").innerHTML = `<span>读取失败：${escapeHTML(error.message)}</span> <button class="retry-link" onclick="loadTraces()">重试</button>`;
 }
 
+// ── Usage Analytics ──
+async function loadUsage() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(
+      `/dashboard/api/usage?startDate=${currentStartDate()}&endDate=${currentEndDate()}`,
+      { signal: controller.signal, credentials: "same-origin", headers: { "Content-Type": "application/json" } }
+    );
+    clearTimeout(timer);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${response.status}`);
+    }
+    const body = await response.json();
+    renderUsage(body);
+  } catch (error) {
+    $("usageSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
+    $("usageFeatures").innerHTML = "";
+    $("usageUsers").innerHTML = "";
+  }
+}
+
+function renderUsage(data) {
+  if (!data) return;
+  const days = data.daily?.length || 1;
+  const dailyAvg = days > 0 ? Math.round(data.totalEvents / days) : 0;
+
+  // Summary cards
+  $("usageSummary").innerHTML = `
+    <div class="usage-card">
+      <div class="usage-card-value">${data.totalUsers}</div>
+      <div class="usage-card-label">活跃用户</div>
+    </div>
+    <div class="usage-card">
+      <div class="usage-card-value">${data.totalEvents}</div>
+      <div class="usage-card-label">总事件数</div>
+    </div>
+    <div class="usage-card">
+      <div class="usage-card-value">${dailyAvg}</div>
+      <div class="usage-card-label">日均事件</div>
+    </div>
+    <div class="usage-card">
+      <div class="usage-card-value">${days}</div>
+      <div class="usage-card-label">统计天数</div>
+    </div>
+  `;
+
+  // Feature bar chart
+  const features = Object.entries(data.featureTotals || {})
+    .sort((a, b) => b[1] - a[1]);
+  const maxCount = features.length > 0 ? features[0][1] : 1;
+
+  if (features.length === 0) {
+    $("usageFeatures").innerHTML = '<div class="empty-state">暂无功能使用数据</div>';
+  } else {
+    $("usageFeatures").innerHTML = `
+      <h3>功能使用排行</h3>
+      ${features.map(([key, count]) => {
+        const label = USAGE_LABELS[key] || key;
+        const pct = Math.max(2, Math.round((count / maxCount) * 100));
+        return `
+          <div class="usage-bar-row">
+            <span class="usage-bar-label">${escapeHTML(label)}</span>
+            <div class="usage-bar-track">
+              <div class="usage-bar-fill" style="width:${pct}%"></div>
+            </div>
+            <span class="usage-bar-count">${count}</span>
+          </div>`;
+      }).join("")}
+    `;
+  }
+
+  // User list
+  const users = data.users || [];
+  if (users.length === 0) {
+    $("usageUsers").innerHTML = '<div class="empty-state">暂无用户数据</div>';
+  } else {
+    $("usageUsers").innerHTML = `
+      <h3>用户明细</h3>
+      <table class="usage-table">
+        <thead><tr><th>用户</th><th>事件数</th><th>最后活跃</th><th>主要功能</th></tr></thead>
+        <tbody>
+          ${users.map((u) => {
+            const topFeatures = Object.entries(u.events)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([k, v]) => `${USAGE_LABELS[k] || k}(${v})`)
+              .join(", ");
+            return `<tr>
+              <td><code>${escapeHTML(u.shortId)}</code></td>
+              <td>${u.totalEvents}</td>
+              <td>${escapeHTML(u.lastSeen)}</td>
+              <td>${escapeHTML(topFeatures)}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+}
+
+function toggleUsagePanel() {
+  const panel = $("usagePanel");
+  if (panel.hidden) {
+    panel.hidden = false;
+    loadUsage();
+  } else {
+    panel.hidden = true;
+  }
+}
+
 function bindEvents() {
   $("startDateInput").value = todayKey();
   $("endDateInput").value = todayKey();
@@ -442,6 +569,8 @@ function bindEvents() {
     loadTraces();
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
+  $("usageButton").addEventListener("click", toggleUsagePanel);
+  $("usageClose").addEventListener("click", () => { $("usagePanel").hidden = true; });
   // 切日期 / 切来源 / 切错误过滤 → 重置增量状态，全量加载
   ["startDateInput", "endDateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => {
     $(id).addEventListener("change", () => {

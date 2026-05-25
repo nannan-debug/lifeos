@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LifeOS Trace</title>
-  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260522c">
+  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260525a">
 </head>
 <body>
   <main class="shell">
@@ -35,6 +35,7 @@
         <div class="topbar-actions">
           <span class="session-pill" id="sessionUser"></span>
           <span class="refresh-state" id="refreshState"></span>
+          <button class="ghost-button" id="usageButton" type="button">📊 Usage</button>
           <button class="ghost-button" id="refreshButton" type="button">刷新</button>
           <button class="ghost-button" id="logoutButton" type="button">退出</button>
         </div>
@@ -67,6 +68,18 @@
         <button class="search-button" id="searchButton" type="submit">搜索</button>
       </form>
 
+      <section class="usage-panel" id="usagePanel" hidden>
+        <div class="usage-header">
+          <h2>Usage Overview</h2>
+          <button class="ghost-button" id="usageClose" type="button">关闭</button>
+        </div>
+        <div class="usage-summary" id="usageSummary"></div>
+        <div class="usage-body">
+          <div class="usage-features" id="usageFeatures"></div>
+          <div class="usage-users" id="usageUsers"></div>
+        </div>
+      </section>
+
       <section class="workspace">
         <aside class="trace-list">
           <div class="panel-title">
@@ -95,6 +108,6 @@
       </section>
     </section>
   </main>
-  <script src="/dashboard/dashboard.js?v=20260522c"></script>
+  <script src="/dashboard/dashboard.js?v=20260525b"></script>
 </body>
 </html>

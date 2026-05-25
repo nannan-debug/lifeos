@@ -46,6 +46,7 @@
 		850185A117D4494AD731FDFE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 29555BC439ACBC44437DD815 /* LaunchScreen.storyboard */; };
 		872CB671FC91EAC997FFBCAB /* cat-lying.png in Resources */ = {isa = PBXBuildFile; fileRef = D3B2AC351391A95EB5626845 /* cat-lying.png */; };
 		8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */; };
+		892A76B6DCDC71F8653AD002 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A91D26AC13B0637910C124F /* UsageTracker.swift */; };
 		A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E49D2D37FD2539D75275B /* Secrets.swift */; };
 		ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36385E1762B561F298163F27 /* TodayView.swift */; };
 		C19ACFF8ABFFB35B452B3C49 /* PersonalSystemSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */; };
@@ -104,6 +105,7 @@
 		229491345B70D21BB0902CB5 /* AIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIParser.swift; sourceTree = "<group>"; };
 		2667D21549DBF7F063A42F03 /* CheckWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckWidgetSnapshot.swift; sourceTree = "<group>"; };
 		29555BC439ACBC44437DD815 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		2A91D26AC13B0637910C124F /* UsageTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTracker.swift; sourceTree = "<group>"; };
 		36385E1762B561F298163F27 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		3B968B67098FCE889B4987AB /* cat-lying-none.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "cat-lying-none.png"; sourceTree = "<group>"; };
 		430AB77324DB2A31B0516400 /* AgentOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrchestrator.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 				6FFAF1862AB2EC84D861931B /* DataArchive.swift */,
 				73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */,
 				8C9E49D2D37FD2539D75275B /* Secrets.swift */,
+				2A91D26AC13B0637910C124F /* UsageTracker.swift */,
 				CBD0637444A64170704B6348 /* WakeDreamReminderService.swift */,
 			);
 			path = Services;
@@ -474,6 +477,7 @@
 				7E5752949C7D7F2ED2126343 /* TodoEditorSheet.swift in Sources */,
 				6E49034334991F10A5436AB4 /* TopicChipInput.swift in Sources */,
 				263067111C069AA3CD3501D0 /* TurnTypeStyle.swift in Sources */,
+				892A76B6DCDC71F8653AD002 /* UsageTracker.swift in Sources */,
 				47543A7602C3802CD3F69B47 /* WakeDreamReminderService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
