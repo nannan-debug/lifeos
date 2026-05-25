@@ -19,7 +19,7 @@ struct ReviewHubView: View {
         case month
 
         var id: String { rawValue }
-        var title: String { self == .week ? "周" : "月" }
+        var title: String { self == .week ? L.weekLabel : L.monthLabel }
     }
 
     private var window: HubWindow {
@@ -44,7 +44,7 @@ struct ReviewHubView: View {
     }
 
     private var periodLabel: String {
-        window == .week ? "这周" : "这个月"
+        window == .week ? L.thisWeek : L.thisMonth
     }
 
     var body: some View {
@@ -74,7 +74,7 @@ struct ReviewHubView: View {
                     .padding(.bottom, 18)
                 }
                 .background(CreamTheme.glassStrong)
-                .navigationTitle("复盘")
+                .navigationTitle(L.reviewTitle)
                 .onAppear { UsageTracker.track(UsageTracker.reviewOpened) }
                 .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -108,7 +108,7 @@ struct ReviewHubView: View {
 
     private var topPeriodBar: some View {
         HStack(spacing: 10) {
-            Text("复盘")
+            Text(L.reviewTitle)
                 .font(.headline.weight(.semibold))
 
             Picker("", selection: Binding(get: { window }, set: { window = $0 })) {
@@ -232,10 +232,10 @@ struct ReviewHubView: View {
 
     private var checkHabitCard: some View {
         VStack(alignment: .leading, spacing: 13) {
-            cardHeader(icon: "checkmark.circle", title: "打卡", trailing: nil)
+            cardHeader(icon: "checkmark.circle", title: L.checkCard, trailing: nil)
 
             if snapshot.checkGroupSummaries.isEmpty {
-                emptyLine("还没有固定打卡项，留白也可以被好好放着。")
+                emptyLine(L.emptyCheckHint)
             } else {
                 checkCalendarPanel
             }
@@ -308,15 +308,15 @@ struct ReviewHubView: View {
 
     private var timeDistributionCard: some View {
         VStack(alignment: .leading, spacing: 13) {
-            cardHeader(icon: "clock", title: "时间分配", trailing: nil)
+            cardHeader(icon: "clock", title: L.timeDistCard, trailing: nil)
 
             VStack(spacing: 13) {
                 if snapshot.timeSummaries.isEmpty {
-                    emptyLine("有记录时，这里会按分类汇总已经写下的时间。")
+                    emptyLine(L.emptyTimeHint)
                 } else {
                     ForEach(snapshot.timeSummaries, id: \.category) { item in
                         TimeDistributionRow(
-                            title: item.category,
+                            title: L.displayCategory(item.category),
                             duration: durationText(minutes: item.minutes),
                             ratio: CGFloat(item.minutes) / CGFloat(snapshot.maxTimeMinutes),
                             color: timeColor(for: item.category)
@@ -328,7 +328,7 @@ struct ReviewHubView: View {
                     Circle()
                         .fill(Color.black.opacity(0.14))
                         .frame(width: 4, height: 4)
-                    Text("未记录时间 \(durationText(minutes: snapshot.unrecordedTimeMinutes))")
+                    Text("\(L.unrecordedTime) \(durationText(minutes: snapshot.unrecordedTimeMinutes))")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -367,12 +367,12 @@ struct ReviewHubView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "tray")
                         .foregroundStyle(CreamTheme.green)
-                    Text("待处理想法")
+                    Text(L.pendingIdeas)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(.primary)
                 }
                 Spacer()
-                Text("\(snapshot.pending) 条")
+                Text("\(snapshot.pending) \(L.countItems)")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
@@ -381,7 +381,7 @@ struct ReviewHubView: View {
             }
 
             if snapshot.recentPendingIdeas.isEmpty {
-                emptyLine("\(periodLabel)没有等你处理的想法。")
+                emptyLine(L.emptyPendingHint(periodLabel))
             } else {
                 VStack(alignment: .leading, spacing: 7) {
                     ForEach(snapshot.recentPendingIdeas) { turn in
@@ -398,7 +398,7 @@ struct ReviewHubView: View {
                 }
             }
 
-            Text("去接住几条")
+            Text(L.goProcess)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CreamTheme.green)
         }
@@ -454,11 +454,11 @@ struct ReviewHubView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "brain.head.profile")
                     .foregroundStyle(CreamTheme.green)
-                Text("第二大脑")
+                Text(L.brainCard)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Spacer()
-                Text("\(snapshot.brainCount) 张")
+                Text("\(snapshot.brainCount) \(L.countCards)")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
@@ -467,7 +467,7 @@ struct ReviewHubView: View {
             }
 
             if snapshot.brainPreview.isEmpty {
-                emptyLine("处理过的想法可以沉淀成卡片，之后再回来慢慢读。")
+                emptyLine(L.emptyBrainHint)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(snapshot.brainPreview) { card in
@@ -522,27 +522,27 @@ struct ReviewHubView: View {
 
     private func shortDateTitle(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = Locale(identifier: L.localeId)
         formatter.dateFormat = "M/d"
         return formatter.string(from: date)
     }
 
     private func monthTitle(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月"
+        formatter.locale = Locale(identifier: L.localeId)
+        formatter.dateFormat = L.isEn ? "MMM yyyy" : "yyyy年M月"
         return formatter.string(from: date)
     }
 
     private func dayNumberTitle(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = Locale(identifier: L.localeId)
         formatter.dateFormat = "d"
         return formatter.string(from: date)
     }
 
     private func weekdaySingleTitle(_ date: Date) -> String {
-        let symbols = ["日", "一", "二", "三", "四", "五", "六"]
+        let symbols = L.weekSymbols
         let weekday = calendar.component(.weekday, from: date)
         return symbols[min(max(weekday - 1, 0), symbols.count - 1)]
     }

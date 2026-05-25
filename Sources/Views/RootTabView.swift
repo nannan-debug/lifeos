@@ -294,7 +294,7 @@ struct QuickCaptureView: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: TurnTypeStyle.icon(for: turn.recognizedType))
                                             .font(.caption2)
-                                        Text(turn.recognizedType)
+                                        Text(L.displayInboxType(turn.recognizedType))
                                             .font(.caption.weight(.semibold))
                                     }
                                     .foregroundStyle(TurnTypeStyle.color(for: turn.recognizedType))
@@ -321,7 +321,7 @@ struct QuickCaptureView: View {
                                         }
                                         if !turn.feelingTags.isEmpty {
                                             ForEach(turn.feelingTags, id: \.self) { tag in
-                                                Text(tag)
+                                                Text(L.displayFeeling(tag))
                                                     .font(.caption2.weight(.medium))
                                                     .foregroundStyle(TurnTypeStyle.color(for: turn.recognizedType).opacity(0.8))
                                                     .padding(.horizontal, 6)
@@ -469,7 +469,7 @@ struct QuickCaptureView: View {
                 Section(L.tagLabel) {
                     Picker(L.tagPickerLabel, selection: $editingType) {
                         ForEach(intentOptions, id: \.self) { type in
-                            Label(type, systemImage: TurnTypeStyle.icon(for: type))
+                            Label(L.displayInboxType(type), systemImage: TurnTypeStyle.icon(for: type))
                                 .foregroundStyle(TurnTypeStyle.color(for: type))
                                 .tag(type)
                         }
@@ -548,7 +548,7 @@ struct QuickCaptureView: View {
                 HStack(spacing: 8) {
                     filterChip("__all__", display: L.all, icon: "line.3.horizontal.decrease.circle", color: CreamTheme.green, bg: Color(red: 0.95, green: 0.97, blue: 0.95))
                     ForEach(intentOptions, id: \.self) { type in
-                        filterChip(type, display: type, icon: TurnTypeStyle.icon(for: type), color: TurnTypeStyle.color(for: type), bg: TurnTypeStyle.bgColor(for: type))
+                        filterChip(type, display: L.displayInboxType(type), icon: TurnTypeStyle.icon(for: type), color: TurnTypeStyle.color(for: type), bg: TurnTypeStyle.bgColor(for: type))
                     }
                 }
             }
@@ -763,7 +763,7 @@ struct QuickCaptureView: View {
                             if selected { moodPickerFeelings.remove(tag) } else { moodPickerFeelings.insert(tag) }
                         }
                     } label: {
-                        Text(tag)
+                        Text(L.displayFeeling(tag))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(selected ? color : .secondary)
                             .padding(.vertical, 6)

@@ -210,8 +210,22 @@ enum L {
     static var timeRecords: String { s("时间记录", "Time Records") }
     static var editEvent: String { s("编辑事件", "Edit Event") }
     static var newEvent: String { s("新建事件", "New Event") }
+    static var newEventShort: String { s("新建", "New") }
     static var updateEvent: String { s("更新事件", "Update Event") }
     static var typeLabel: String { s("类型", "Category") }
+    static var dialSection: String { s("24小时圆盘（拖拽选时间段）", "24h Dial (drag to select)") }
+    static var descPlaceholder: String { s("一句话描述", "Brief description") }
+    static var notePlaceholder: String { s("补充详情", "Additional notes") }
+    static var newTimeTitle: String { s("新增时间", "New Time Entry") }
+    static var editTimeTitle: String { s("编辑时间", "Edit Time Entry") }
+    static var startTimePicker: String { s("开始时间", "Start Time") }
+    static var endTimePicker: String { s("结束时间", "End Time") }
+    static var done: String { s("完成", "Done") }
+    static var crossDay: String { s("跨日", "Overnight") }
+    static var overlapTitle: String { s("时间重叠", "Time Overlap") }
+    static var overlapSkip: String { s("先不加", "Skip") }
+    static var overlapAdd: String { s("仍然新建", "Add Anyway") }
+    static var overlapMsg: String { s("这段时间已有记录。要保留原来的记录，并再加一条吗？", "This time slot already has an entry. Add another one anyway?") }
 
     // MARK: - ExportView
 
@@ -226,8 +240,134 @@ enum L {
     static var checkCard: String { s("打卡", "Check-in") }
     static var timeDistCard: String { s("时间分配", "Time Distribution") }
     static var pendingIdeas: String { s("待处理想法", "Pending Ideas") }
-    static var unrecordedTime: String { s("未记录时间", "Unrecorded") }
+    static var unrecordedTime: String { s("未记录时间", "Unrecorded Time") }
     static var goProcess: String { s("去接住几条", "Review some") }
+    static var brainCard: String { s("第二大脑", "Second Brain") }
+    static var countItems: String { s("条", "items") }
+    static var countCards: String { s("张", "cards") }
+    static var weekLabel: String { s("周", "Week") }
+    static var monthLabel: String { s("月", "Month") }
+
+    // MARK: - TodayView Check-in
+
+    static var rename: String { s("重命名", "Rename") }
+    static var add: String { s("新增", "Add") }
+    static var newGroupButton: String { s("新建分组", "New Group") }
+    static var renameCheckItem: String { s("重命名打卡项", "Rename Check Item") }
+    static var renameGroup: String { s("重命名分组", "Rename Group") }
+    static var deleteGroup: String { s("删除分组", "Delete Group") }
+    static var newNamePlaceholder: String { s("新名称", "New name") }
+    static func renameCheckHint(_ name: String) -> String { s("历史的勾选状态会跟着新名字保留", "Check history will be kept with the new name") }
+    static func renameGroupHint(_ group: String) -> String { s("「\(group)」下的打卡项会跟着改到新名字", "Check items under \"\(group)\" will follow the new name") }
+    static func deleteGroupEmpty(_ group: String) -> String { s("「\(group)」是空分组，删除后不影响打卡项。", "\"\(group)\" is empty. Deleting it won't affect any items.") }
+    static func deleteGroupWithCount(_ group: String, _ count: Int) -> String { s("删除「\(group)」会同时移除其下 \(count) 个打卡项，无法撤销。", "Deleting \"\(group)\" will also remove \(count) check items. This cannot be undone.") }
+    static func clearScopeTitle(_ scope: String) -> String { s("清除\(scope)？", "Clear \(scope)?") }
+    static var todoCount: String { s("待办", "Todo") }
+    static var doneCount: String { s("已完成", "Done") }
+    static func groupCompleted(_ group: String) -> String { s("\(group)的小节完成了", "\(group) all done!") }
+    static var renameFailItem: String { s("重命名失败：可能已存在同名打卡项", "Rename failed: an item with this name may already exist") }
+    static var renameFailGroup: String { s("重命名失败：可能已存在同名分组", "Rename failed: a group with this name may already exist") }
+    static var duplicateItem: String { s("已存在同名打卡项", "An item with this name already exists") }
+    static var duplicateGroup: String { s("已存在同名分组", "A group with this name already exists") }
+    static var clearScopeNoItems: String { s("这个范围内暂时没有可清除的完成事项。", "No completed items in this range.") }
+    static func clearScopeCount(_ count: Int) -> String { s("将清除 \(count) 条已完成事项。这个操作不能撤销。", "This will clear \(count) completed items. This cannot be undone.") }
+
+    // MARK: - TimeView extra
+    static var prevDay: String { s("昨日", "Prev day") }
+    static var nextDay: String { s("次日", "Next day") }
+    static var saveFailed: String { s("保存失败", "Save Failed") }
+    static var dragToSelect: String { s("请拖出一段时间", "Please drag to select a time range") }
+    static var updated: String { s("已更新", "Updated") }
+    static var alreadyRecorded: String { s("这段已经记录过了", "Already recorded") }
+    static var stillCreate: String { s("仍然新建", "Add Anyway") }
+    static var saveTimeRange: String { s("保存这段时间", "Save Time") }
+    static var tapToEdit: String { s("可以点圆盘上的这段来编辑", "Tap this segment on the dial to edit") }
+    static var overlapConfirmHint: String { s("这段时间已有记录，保存前会先确认", "This time slot has an entry. You'll be asked to confirm.") }
+    static var weekSymbolSun: String { s("日", "Su") }
+    static var weekSymbolMon: String { s("一", "Mo") }
+    static var weekSymbolTue: String { s("二", "Tu") }
+    static var weekSymbolWed: String { s("三", "We") }
+    static var weekSymbolThu: String { s("四", "Th") }
+    static var weekSymbolFri: String { s("五", "Fr") }
+    static var weekSymbolSat: String { s("六", "Sa") }
+    static var weekSymbols: [String] { [weekSymbolSun, weekSymbolMon, weekSymbolTue, weekSymbolWed, weekSymbolThu, weekSymbolFri, weekSymbolSat] }
+
+    // MARK: - ReviewHubView extra
+    static var thisWeek: String { s("这周", "This week") }
+    static var thisMonth: String { s("这个月", "This month") }
+    static var emptyCheckHint: String { s("还没有固定打卡项，留白也可以被好好放着。", "No check-in items yet. It's okay to leave this blank.") }
+    static var emptyTimeHint: String { s("有记录时，这里会按分类汇总已经写下的时间。", "Time entries will be summarized by category here.") }
+    static func emptyPendingHint(_ period: String) -> String { s("\(period)没有等你处理的想法。", "No pending ideas for \(period).") }
+    static var emptyBrainHint: String { s("处理过的想法可以沉淀成卡片，之后再回来慢慢读。", "Processed ideas become cards you can revisit later.") }
+
+    // MARK: - ExportView
+    static var exportDateSection: String { s("时间区间", "Date Range") }
+    static var exportDateFooter: String { s("将导出区间内的「时间记录」「随手记」「打卡」CSV 文件。", "Exports Time, Capture, and Check-in CSV files within the date range.") }
+    static var exportCSVButton: String { s("导出 CSV", "Export CSV") }
+    static var exportShareFooter: String { s("导出后会弹出系统分享面板，可选择「存到 文件 / iCloud Drive」或其它目标。文件用 UTF-8 BOM 编码，中文 Excel 直接打开不乱码。", "A share sheet will appear after export. Files use UTF-8 BOM encoding.") }
+    static var fullBackup: String { s("完整备份", "Full Backup") }
+    static var exportAll: String { s("导出全部数据", "Export All Data") }
+    static var exportAllFooter: String { s("把全部打卡、时间记录、待办、AI 对话、第二大脑和打卡项配置打包成一个 JSON 文件，不受上面的时间区间限制。建议定期存到「文件 / iCloud Drive」留一份底。", "Exports all data (check-ins, time, todos, AI chats, brain cards) as a single JSON file. We recommend saving to Files/iCloud Drive periodically.") }
+    static var cannotExport: String { s("无法导出", "Cannot Export") }
+    static var noExportData: String { s("所选区间没有可导出的内容", "No data to export in the selected range") }
+
+    // MARK: - Inbox types display
+
+    static func displayInboxType(_ type: String) -> String {
+        guard isEn else { return type }
+        switch type {
+        case "想法": return "Thoughts"
+        case "感受": return "Feelings"
+        case "感恩": return "Gratitude"
+        case "做梦": return "Dreams"
+        default: return type
+        }
+    }
+
+    // MARK: - Time categories display
+
+    static func displayCategory(_ cat: String) -> String {
+        guard isEn else { return cat }
+        switch cat {
+        case "工作": return "Work"
+        case "学习": return "Study"
+        case "运动": return "Exercise"
+        case "娱乐": return "Leisure"
+        case "社交": return "Social"
+        case "睡觉": return "Sleep"
+        case "其他": return "Other"
+        default: return cat
+        }
+    }
+
+    // MARK: - Feeling tags display
+
+    static func displayFeeling(_ tag: String) -> String {
+        guard isEn else { return tag }
+        switch tag {
+        case "感恩": return "Grateful"
+        case "平静": return "Calm"
+        case "满足": return "Content"
+        case "兴奋": return "Excited"
+        case "自信": return "Confident"
+        case "被爱": return "Loved"
+        case "有动力": return "Motivated"
+        case "好奇": return "Curious"
+        case "放松": return "Relaxed"
+        case "成就感": return "Accomplished"
+        case "焦虑": return "Anxious"
+        case "烦躁": return "Irritated"
+        case "无力": return "Helpless"
+        case "愤怒": return "Angry"
+        case "孤独": return "Lonely"
+        case "内疚": return "Guilty"
+        case "自责": return "Self-critical"
+        case "迷茫": return "Lost"
+        case "压抑": return "Suppressed"
+        case "疲惫": return "Exhausted"
+        default: return tag
+        }
+    }
 
     // MARK: - Default nickname
 

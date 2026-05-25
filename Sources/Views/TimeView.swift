@@ -10,7 +10,7 @@ struct TimeView: View {
     @State private var calendarCategoriesByDateKey: [String: [String]] = [:]
 
     private let calendar = Calendar.current
-    private let weekSymbols = ["日", "一", "二", "三", "四", "五", "六"]
+    private var weekSymbols: [String] { L.weekSymbols }
     private let globalInputClearance: CGFloat = 96
 
     @State private var name = ""
@@ -99,16 +99,16 @@ struct TimeView: View {
 
     private var selectedRangeText: String {
         if isSelectedCrossDayEnd {
-            return "昨日 \(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))"
+            return "\(L.prevDay) \(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))"
         }
-        return isDialCrossDay ? "\(timeText(from: dialStartMinutes)) - 次日 \(timeText(from: dialEndMinutes))" : "\(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))"
+        return isDialCrossDay ? "\(timeText(from: dialStartMinutes)) - \(L.nextDay) \(timeText(from: dialEndMinutes))" : "\(timeText(from: dialStartMinutes)) - \(timeText(from: dialEndMinutes))"
     }
 
     private var endLabelText: String {
         if isSelectedCrossDayEnd {
             return timeText(from: dialEndMinutes)
         }
-        return isDialCrossDay ? "次日 \(timeText(from: dialEndMinutes))" : timeText(from: dialEndMinutes)
+        return isDialCrossDay ? "\(L.nextDay) \(timeText(from: dialEndMinutes))" : timeText(from: dialEndMinutes)
     }
 
     private var isSelectedCrossDayEnd: Bool {
@@ -134,7 +134,7 @@ struct TimeView: View {
     }
 
     private var dialSection: some View {
-                Section("24小时圆盘（拖拽选时间段）") {
+                Section(L.dialSection) {
                     VStack(spacing: 16) {
                         RadialRangePicker(
                             startMinutes: $dialStartMinutes,
@@ -184,11 +184,11 @@ struct TimeView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 8) {
                                 if selectedEntry != nil {
-                                    Label("编辑事件", systemImage: "pencil.circle.fill")
+                                    Label(L.editEvent, systemImage: "pencil.circle.fill")
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(colorForCategory(dialCategory))
                                 } else {
-                                    Label("新建事件", systemImage: "plus.circle")
+                                    Label(L.newEvent, systemImage: "plus.circle")
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(colorForCategory(dialCategory))
                                 }
@@ -199,7 +199,7 @@ struct TimeView: View {
                             }
 
                             HStack(spacing: 10) {
-                                Label("类型", systemImage: "square.grid.2x2")
+                                Label(L.typeLabel, systemImage: "square.grid.2x2")
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.secondary)
 
@@ -210,7 +210,7 @@ struct TimeView: View {
                                         Button {
                                             dialCategory = op
                                         } label: {
-                                            Label(op, systemImage: iconForCategory(op))
+                                            Label(L.displayCategory(op), systemImage: iconForCategory(op))
                                         }
                                         .tint(colorForCategory(op))
                                     }
@@ -218,7 +218,7 @@ struct TimeView: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: iconForCategory(dialCategory))
                                             .symbolRenderingMode(.hierarchical)
-                                        Text(dialCategory)
+                                        Text(L.displayCategory(dialCategory))
                                             .font(.subheadline.weight(.semibold))
                                         Image(systemName: "chevron.up.chevron.down")
                                             .font(.caption2)
@@ -236,7 +236,7 @@ struct TimeView: View {
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                            TextField("一句话描述", text: $dialName)
+                            TextField(L.descPlaceholder, text: $dialName)
                                 .font(.body)
                                 .textInputAutocapitalization(.never)
                                 .focused($isInputFocused)
@@ -249,7 +249,7 @@ struct TimeView: View {
                                 )
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                            TextField("补充详情", text: $dialNote, axis: .vertical)
+                            TextField(L.notePlaceholder, text: $dialNote, axis: .vertical)
                                 .font(.body)
                                 .lineLimit(2...4)
                                 .focused($isInputFocused)
@@ -274,7 +274,7 @@ struct TimeView: View {
                                 } label: {
                                     HStack {
                                         Image(systemName: "checkmark.circle.fill")
-                                        Text("更新事件")
+                                        Text(L.updateEvent)
                                             .fontWeight(.semibold)
                                     }
                                     .frame(maxWidth: .infinity)
@@ -288,7 +288,7 @@ struct TimeView: View {
                                 } label: {
                                     HStack {
                                         Image(systemName: "plus")
-                                        Text("新建")
+                                        Text(L.newEventShort)
                                             .fontWeight(.semibold)
                                     }
                                     .padding(.vertical, 12)
@@ -344,7 +344,7 @@ struct TimeView: View {
     }
 
     private var entriesSection: some View {
-                Section("时间记录") {
+                Section(L.timeRecords) {
                     ForEach(store.timeEntries) { e in
                         Button {
                             // 点击记录 → 在圆盘上定位并进入编辑模式
@@ -372,7 +372,7 @@ struct TimeView: View {
                                     if isCrossDayEntry(e) {
                                         Text("·")
                                             .foregroundStyle(.secondary)
-                                        Text("跨日")
+                                        Text(L.crossDay)
                                             .font(.caption.weight(.semibold))
                                             .padding(.horizontal, 7)
                                             .padding(.vertical, 3)
@@ -382,7 +382,7 @@ struct TimeView: View {
                                     }
                                     Text("·")
                                         .foregroundStyle(.secondary)
-                                    Text(e.category)
+                                    Text(L.displayCategory(e.category))
                                         .font(.caption.weight(.semibold))
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
@@ -418,18 +418,18 @@ struct TimeView: View {
     private var addEntrySheet: some View {
                 NavigationStack {
                     Form {
-                        TextField(fieldName(0, "一句话描述"), text: $name)
-                        DatePicker(fieldName(1, "开始时间"), selection: $startAt, displayedComponents: .hourAndMinute)
+                        TextField(fieldName(0, L.descPlaceholder), text: $name)
+                        DatePicker(fieldName(1, L.startTimePicker), selection: $startAt, displayedComponents: .hourAndMinute)
                             .datePickerStyle(.compact)
-                        DatePicker(fieldName(2, "结束时间"), selection: $endAt, displayedComponents: .hourAndMinute)
+                        DatePicker(fieldName(2, L.endTimePicker), selection: $endAt, displayedComponents: .hourAndMinute)
                             .datePickerStyle(.compact)
-                        Picker(fieldName(3, "类型"), selection: $category) {
+                        Picker(fieldName(3, L.typeLabel), selection: $category) {
                             ForEach(categoryOptions, id: \.self) { op in
                                 HStack(spacing: 8) {
                                     Image(systemName: iconForCategory(op))
                                         .foregroundStyle(colorForCategory(op))
                                         .frame(width: 16)
-                                    Text(op)
+                                    Text(L.displayCategory(op))
                                         .foregroundStyle(colorForCategory(op))
                                 }
                                 .tag(op)
@@ -440,16 +440,16 @@ struct TimeView: View {
                             extraInputView(field: field, extraIndex: idx)
                         }
                     }
-                    .navigationTitle(editTarget == nil ? "新增时间" : "编辑时间")
+                    .navigationTitle(editTarget == nil ? L.newTimeTitle : L.editTimeTitle)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("取消") {
+                            Button(L.cancel) {
                                 showAdd = false
                                 editTarget = nil
                             }
                         }
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("保存") {
+                            Button(L.save) {
                                 if category.isEmpty || !categoryOptions.contains(category) {
                                     category = normalizedCategory(category)
                                 }
@@ -495,7 +495,7 @@ struct TimeView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("完成") { isInputFocused = false }
+                    Button(L.done) { isInputFocused = false }
                         .tint(CreamTheme.green)
                 }
             }
@@ -534,18 +534,18 @@ struct TimeView: View {
                 if category.isEmpty || !categoryOptions.contains(category) { category = categoryOptions.first ?? "工作" }
             }
             // Animation driven by withAnimation() in calendar toggle button
-            .alert("保存失败", isPresented: $showError) {
-                Button("知道了", role: .cancel) {}
+            .alert(L.saveFailed, isPresented: $showError) {
+                Button(L.gotIt, role: .cancel) {}
             } message: {
                 Text(errorMessage)
             }
-            .alert("时间重叠", isPresented: $showOverlapConfirm) {
-                Button("先不加", role: .cancel) {}
-                Button("仍然新建") {
+            .alert(L.overlapTitle, isPresented: $showOverlapConfirm) {
+                Button(L.overlapSkip, role: .cancel) {}
+                Button(L.overlapAdd) {
                     confirmCreateOverlap()
                 }
             } message: {
-                Text("这段时间已有记录。要保留原来的记录，并再加一条吗？")
+                Text(L.overlapMsg)
             }
             .overlay(alignment: .bottom) {
                 if let successMessage {
@@ -560,7 +560,7 @@ struct TimeView: View {
 
     private var timeTopDateBar: some View {
         HStack(spacing: 12) {
-            Text("时间记录")
+            Text(L.timeRecords)
                 .font(.headline.weight(.semibold))
 
             Spacer(minLength: 6)
@@ -663,7 +663,7 @@ struct TimeView: View {
         guard let entry = selectedEntry else { return }
         if dialCategory.isEmpty { dialCategory = categoryOptions.first ?? "工作" }
         if dialEndMinutes == dialStartMinutes {
-            errorMessage = "请拖出一段时间"
+            errorMessage = L.dragToSelect
             showError = true
             return
         }
@@ -692,14 +692,14 @@ struct TimeView: View {
         }
 
         selectedEntryID = store.timeEntries.first?.id
-        showSuccess("已更新")
+        showSuccess(L.updated)
     }
 
     private func saveFromDial() {
         if dialCategory.isEmpty { dialCategory = categoryOptions.first ?? "工作" }
         if !categoryOptions.contains(dialCategory) { dialCategory = normalizedCategory(dialCategory) }
         if dialEndMinutes == dialStartMinutes {
-            errorMessage = "请拖出一段时间"
+            errorMessage = L.dragToSelect
             showError = true
             return
         }
@@ -891,18 +891,18 @@ struct TimeView: View {
 
     private var newDraftButtonTitle: String {
         switch newDraftOverlapState {
-        case .duplicate: return "这段已经记录过了"
-        case .overlap: return "仍然新建"
-        case .clear: return "保存这段时间"
+        case .duplicate: return L.alreadyRecorded
+        case .overlap: return L.stillCreate
+        case .clear: return L.saveTimeRange
         }
     }
 
     private var newDraftOverlapHint: String? {
         switch newDraftOverlapState {
         case .duplicate:
-            return "可以点圆盘上的这段来编辑"
+            return L.tapToEdit
         case .overlap:
-            return "这段时间已有记录，保存前会先确认"
+            return L.overlapConfirmHint
         case .clear:
             return nil
         }
@@ -974,9 +974,9 @@ struct TimeView: View {
             return "\(entry.start) - \(entry.end)"
         }
         if entry.extra[TimeEntryCrossDayKey.role] == TimeEntryCrossDayKey.roleEnd {
-            return "昨日 \(originalStart) - \(originalEnd)"
+            return "\(L.prevDay) \(originalStart) - \(originalEnd)"
         }
-        return "\(originalStart) - 次日 \(originalEnd)"
+        return "\(originalStart) - \(L.nextDay) \(originalEnd)"
     }
 
     private func fieldName(_ index: Int, _ fallback: String) -> String {
@@ -1240,7 +1240,7 @@ private struct RadialRangePicker: View {
                     Text(centerTitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
-                    Text(centerSubtitle.isEmpty ? "时间记录" : centerSubtitle)
+                    Text(centerSubtitle.isEmpty ? L.timeRecords : centerSubtitle)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

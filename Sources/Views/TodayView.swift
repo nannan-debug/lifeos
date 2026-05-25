@@ -17,10 +17,10 @@ private enum CompletedTaskClearScope: Identifiable {
 
     var title: String {
         switch self {
-        case .oneMonth: return "超过 1 个月"
-        case .sixMonths: return "超过 6 个月"
-        case .oneYear: return "超过 1 年"
-        case .all: return "所有已完成事项"
+        case .oneMonth: return L.overOneMonth
+        case .sixMonths: return L.overSixMonths
+        case .oneYear: return L.overOneYear
+        case .all: return L.allCompleted
         }
     }
 
@@ -142,108 +142,108 @@ struct TodayView: View {
                     .environmentObject(store)
             }
             .confirmationDialog(
-                "清除完成的待办",
+                L.clearCompletedTitle,
                 isPresented: $showingCompletedClearOptions,
                 titleVisibility: .visible
             ) {
-                Button("超过 1 个月") { clearCompletedScope = .oneMonth }
-                Button("超过 6 个月") { clearCompletedScope = .sixMonths }
-                Button("超过 1 年") { clearCompletedScope = .oneYear }
-                Button("所有已完成事项") { clearCompletedScope = .all }
-                Button("取消", role: .cancel) {}
+                Button(L.overOneMonth) { clearCompletedScope = .oneMonth }
+                Button(L.overSixMonths) { clearCompletedScope = .sixMonths }
+                Button(L.overOneYear) { clearCompletedScope = .oneYear }
+                Button(L.allCompleted) { clearCompletedScope = .all }
+                Button(L.cancel, role: .cancel) {}
             } message: {
-                Text("只会清除已完成事项，不影响还在待办里的内容。")
+                Text(L.clearCompletedMsg)
             }
             .alert(item: $clearCompletedScope) { scope in
                 let count = completedTaskCount(for: scope)
                 return Alert(
-                    title: Text("清除\(scope.title)？"),
-                    message: Text(count == 0 ? "这个范围内暂时没有可清除的完成事项。" : "将清除 \(count) 条已完成事项。这个操作不能撤销。"),
-                    primaryButton: .default(Text(count == 0 ? "好的" : "清除")) {
+                    title: Text(L.clearScopeTitle(scope.title)),
+                    message: Text(count == 0 ? L.clearScopeNoItems : L.clearScopeCount(count)),
+                    primaryButton: .default(Text(count == 0 ? L.ok : L.clearButton)) {
                         guard count > 0 else { return }
                         store.clearCompletedTasks(olderThan: scope.cutoff)
                     },
-                    secondaryButton: .cancel(Text("取消"))
+                    secondaryButton: .cancel(Text(L.cancel))
                 )
             }
             // ── inline 编辑：重命名打卡项
             .alert(
-                "重命名打卡项",
+                L.renameCheckItem,
                 isPresented: Binding(
                     get: { renamingItem != nil },
                     set: { if !$0 { renamingItem = nil } }
                 ),
                 presenting: renamingItem
             ) { _ in
-                TextField("新名称", text: $renameItemText)
-                Button("保存") {
+                TextField(L.newNamePlaceholder, text: $renameItemText)
+                Button(L.save) {
                     if let old = renamingItem {
                         let ok = store.renameDailyCheckItem(from: old, to: renameItemText)
                         if !ok {
-                            inlineErrorMsg = "重命名失败：可能已存在同名打卡项"
+                            inlineErrorMsg = L.renameFailItem
                         }
                     }
                     renamingItem = nil
                 }
-                Button("取消", role: .cancel) { renamingItem = nil }
+                Button(L.cancel, role: .cancel) { renamingItem = nil }
             } message: { _ in
-                Text("历史的勾选状态会跟着新名字保留")
+                Text(L.renameCheckHint(""))
             }
             // ── inline 编辑：重命名分组
             .alert(
-                "重命名分组",
+                L.renameGroup,
                 isPresented: Binding(
                     get: { renamingGroup != nil },
                     set: { if !$0 { renamingGroup = nil } }
                 ),
                 presenting: renamingGroup
             ) { _ in
-                TextField("新名称", text: $renameGroupText)
-                Button("保存") {
+                TextField(L.newNamePlaceholder, text: $renameGroupText)
+                Button(L.save) {
                     if let old = renamingGroup {
                         let ok = store.renameDailyCheckGroup(from: old, to: renameGroupText)
                         if !ok {
-                            inlineErrorMsg = "重命名失败：可能已存在同名分组"
+                            inlineErrorMsg = L.renameFailGroup
                         }
                     }
                     renamingGroup = nil
                 }
-                Button("取消", role: .cancel) { renamingGroup = nil }
+                Button(L.cancel, role: .cancel) { renamingGroup = nil }
             } message: { group in
-                Text("「\(group)」下的打卡项会跟着改到新名字")
+                Text(L.renameGroupHint(group))
             }
             // ── inline 编辑：删除分组（带级联确认）
             .alert(
-                "删除分组",
+                L.deleteGroup,
                 isPresented: Binding(
                     get: { groupToDelete != nil },
                     set: { if !$0 { groupToDelete = nil } }
                 ),
                 presenting: groupToDelete
             ) { group in
-                Button("删除", role: .destructive) {
+                Button(L.delete, role: .destructive) {
                     store.removeDailyCheckGroup(group)
                     groupToDelete = nil
                 }
-                Button("取消", role: .cancel) { groupToDelete = nil }
+                Button(L.cancel, role: .cancel) { groupToDelete = nil }
             } message: { group in
                 let count = store.dailyCheckItemCount(forGroup: group)
                 if count == 0 {
-                    Text("「\(group)」是空分组，删除后不影响打卡项。")
+                    Text(L.deleteGroupEmpty(group))
                 } else {
-                    Text("删除「\(group)」会同时移除其下 \(count) 个打卡项，无法撤销。")
+                    Text(L.deleteGroupWithCount(group, count))
                 }
             }
             // ── inline 错误提示（轻量 alert，避免破坏温柔语气）
             .alert(
-                "提示",
+                L.notice,
                 isPresented: Binding(
                     get: { inlineErrorMsg != nil },
                     set: { if !$0 { inlineErrorMsg = nil } }
                 ),
                 presenting: inlineErrorMsg
             ) { _ in
-                Button("好的", role: .cancel) { inlineErrorMsg = nil }
+                Button(L.ok, role: .cancel) { inlineErrorMsg = nil }
             } message: { msg in
                 Text(msg)
             }
@@ -368,19 +368,19 @@ struct TodayView: View {
             Button(role: .destructive) {
                 groupToDelete = tag
             } label: {
-                Label("删除", systemImage: "trash")
+                Label(L.delete, systemImage: "trash")
             }
             Button {
                 renamingGroup = tag
                 renameGroupText = tag
             } label: {
-                Label("重命名", systemImage: "pencil")
+                Label(L.rename, systemImage: "pencil")
             }
             .tint(CreamTheme.green)
             Button {
                 startAddingItem(forGroup: tag)
             } label: {
-                Label("新增", systemImage: "plus")
+                Label(L.add, systemImage: "plus")
             }
             .tint(CreamTheme.green.opacity(0.88))
         }
@@ -426,13 +426,13 @@ struct TodayView: View {
             Button(role: .destructive) {
                 withAnimation { store.removeDailyCheckItem(item.title) }
             } label: {
-                Label("删除", systemImage: "trash")
+                Label(L.delete, systemImage: "trash")
             }
             Button {
                 renamingItem = item.title
                 renameItemText = item.title
             } label: {
-                Label("重命名", systemImage: "pencil")
+                Label(L.rename, systemImage: "pencil")
             }
             .tint(CreamTheme.green)
         }
@@ -446,7 +446,7 @@ struct TodayView: View {
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(CreamTheme.green.opacity(0.85))
 
-            TextField("新打卡项…", text: $addingItemText)
+            TextField(L.newCheckItemPlaceholder, text: $addingItemText)
                 .textFieldStyle(.plain)
                 .font(.callout)
                 .submitLabel(.done)
@@ -467,7 +467,7 @@ struct TodayView: View {
 
     @ViewBuilder
     private func groupCompletionCelebration(for tag: String) -> some View {
-        GroupCompletionCelebrationView(text: "\(tag)的小节完成了")
+        GroupCompletionCelebrationView(text: L.groupCompleted(tag))
             .padding(.leading, 28)
             .padding(.trailing, 14)
             .padding(.vertical, 6)
@@ -487,14 +487,14 @@ struct TodayView: View {
                 .frame(width: 22)
 
             if addingNewGroup {
-                TextField("新分组名（例如：工作日、运动日…）", text: $newGroupText)
+                TextField(L.newGroupExample, text: $newGroupText)
                     .textFieldStyle(.plain)
                     .font(.callout)
                     .submitLabel(.done)
                     .focused($newGroupFocused)
                     .onSubmit(commitInlineAddGroup)
             } else {
-                Text("新建分组")
+                Text(L.newGroupButton)
                     .font(.callout.weight(.medium))
                     .foregroundStyle(CreamTheme.green.opacity(0.8))
             }
@@ -531,7 +531,7 @@ struct TodayView: View {
             addingItemForGroup = nil
             addItemFocused = false
         } else {
-            inlineErrorMsg = "已存在同名打卡项"
+            inlineErrorMsg = L.duplicateItem
         }
     }
 
@@ -579,7 +579,7 @@ struct TodayView: View {
             addingNewGroup = false
             newGroupFocused = false
         } else {
-            inlineErrorMsg = "已存在同名分组"
+            inlineErrorMsg = L.duplicateGroup
         }
     }
 
@@ -644,13 +644,13 @@ struct TodayView: View {
                     .font(.system(size: 20, weight: .regular))
                     .foregroundStyle(CreamTheme.green.opacity(0.8))
 
-                TextField("快速新增…（回车添加）", text: $newTodoTitle)
+                TextField(L.todoQuickAddPlaceholder, text: $newTodoTitle)
                     .textFieldStyle(.plain)
                     .submitLabel(.done)
                     .onSubmit(commitNewTodo)
 
                 if !newTodoTitle.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("添加", action: commitNewTodo)
+                    Button(L.todoAddButton, action: commitNewTodo)
                         .buttonStyle(.borderedProminent)
                         .tint(CreamTheme.green)
                         .controlSize(.small)
@@ -675,13 +675,13 @@ struct TodayView: View {
                     todoRow(task)
                 }
             } header: {
-                Text("待办 · \(pendingTasks.count)")
+                Text("\(L.todoPendingHeader) · \(pendingTasks.count)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         } else {
             Section {
-                Text("今天没有待办，先去打卡或加一条吧 🌱")
+                Text(L.emptyTodoMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -707,7 +707,7 @@ struct TodayView: View {
                     }
                 }
             } header: {
-                Text("已完成 · \(doneTasks.count)")
+                Text("\(L.todoDoneHeader) · \(doneTasks.count)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -735,14 +735,14 @@ struct TodayView: View {
                         completedTasksExpanded.toggle()
                     }
                 } label: {
-                    Text(completedTasksExpanded ? "收起已完成" : "查看已完成")
+                    Text(completedTasksExpanded ? L.collapseCompleted : L.viewCompleted)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
 
                 if let latest = doneTasks.first {
-                    Text("最近完成：\(latest.title)")
+                    Text("\(L.lastCompleted)\(latest.title)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -758,7 +758,7 @@ struct TodayView: View {
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color(.secondarySystemFill)))
 
-            Button("清除") {
+            Button(L.clearButton) {
                 showingCompletedClearOptions = true
             }
             .font(.caption.weight(.semibold))
@@ -812,7 +812,7 @@ struct TodayView: View {
             // 标题/详情区
             VStack(alignment: .leading, spacing: 4) {
                 if editingTodoTitleID == task.id {
-                    TextField("标题", text: $editingTodoTitleText)
+                    TextField(L.titleLabel, text: $editingTodoTitleText)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(done ? .secondary : .primary)
                         .textFieldStyle(.plain)
@@ -884,7 +884,7 @@ struct TodayView: View {
             Button(role: .destructive) {
                 store.removeTask(id: task.id)
             } label: {
-                Label("删除", systemImage: "trash")
+                Label(L.delete, systemImage: "trash")
             }
         }
     }
@@ -953,7 +953,7 @@ struct TodayView: View {
             Button(role: .destructive) {
                 store.removeTask(id: task.id)
             } label: {
-                Label("删除", systemImage: "trash")
+                Label(L.delete, systemImage: "trash")
             }
         }
     }
@@ -994,13 +994,13 @@ struct TodayView: View {
 
     private func completedMetaLine(for task: TaskEntry) -> String {
         guard let completedAt = task.completedAt else {
-            return "完成时间：旧记录未保存具体时间"
+            return "\(L.completedAt)\(L.completedAtUnknown)"
         }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M/d/yy a h:mm"
-        return "完成时间：\(formatter.string(from: completedAt))"
+        formatter.locale = Locale(identifier: L.localeId)
+        formatter.dateFormat = L.isEn ? "MMM d, yy h:mm a" : "M/d/yy a h:mm"
+        return "\(L.completedAt)\(formatter.string(from: completedAt))"
     }
 
     private func completedTaskCount(for scope: CompletedTaskClearScope) -> Int {
@@ -1022,12 +1022,12 @@ struct TodayView: View {
     private func completionGroupTitle(for key: String) -> String {
         guard let date = dateFromKey(key) else { return key }
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return "今天" }
-        if cal.isDateInYesterday(date) { return "昨天" }
+        if cal.isDateInToday(date) { return L.today }
+        if cal.isDateInYesterday(date) { return L.yesterday }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月d日 EEEE"
+        formatter.locale = Locale(identifier: L.localeId)
+        formatter.dateFormat = L.isEn ? "MMM d, EEEE" : "M月d日 EEEE"
         return formatter.string(from: date)
     }
 
@@ -1063,12 +1063,12 @@ struct TodayView: View {
         df.dateFormat = "yyyy-MM-dd"
         guard let d = df.date(from: key) else { return key }
         let cal = Calendar.current
-        if cal.isDateInToday(d) { return "今天" }
-        if cal.isDateInTomorrow(d) { return "明天" }
-        if cal.isDateInYesterday(d) { return "昨天" }
+        if cal.isDateInToday(d) { return L.today }
+        if cal.isDateInTomorrow(d) { return L.tomorrow }
+        if cal.isDateInYesterday(d) { return L.yesterday }
         let out = DateFormatter()
-        out.locale = Locale(identifier: "zh_CN")
-        out.dateFormat = "M月d日"
+        out.locale = Locale(identifier: L.localeId)
+        out.dateFormat = L.isEn ? "MMM d" : "M月d日"
         return out.string(from: d)
     }
 
