@@ -57,6 +57,9 @@ struct RootTabView: View {
             guard phase == .active else { return }
             store.refreshAfterAppBecameActive()
         }
+        .onChange(of: selectedTab) { tab in
+            UsageTracker.track(UsageTracker.tabSwitch, extra: ["tab": "\(tab)"])
+        }
         .onReceive(NotificationCenter.default.publisher(for: DailyStateReminderService.notificationName)) { notification in
             openCaptureFromReminder(prefill: notification.object as? String)
         }

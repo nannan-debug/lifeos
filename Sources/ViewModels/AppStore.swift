@@ -526,6 +526,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         guard let idx = checkItems.firstIndex(where: { $0.id == item.id }) else { return }
         checkItems[idx].done.toggle()
         saveChecksForDate()
+        UsageTracker.track(UsageTracker.checkToggled)
     }
 
     var doneCount: Int { checkItems.filter { $0.done }.count }
@@ -535,6 +536,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         if let err = validateTimeInput(name: name, start: start, end: end) { return err }
         timeEntries.insert(.init(name: name, start: start, end: end, category: category, extra: extra), at: 0)
         saveTimeForDate()
+        UsageTracker.track(UsageTracker.timeEntryCreated)
         return nil
     }
 
@@ -828,6 +830,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         )
         tasks.insert(task, at: 0)
         saveTasks()
+        UsageTracker.track(UsageTracker.taskCreated)
         return task.id
     }
 
@@ -866,6 +869,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         } else {
             tasks[idx].status = "已完成"
             tasks[idx].completedAt = Date()
+            UsageTracker.track(UsageTracker.taskCompleted)
         }
         saveTasks()
     }
@@ -1113,6 +1117,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             at: 0
         )
         saveTurns()
+        UsageTracker.track(UsageTracker.turnCreated)
         return id
     }
 
@@ -2023,6 +2028,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
 
     func submitAgentText(_ text: String) {
+        UsageTracker.track(UsageTracker.aiChatSent)
         let weeklySummary = AgentOrchestrator.detectsReviewIntent(text) ? weeklyContextSummary() : nil
         let profile = userProfile.isEmpty ? nil : userProfile
         agent.send(

@@ -337,6 +337,58 @@ export function createTraceServer(options = {}) {
     };
   }
 
+  async function usageReport(query) {
+    const days = dateRange(query);
+    const chunks = await Promise.all(days.map((d) => cachedReadDay(d).catch(() => [])));
+    const allEvents = chunks.flat().filter((e) => e.eventName === "usage_batch");
+
+    const userMap = new Map();   // sessionId → { events, lastSeen }
+    const dailyMap = new Map();  // date → { events, users }
+    const featureTotals = {};
+
+    for (const event of allEvents) {
+      const sid = event.sessionId || "unknown";
+      const date = (event.timestamp || event.receivedAt || "").slice(0, 10);
+      const payload = event.payload || {};
+
+      // Per-user aggregation
+      if (!userMap.has(sid)) userMap.set(sid, { events: {}, totalEvents: 0, lastSeen: "" });
+      const user = userMap.get(sid);
+      if (date > user.lastSeen) user.lastSeen = date;
+
+      // Per-day aggregation
+      if (!dailyMap.has(date)) dailyMap.set(date, { totalEvents: 0, users: new Set() });
+      const day = dailyMap.get(date);
+      day.users.add(sid);
+
+      for (const [key, val] of Object.entries(payload)) {
+        const count = Number(val) || 0;
+        user.events[key] = (user.events[key] || 0) + count;
+        user.totalEvents += count;
+        featureTotals[key] = (featureTotals[key] || 0) + count;
+        day.totalEvents += count;
+      }
+    }
+
+    const users = [...userMap.entries()]
+      .map(([sessionId, data]) => ({
+        sessionId,
+        shortId: sessionId.replace(/^dev-/, "").slice(0, 6).toUpperCase(),
+        events: data.events,
+        totalEvents: data.totalEvents,
+        lastSeen: data.lastSeen,
+      }))
+      .sort((a, b) => b.totalEvents - a.totalEvents);
+
+    const daily = [...dailyMap.entries()]
+      .map(([date, data]) => ({ date, totalEvents: data.totalEvents, activeUsers: data.users.size }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const totalEvents = users.reduce((sum, u) => sum + u.totalEvents, 0);
+
+    return { totalUsers: users.length, totalEvents, users, daily, featureTotals };
+  }
+
   async function dashboardEvents(query) {
     const allEvents = await listEvents(query);
     const source = String(query.get("source") || "").trim();
@@ -472,6 +524,16 @@ export function createTraceServer(options = {}) {
           return;
         }
         const data = await dashboardEvents(url.searchParams);
+        await writeJSON(res, 200, { ok: true, ...data });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/dashboard/api/usage") {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const data = await usageReport(url.searchParams);
         await writeJSON(res, 200, { ok: true, ...data });
         return;
       }

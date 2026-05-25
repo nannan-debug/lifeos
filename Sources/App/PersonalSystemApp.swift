@@ -35,10 +35,12 @@ private struct SplashRootView: View {
         }
         .dynamicTypeSize(.xSmall)
         .task {
+            UsageTracker.track(UsageTracker.appOpen)
             await checkForAvailableUpdateIfNeeded()
         }
         .onChange(of: scenePhase) { phase in
             guard phase == .active else { return }
+            UsageTracker.flush()
             Task {
                 await checkForAvailableUpdateIfNeeded()
             }

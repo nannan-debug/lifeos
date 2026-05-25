@@ -75,6 +75,7 @@ struct ReviewHubView: View {
                 }
                 .background(CreamTheme.glassStrong)
                 .navigationTitle("复盘")
+                .onAppear { UsageTracker.track(UsageTracker.reviewOpened) }
                 .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     topPeriodBar
