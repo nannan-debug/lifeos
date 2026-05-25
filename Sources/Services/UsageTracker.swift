@@ -23,7 +23,7 @@ enum UsageTracker {
     // MARK: - Buffered tracking
 
     private static let bufferKey = "ps.usage.buffer.v1"
-    private static let sessionIdKey = "auth.user"
+    private static let sessionIdKey = "auth.userId"
 
     /// 记录一个事件（本地聚合，不立即发网络请求）
     static func track(_ event: String, extra: [String: String] = [:]) {
