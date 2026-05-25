@@ -1977,6 +1977,41 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         return nil
     }
 
+    func resolveTurnId(shortId: String) -> (UUID, ConversationTurn)? {
+        let lower = shortId.lowercased()
+        return turns.first { $0.id.uuidString.lowercased().hasPrefix(lower) }
+            .map { ($0.id, $0) }
+    }
+
+    func updateTurnFromAgent(id: UUID, title: String?, detail: String?) -> String? {
+        guard let idx = turns.firstIndex(where: { $0.id == id }) else { return "记录不存在" }
+        if let t = title {
+            turns[idx].payload["title"] = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let d = detail {
+            turns[idx].rawText = d
+        }
+        saveTurns()
+        return nil
+    }
+
+    func removeTurnFromAgent(id: UUID) -> DeletedRecordSnapshot? {
+        guard let turn = turns.first(where: { $0.id == id }) else { return nil }
+        let snapshot = DeletedRecordSnapshot(
+            recordType: "inbox",
+            title: turn.payload["title"] ?? String(turn.rawText.prefix(30)),
+            detail: turn.rawText,
+            date: turn.payload["date"] ?? selectedDateKey,
+            startTime: "",
+            endTime: "",
+            category: turn.recognizedType,
+            priority: "",
+            dueDate: ""
+        )
+        removeCommittedTurn(id: id)
+        return snapshot
+    }
+
     func restoreFromSnapshot(_ snapshot: DeletedRecordSnapshot) {
         switch snapshot.recordType {
         case "task":
@@ -2002,6 +2037,22 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
                 end: snapshot.endTime,
                 category: snapshot.category
             )
+        case "inbox":
+            _ = addTurnDraft(
+                rawText: snapshot.detail,
+                recognizedType: snapshot.category,
+                targetBucket: "inbox",
+                confidence: 1.0,
+                payload: [
+                    "title": snapshot.title,
+                    "detail": snapshot.detail,
+                    "status": "待处理",
+                    "ai_source": "agent"
+                ],
+                status: "draft",
+                fixHint: ""
+            )
+            if let id = turns.last?.id { _ = commitTurn(id: id) }
         default:
             break
         }
