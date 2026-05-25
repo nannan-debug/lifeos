@@ -25,8 +25,8 @@ targets:
     info:
       path: Sources/App/Info.plist
       properties:
-        CFBundleShortVersionString: 1.10.0
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: 1.11.0
+        CFBundleVersion: "15"
         ITSAppUsesNonExemptEncryption: false
         UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
@@ -48,8 +48,8 @@ targets:
     settings:
       base:
         PRODUCT_NAME: PersonalSystem
-        MARKETING_VERSION: 1.10.0
-        CURRENT_PROJECT_VERSION: 14
+        MARKETING_VERSION: 1.11.0
+        CURRENT_PROJECT_VERSION: 15
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Sources/App/PersonalSystem.entitlements
         DEVELOPMENT_TEAM: "355RQ5S3DW"
@@ -76,16 +76,16 @@ targets:
       path: Sources/Widgets/CheckWidget/Info.plist
       properties:
         CFBundleDisplayName: LifeOS
-        CFBundleShortVersionString: 1.10.0
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: 1.11.0
+        CFBundleVersion: "15"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
         PRODUCT_NAME: CheckWidgetExtension
         PRODUCT_BUNDLE_IDENTIFIER: ai.anna.personalsystem.CheckWidgetExtension
-        MARKETING_VERSION: 1.10.0
-        CURRENT_PROJECT_VERSION: 14
+        MARKETING_VERSION: 1.11.0
+        CURRENT_PROJECT_VERSION: 15
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Sources/Widgets/CheckWidget/CheckWidget.entitlements
         DEVELOPMENT_TEAM: "355RQ5S3DW"
