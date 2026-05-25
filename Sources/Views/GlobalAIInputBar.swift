@@ -298,7 +298,7 @@ private struct AgentChatPanel: View {
                             timeMs: message.reasoningTimeMs
                         )
                     }
-                    Text(message.content)
+                    Text(markdownAttributed(message.content))
                         .font(.callout)
                         .lineSpacing(4)
                         .foregroundStyle(CreamTheme.text.opacity(0.9))
@@ -307,6 +307,10 @@ private struct AgentChatPanel: View {
                 Spacer(minLength: 26)
             }
         }
+    }
+
+    private func markdownAttributed(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
 
     private func autoSavedRow(_ message: AgentChatMessage) -> some View {
@@ -1196,8 +1200,10 @@ private struct AgentChatPanel: View {
         case .calendarEvent: return "建议加日历"
         case .editTask: return "建议改待办"
         case .editTime: return "建议改时间"
+        case .editInbox: return "建议改随手记"
         case .deleteTask: return "建议删待办"
         case .deleteTime: return "建议删时间"
+        case .deleteInbox: return "建议删随手记"
         case .completeTask: return "建议标完成"
         }
     }
@@ -1211,16 +1217,16 @@ private struct AgentChatPanel: View {
         case .task: return "checklist"
         case .time: return "clock"
         case .calendarEvent: return "calendar.badge.plus"
-        case .editTask, .editTime: return "pencil"
-        case .deleteTask, .deleteTime: return "trash"
+        case .editTask, .editTime, .editInbox: return "pencil"
+        case .deleteTask, .deleteTime, .deleteInbox: return "trash"
         case .completeTask: return "checkmark.circle"
         }
     }
 
     private func actionButtonText(for action: AgentActionDraft) -> String {
         switch action.kind {
-        case .editTask, .editTime: return "确认修改"
-        case .deleteTask, .deleteTime: return "确认删除"
+        case .editTask, .editTime, .editInbox: return "确认修改"
+        case .deleteTask, .deleteTime, .deleteInbox: return "确认删除"
         case .completeTask: return "确认"
         case .calendarEvent: return "添加到日历"
         default: return "保存"
@@ -1229,7 +1235,7 @@ private struct AgentChatPanel: View {
 
     private func actionTintColor(for action: AgentActionDraft) -> Color {
         switch action.kind {
-        case .deleteTask, .deleteTime: return .red
+        case .deleteTask, .deleteTime, .deleteInbox: return .red
         case .calendarEvent: return .blue
         default: return CreamTheme.green
         }

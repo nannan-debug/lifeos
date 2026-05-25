@@ -100,13 +100,15 @@ enum AgentActionKind: String, Codable, Equatable {
     // Mutation kinds
     case editTask
     case editTime
+    case editInbox
     case deleteTask
     case deleteTime
+    case deleteInbox
     case completeTask
 
     var isMutation: Bool {
         switch self {
-        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask: return true
+        case .editTask, .editTime, .editInbox, .deleteTask, .deleteTime, .deleteInbox, .completeTask: return true
         default: return false
         }
     }
@@ -143,7 +145,7 @@ struct AgentActionDraft: Identifiable, Codable, Equatable {
 
     var isMutation: Bool {
         switch kind {
-        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask: return true
+        case .editTask, .editTime, .editInbox, .deleteTask, .deleteTime, .deleteInbox, .completeTask: return true
         default: return false
         }
     }

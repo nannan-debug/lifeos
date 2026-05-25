@@ -19,6 +19,9 @@ protocol AgentDataWriter: AnyObject {
     func removeTaskFromAgent(id: UUID) -> DeletedRecordSnapshot?
     func removeTimeEntryFromAgent(id: UUID) -> DeletedRecordSnapshot?
     func toggleTaskFromAgent(id: UUID) -> String?
+    func resolveTurnId(shortId: String) -> (UUID, ConversationTurn)?
+    func updateTurnFromAgent(id: UUID, title: String?, detail: String?) -> String?
+    func removeTurnFromAgent(id: UUID) -> DeletedRecordSnapshot?
     func restoreFromSnapshot(_ snapshot: DeletedRecordSnapshot)
 }
 
@@ -670,6 +673,29 @@ final class AgentManager: ObservableObject {
                 resolved.detail = current
             }
 
+        case .editInbox, .deleteInbox:
+            guard let (fullId, turn) = writer?.resolveTurnId(shortId: shortId) else { return nil }
+            resolved.targetId = fullId.uuidString
+            if resolved.title.isEmpty {
+                resolved.title = turn.payload["title"] ?? String(turn.rawText.prefix(30))
+            }
+            if action.kind == .editInbox {
+                var diffs: [String] = []
+                let oldTitle = turn.payload["title"] ?? ""
+                if let newTitle = nonEmpty(action.title), newTitle != oldTitle {
+                    diffs.append("标题: \(oldTitle) → \(newTitle)")
+                }
+                if let newDetail = nonEmpty(action.detail), newDetail != turn.rawText {
+                    diffs.append("内容已更新")
+                }
+                if !diffs.isEmpty {
+                    resolved.detail = diffs.joined(separator: "\n")
+                }
+            } else {
+                let turnTitle = turn.payload["title"] ?? String(turn.rawText.prefix(30))
+                resolved.detail = "将删除随手记「\(turnTitle)」"
+            }
+
         case .editTime, .deleteTime:
             guard let (fullId, entry, sourceDateKey) = writer?.resolveTimeEntryId(shortId: shortId) else { return nil }
             resolved.targetId = fullId.uuidString
@@ -779,7 +805,7 @@ final class AgentManager: ObservableObject {
         case .calendarEvent:
             // 日历事件写入系统日历，始终需要用户确认
             return false
-        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask:
+        case .editTask, .editTime, .editInbox, .deleteTask, .deleteTime, .deleteInbox, .completeTask:
             return false  // 已被上面的 guard 拦截，这里兜底
         }
     }
@@ -803,7 +829,7 @@ final class AgentManager: ObservableObject {
         case .calendarEvent:
             ref = nil
             result = "calendarEvent 不走 autoConfirm"
-        case .editTask, .editTime, .deleteTask, .deleteTime, .completeTask:
+        case .editTask, .editTime, .editInbox, .deleteTask, .deleteTime, .deleteInbox, .completeTask:
             ref = nil
             result = "mutation 不应走 autoConfirm"
         }
@@ -958,10 +984,14 @@ final class AgentManager: ObservableObject {
             result = commitEditTask(action)
         case .editTime:
             result = commitEditTime(action)
+        case .editInbox:
+            result = commitEditInbox(action)
         case .deleteTask:
             result = commitDeleteTask(action)
         case .deleteTime:
             result = commitDeleteTime(action)
+        case .deleteInbox:
+            result = commitDeleteInbox(action)
         case .completeTask:
             result = commitCompleteTask(action)
         }
@@ -970,7 +1000,7 @@ final class AgentManager: ObservableObject {
             session.pendingActions.removeAll { $0.id == id }
             // 撤销支持
             var undoRef: AutoSavedActionRef? = nil
-            if (action.kind == .deleteTask || action.kind == .deleteTime),
+            if (action.kind == .deleteTask || action.kind == .deleteTime || action.kind == .deleteInbox),
                let snapshot = lastDeletedSnapshot {
                 undoRef = AutoSavedActionRef(kind: action.kind, title: action.title, deletedRecord: snapshot)
                 lastDeletedSnapshot = nil
@@ -1075,7 +1105,7 @@ final class AgentManager: ObservableObject {
                 writer?.undoTimeFromTurn(id: turnId)
                 writer?.undoTurn(id: turnId)
             }
-        case .deleteTask, .deleteTime:
+        case .deleteTask, .deleteTime, .deleteInbox:
             if let snapshot = ref.deletedRecord {
                 writer?.restoreFromSnapshot(snapshot)
             }
@@ -1083,7 +1113,7 @@ final class AgentManager: ObservableObject {
             if let eventId = ref.calendarEventId {
                 try? CalendarService.shared.deleteEvent(identifier: eventId)
             }
-        case .editTask, .editTime, .completeTask:
+        case .editTask, .editTime, .editInbox, .completeTask:
             break  // edit/complete 暂不支持撤销
         }
         session.messages[idx].content = "已撤销：\(ref.title)"
@@ -1618,6 +1648,23 @@ final class AgentManager: ObservableObject {
         return lastDeletedSnapshot == nil ? "记录不存在" : nil
     }
 
+    private func commitEditInbox(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        return writer.updateTurnFromAgent(
+            id: uuid,
+            title: nonEmpty(action.title),
+            detail: nonEmpty(action.detail)
+        )
+    }
+
+    private func commitDeleteInbox(_ action: AgentActionDraft) -> String? {
+        guard let writer else { return "内部错误" }
+        guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
+        lastDeletedSnapshot = writer.removeTurnFromAgent(id: uuid)
+        return lastDeletedSnapshot == nil ? "记录不存在" : nil
+    }
+
     private func commitCompleteTask(_ action: AgentActionDraft) -> String? {
         guard let writer else { return "内部错误" }
         guard let targetId = action.targetId, let uuid = UUID(uuidString: targetId) else { return "记录不存在" }
@@ -1762,8 +1809,10 @@ final class AgentManager: ObservableObject {
         case .calendarEvent: return "已创建日历事件：\(title)"
         case .editTask: return "已修改待办：\(title)"
         case .editTime: return "已修改时间记录：\(title)"
+        case .editInbox: return "已修改随手记：\(title)"
         case .deleteTask: return "已删除待办：\(title)"
         case .deleteTime: return "已删除时间记录：\(title)"
+        case .deleteInbox: return "已删除随手记：\(title)"
         case .completeTask: return "已更新待办状态：\(title)"
         }
     }
