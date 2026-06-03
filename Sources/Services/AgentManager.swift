@@ -632,7 +632,7 @@ final class AgentManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
-                    let fallback = self.ensureDBTStarterResponse(AgentChatResponse(reply: "好，我们现在切到 DBT Coach。"))
+                    let fallback = self.ensureDBTStarterResponse(AgentChatResponse(reply: L.dbtSwitchingFallback))
                     self.finishStreaming(response: fallback, mergedActions: [])
                     self.emitTrace(
                         traceID: traceID,
@@ -2354,8 +2354,8 @@ final class AgentManager: ObservableObject {
         guard !alreadyGuiding else { return response }
 
         return AgentChatResponse(
-            reply: reply.isEmpty ? "好，我们先不急着解决，只把它拆小一点。" : reply,
-            followUpQuestion: firstDBTQuestion(for: dbt.skillId),
+            reply: reply.isEmpty ? L.dbtDefaultOpener : reply,
+            followUpQuestion: L.dbtFirstQuestion(dbt.skillId),
             actionSuggestions: [],
             toolCall: nil,
             dbtSession: response.dbtSession ?? dbt,
@@ -2363,27 +2363,6 @@ final class AgentManager: ObservableObject {
             rawBody: response.rawBody,
             usage: response.usage
         )
-    }
-
-    private func firstDBTQuestion(for skillId: String) -> String {
-        switch normalizedDBTSkillId(skillId) {
-        case "check_the_facts":
-            return "我们先只看事实：刚才这件事里，确定发生了什么？先别写解释，只写能被摄像头拍到的部分。"
-        case "opposite_action":
-            return "先抓住这个情绪最想推你做的动作：它现在最想让你逃开、躺下、刷手机，还是做别的什么？"
-        case "wise_mind":
-            return "我们先分两边：理性脑现在怎么说，情绪脑现在怎么说？各写一句就好。"
-        case "tipp":
-            return "先判断强度：这个情绪现在从 0 到 10 大概是几分？身体哪里最明显？"
-        case "stop":
-            return "先按 STOP 的第一步：此刻你最想立刻做的冲动是什么？只说动作，不评价它。"
-        case "dear_man":
-            return "我们先定场景：你想对谁表达什么请求或边界？一句话就好。"
-        case "behavior_chain_analysis":
-            return "我们先找链条起点：这次反复出现的行为是什么？它发生前 5 分钟有什么触发？"
-        default:
-            return "先只说一个点：此刻最明显的感受是什么？它在身体哪里最强？"
-        }
     }
 
     private func applyDBTSessionUpdate(_ update: AgentDBTSessionState?) {

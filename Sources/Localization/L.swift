@@ -211,6 +211,71 @@ enum L {
     static var likeMessage: String { s("赞", "Like") }
     static var dislikeMessage: String { s("踩", "Dislike") }
 
+    // MARK: - DBT Coach
+
+    static var dbtCoachTitle: String { s("DBT 教练", "DBT Coach") }
+    static func dbtStep(_ n: Int) -> String { s("第 \(n) 步", "Step \(n)") }
+    static var dbtExit: String { s("退出", "Exit") }
+    static var dbtPractice: String { s("DBT 练习", "DBT Practice") }
+    static func dbtSkillName(_ id: String) -> String {
+        switch id {
+        case "check_the_facts": return s("核实事实", "Check the Facts")
+        case "opposite_action": return s("相反行动", "Opposite Action")
+        case "wise_mind": return s("智慧心", "Wise Mind")
+        case "tipp": return "TIPP"
+        case "stop": return "STOP"
+        case "dear_man": return "DEAR MAN"
+        case "behavior_chain_analysis": return s("行为链分析", "Behavior Chain")
+        default: return s("DBT 练习", "DBT Practice")
+        }
+    }
+    static var dbtSwitchingFallback: String { s("好，我们现在切到 DBT Coach。", "OK, let's switch to DBT Coach.") }
+    static var dbtDefaultOpener: String { s("好，我们先不急着解决，只把它拆小一点。", "OK, let's not rush to solve it — just break it down a little.") }
+    static func dbtFirstQuestion(_ skillId: String) -> String {
+        switch skillId {
+        case "check_the_facts":
+            return s(
+                "我们先只看事实：刚才这件事里，确定发生了什么？先别写解释，只写能被摄像头拍到的部分。",
+                "Let's start with the facts: what actually happened? Just the part a camera could capture — no interpretations yet."
+            )
+        case "opposite_action":
+            return s(
+                "先抓住这个情绪最想推你做的动作：它现在最想让你逃开、躺下、刷手机，还是做别的什么？",
+                "What action is this emotion pushing you to do right now? Withdraw, lie down, scroll your phone, or something else?"
+            )
+        case "wise_mind":
+            return s(
+                "我们先分两边：理性脑现在怎么说，情绪脑现在怎么说？各写一句就好。",
+                "Let's hear both sides: what does the rational mind say, and what does the emotional mind say? One sentence each."
+            )
+        case "tipp":
+            return s(
+                "先判断强度：这个情绪现在从 0 到 10 大概是几分？身体哪里最明显？",
+                "Let's gauge the intensity: from 0 to 10, where does this emotion sit right now? Where do you feel it most in your body?"
+            )
+        case "stop":
+            return s(
+                "先按 STOP 的第一步：此刻你最想立刻做的冲动是什么？只说动作，不评价它。",
+                "First step of STOP: what's the urge you most want to act on right now? Just name the action, no judgment."
+            )
+        case "dear_man":
+            return s(
+                "我们先定场景：你想对谁表达什么请求或边界？一句话就好。",
+                "Let's set the scene: who do you want to talk to, and what request or boundary? One sentence is enough."
+            )
+        case "behavior_chain_analysis":
+            return s(
+                "我们先找链条起点：这次反复出现的行为是什么？它发生前 5 分钟有什么触发？",
+                "Let's find where the chain starts: what's the behavior that keeps happening? What triggered it 5 minutes before?"
+            )
+        default:
+            return s(
+                "先只说一个点：此刻最明显的感受是什么？它在身体哪里最强？",
+                "Start with one thing: what's the strongest feeling right now? Where do you feel it most in your body?"
+            )
+        }
+    }
+
     // MARK: - Action Labels
 
     static var suggestInbox: String { s("建议存随手记", "Save to Capture") }
