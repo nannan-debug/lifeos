@@ -78,6 +78,7 @@ struct StreamEvent: Decodable {
     let followUpQuestion: String?
     let actionSuggestions: [AgentActionDraft]?
     let toolCall: AgentToolCall?
+    let dbtSession: AgentDBTSessionState?
     let usage: AgentTokenUsage?
     let reasoningTimeMs: Int?
     let message: String?
@@ -94,6 +95,7 @@ enum ExecutionState: Equatable {
 
 enum AgentActionKind: String, Codable, Equatable {
     case inbox
+    case brain
     case task
     case time
     case calendarEvent
@@ -237,6 +239,8 @@ struct AgentChatMessage: Identifiable, Codable, Equatable {
     var autoSavedAction: AutoSavedActionRef? = nil  // 自动保存的 action 引用，支持撤销
     var reasoningContent: String? = nil   // DeepSeek 推理全文，持久化
     var reasoningTimeMs: Int? = nil       // 推理阶段耗时
+    var feedback: String? = nil           // liked / disliked，用户对 AI 回复的轻量反馈
+    var isActionResult: Bool? = nil        // 保存 / 更新 / 删除等系统动作结果，不当作 AI 回复反馈
 }
 
 struct AutoSavedActionRef: Codable, Equatable {
@@ -253,6 +257,7 @@ struct AgentChatSession: Codable, Equatable {
     var id: UUID = UUID()
     var messages: [AgentChatMessage] = []
     var pendingActions: [AgentActionDraft] = []
+    var dbtSession: AgentDBTSessionState? = nil
     var updatedAt: Date = Date()
 }
 
@@ -261,6 +266,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
     var title: String = ""
     var messages: [AgentChatMessage] = []
     var pendingActions: [AgentActionDraft] = []
+    var dbtSession: AgentDBTSessionState? = nil
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var titleGenerated: Bool = false
@@ -271,6 +277,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
             id: id,
             messages: messages,
             pendingActions: pendingActions,
+            dbtSession: dbtSession,
             updatedAt: updatedAt
         )
     }
@@ -280,6 +287,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
         title: String = "",
         messages: [AgentChatMessage] = [],
         pendingActions: [AgentActionDraft] = [],
+        dbtSession: AgentDBTSessionState? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         titleGenerated: Bool = false
@@ -288,6 +296,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
         self.title = title
         self.messages = messages
         self.pendingActions = pendingActions
+        self.dbtSession = dbtSession
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.titleGenerated = titleGenerated
@@ -299,6 +308,7 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         messages = try c.decodeIfPresent([AgentChatMessage].self, forKey: .messages) ?? []
         pendingActions = try c.decodeIfPresent([AgentActionDraft].self, forKey: .pendingActions) ?? []
+        dbtSession = try c.decodeIfPresent(AgentDBTSessionState.self, forKey: .dbtSession)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
         titleGenerated = try c.decodeIfPresent(Bool.self, forKey: .titleGenerated) ?? false
@@ -306,8 +316,30 @@ struct AgentChatThread: Identifiable, Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, messages, pendingActions, createdAt, updatedAt, titleGenerated, memoryExtractedCount
+        case id, title, messages, pendingActions, dbtSession, createdAt, updatedAt, titleGenerated, memoryExtractedCount
     }
+}
+
+struct AgentDBTStepAnswer: Codable, Equatable, Identifiable {
+    var id: String = UUID().uuidString
+    var stepIndex: Int
+    var prompt: String
+    var answer: String
+}
+
+struct AgentDBTSessionState: Codable, Equatable {
+    var sessionId: String = UUID().uuidString
+    var status: String = "active" // active / completed / cancelled
+    var skillId: String = "validation"
+    var currentStepIndex: Int = 0
+    var stepAnswers: [AgentDBTStepAnswer] = []
+    var startedAt: String = ""
+    var completedAt: String? = nil
+    var sourceThreadId: String? = nil
+    var summary: [String] = []
+    var skillIds: [String] = []
+    var emotionalShift: String? = nil
+    var followUpActions: [String] = []
 }
 
 struct AgentChatThreadIndexItem: Identifiable, Codable, Equatable {
@@ -345,6 +377,7 @@ struct AgentChatResponse: Decodable, Equatable {
     var followUpQuestion: String?
     var actionSuggestions: [AgentActionDraft]
     var toolCall: AgentToolCall?
+    var dbtSession: AgentDBTSessionState?
     var debug: AgentChatDebugPayload?
     var rawBody: String?
     var usage: AgentTokenUsage?
@@ -355,15 +388,17 @@ struct AgentChatResponse: Decodable, Equatable {
         case actionSuggestions
         case actions
         case toolCall
+        case dbtSession
         case debug
         case usage
     }
 
-    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], toolCall: AgentToolCall? = nil, debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
+    init(reply: String, followUpQuestion: String? = nil, actionSuggestions: [AgentActionDraft] = [], toolCall: AgentToolCall? = nil, dbtSession: AgentDBTSessionState? = nil, debug: AgentChatDebugPayload? = nil, rawBody: String? = nil, usage: AgentTokenUsage? = nil) {
         self.reply = reply
         self.followUpQuestion = followUpQuestion
         self.actionSuggestions = actionSuggestions
         self.toolCall = toolCall
+        self.dbtSession = dbtSession
         self.debug = debug
         self.rawBody = rawBody
         self.usage = usage
@@ -377,6 +412,7 @@ struct AgentChatResponse: Decodable, Equatable {
             ?? (try? c.decode([AgentActionDraft].self, forKey: .actions))
             ?? []
         toolCall = try? c.decodeIfPresent(AgentToolCall.self, forKey: .toolCall)
+        dbtSession = try? c.decodeIfPresent(AgentDBTSessionState.self, forKey: .dbtSession)
         debug = try? c.decodeIfPresent(AgentChatDebugPayload.self, forKey: .debug)
         usage = try? c.decodeIfPresent(AgentTokenUsage.self, forKey: .usage)
         rawBody = nil
@@ -423,6 +459,8 @@ struct BrainCard: Identifiable, Codable, Equatable {
     var sources: [BrainCardSource]   // 从哪些 turn 衍生而来（Review 模式自动建立）
     var links: [UUID]                // 关联的其他 BrainCard.id（用户在详情页手动建，双向）
     var extensions: [BrainCardExtension] = [] // 后续补充的延伸思考，保留想法演化顺序
+    var kind: String = "note"         // note / dbtSession
+    var dbtSession: BrainDBTSession? = nil
     var createdAt: Date
     var updatedAt: Date
 }
@@ -439,6 +477,28 @@ struct BrainCardExtension: Identifiable, Codable, Equatable {
     var updatedAt: Date
 }
 
+struct BrainDBTSession: Codable, Equatable {
+    var summary: [String]
+    var skills: [BrainDBTSkill]
+    var actions: [String]
+    var transcript: [BrainDBTTurn]
+    var emotionalShift: String?
+    var sourceThreadId: UUID?
+}
+
+struct BrainDBTSkill: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var name: String
+    var note: String
+}
+
+struct BrainDBTTurn: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var role: String
+    var content: String
+    var createdAt: Date
+}
+
 extension BrainCard {
     private enum CodingKeys: String, CodingKey {
         case id
@@ -448,6 +508,8 @@ extension BrainCard {
         case sources
         case links
         case extensions
+        case kind
+        case dbtSession
         case createdAt
         case updatedAt
     }
@@ -461,8 +523,25 @@ extension BrainCard {
         sources = try container.decodeIfPresent([BrainCardSource].self, forKey: .sources) ?? []
         links = try container.decodeIfPresent([UUID].self, forKey: .links) ?? []
         extensions = try container.decodeIfPresent([BrainCardExtension].self, forKey: .extensions) ?? []
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "note"
+        dbtSession = try container.decodeIfPresent(BrainDBTSession.self, forKey: .dbtSession)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(content, forKey: .content)
+        try container.encode(topics, forKey: .topics)
+        try container.encode(sources, forKey: .sources)
+        try container.encode(links, forKey: .links)
+        try container.encode(extensions, forKey: .extensions)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(dbtSession, forKey: .dbtSession)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 }
 

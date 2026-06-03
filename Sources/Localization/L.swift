@@ -136,6 +136,24 @@ enum L {
     static var clearAllConfirm: String { s("将永久删除本设备上的所有记录，是否继续？", "Permanently delete all local data. Continue?") }
     static var confirmClear: String { s("确认清空", "Confirm Clear") }
     static var languageSection: String { s("语言", "Language") }
+    static var iCloudSyncOffStatus: String { s("已关闭。数据只保存在本机。", "Off. Data stays on this device.") }
+    static var iCloudSyncOnStatus: String { s("已开启。会在同一 Apple ID 的设备间同步。", "On. Syncs across devices using the same Apple ID.") }
+    static var iCloudSyncNeedsAccountStatus: String { s("已开启。请先在系统里登录 iCloud。", "On. Please sign in to iCloud in Settings first.") }
+    static var iCloudSyncStartingStatus: String { s("开启中。会在同一 Apple ID 的设备间同步。", "Turning on. Syncs across devices using the same Apple ID.") }
+    static var healthSyncSleepAndWorkoutStatus: String { s("已开启睡眠和运动同步。", "Sleep and workout sync are on.") }
+    static var healthSyncSleepStatus: String { s("已开启睡眠同步。", "Sleep sync is on.") }
+    static var healthSyncWorkoutStatus: String { s("已开启运动同步。", "Workout sync is on.") }
+    static var healthSyncOffStatus: String { s("关闭时不会读取 Apple 健康。", "Off. LifeOS will not read Apple Health.") }
+    static var healthSyncInProgressStatus: String { s("正在从 Apple 健康同步...", "Syncing from Apple Health...") }
+    static var healthSyncAlreadyRunning: String { s("正在同步 Apple 健康，请稍等一下。", "Apple Health sync is already running. Please wait a moment.") }
+    static var healthSyncSelectTypeFirst: String { s("请先开启睡眠或运动同步。", "Turn on sleep or workout sync first.") }
+    static func healthSyncImported(_ count: Int) -> String { s("已同步 \(count) 条睡眠/运动记录。", "Synced \(count) sleep/workout records.") }
+    static var healthSyncNoSleepSamples: String { s("已检查 Apple 健康，没有读到睡眠样本。请确认 LifeOS 已获得睡眠读取权限。", "Checked Apple Health, but no sleep samples were found. Please confirm LifeOS has permission to read sleep data.") }
+    static func healthSyncNoImportableSleep(_ count: Int) -> String { s("读到 \(count) 条睡眠样本，但没有可导入的睡眠或卧床区间。", "Found \(count) sleep samples, but no importable sleep or in-bed intervals.") }
+    static var healthSyncNoNewRecords: String { s("已检查 Apple 健康，没有新的记录。", "Checked Apple Health. No new records.") }
+    static var healthSyncUnavailable: String { s("这台设备暂时无法读取 Apple 健康数据。", "This device cannot read Apple Health data right now.") }
+    static var healthSyncNoTypesSelected: String { s("请选择要同步的 Apple 健康数据。", "Choose Apple Health data to sync.") }
+    static var healthSyncTypeUnavailable: String { s("暂时无法读取对应的 Apple 健康数据类型。", "This Apple Health data type is unavailable right now.") }
 
     // MARK: - Agent Memory
 
@@ -154,6 +172,18 @@ enum L {
     static var clearLabel: String { s("清空", "Clear") }
     static var clearDebugConfirm: String { s("清空本机 AI 聊天调试记录？", "Clear local AI chat debug logs?") }
     static var failed: String { s("失败", "Failed") }
+    static var noneValue: String { s("无", "None") }
+    static var debugInput: String { s("输入", "Input") }
+    static var debugRequestContext: String { s("请求上下文", "Request Context") }
+    static var debugPersona: String { s("猫猫人格", "Arya Persona") }
+    static var debugUserInfo: String { s("用户信息", "User Info") }
+    static var debugChatHistory: String { s("聊天历史", "Chat History") }
+    static var debugLifeOSContext: String { s("LifeOS 上下文", "LifeOS Context") }
+    static var debugReply: String { s("回复", "Reply") }
+    static var debugFollowUp: String { s("追问", "Follow-up") }
+    static var debugAISuggestions: String { s("AI 建议", "AI Suggestions") }
+    static var debugMergedQueue: String { s("进入卡片队列", "Queued Cards") }
+    static var debugError: String { s("错误", "Error") }
 
     // MARK: - GlobalAIInputBar / AI Chat
 
@@ -168,11 +198,18 @@ enum L {
     static var conversationTitle: String { s("对话", "Conversations") }
     static var newConversation: String { s("新的对话", "New conversation") }
     static var emptyConversationHint: String { s("还没有留下对话。新的想法可以从这里开始。", "No conversations yet. Start with a new thought.") }
+    static var renameConversation: String { s("重命名对话", "Rename conversation") }
+    static var renameConversationHint: String { s("改名只会影响对话历史里的显示名称。", "This only changes the name shown in conversation history.") }
+    static var conversationNamePlaceholder: String { s("对话名称", "Conversation name") }
     static var deleteConversation: String { s("删除这段对话？", "Delete this conversation?") }
     static var deleteConversationHint: String { s("这只会删除这段猫猫对话，不会影响已经保存到随手记、待办或时间里的内容。", "This only deletes the chat. Saved captures, todos, and time entries are not affected.") }
     static var view: String { s("查看", "View") }
     static var undo: String { s("撤销", "Undo") }
     static var savePractice: String { s("保存练习记录", "Save practice") }
+    static var copied: String { s("已复制", "Copied") }
+    static var copyMessage: String { s("复制", "Copy") }
+    static var likeMessage: String { s("赞", "Like") }
+    static var dislikeMessage: String { s("踩", "Dislike") }
 
     // MARK: - Action Labels
 
@@ -187,6 +224,7 @@ enum L {
     static var suggestDeleteTime: String { s("建议删时间", "Delete Time") }
     static var suggestDeleteInbox: String { s("建议删随手记", "Delete Capture") }
     static var suggestComplete: String { s("建议标完成", "Mark Complete") }
+    static var suggestBrain: String { s("保存到第二大脑", "Save to Brain") }
     static var confirmEdit: String { s("确认修改", "Confirm Edit") }
     static var confirmDelete: String { s("确认删除", "Confirm Delete") }
     static var addToCalendar: String { s("添加到日历", "Add to Calendar") }
@@ -194,6 +232,7 @@ enum L {
     // MARK: - savedMessage (AgentManager)
 
     static func savedInbox(_ title: String) -> String { s("已创建随手记：\(title)", "Created capture: \(title)") }
+    static func savedBrain(_ title: String) -> String { s("已保存到第二大脑：\(title)", "Saved to Brain: \(title)") }
     static func savedTask(_ title: String) -> String { s("已创建待办：\(title)", "Created todo: \(title)") }
     static func savedTime(_ title: String) -> String { s("已创建时间记录：\(title)", "Created time entry: \(title)") }
     static func savedCalendar(_ title: String) -> String { s("已创建日历事件：\(title)", "Created calendar event: \(title)") }
@@ -220,6 +259,8 @@ enum L {
     static var editTimeTitle: String { s("编辑时间", "Edit Time Entry") }
     static var startTimePicker: String { s("开始时间", "Start Time") }
     static var endTimePicker: String { s("结束时间", "End Time") }
+    static var dialStart: String { s("开始", "Start") }
+    static var dialEnd: String { s("结束", "End") }
     static var done: String { s("完成", "Done") }
     static var crossDay: String { s("跨日", "Overnight") }
     static var overlapTitle: String { s("时间重叠", "Time Overlap") }
@@ -243,6 +284,12 @@ enum L {
     static var unrecordedTime: String { s("未记录时间", "Unrecorded Time") }
     static var goProcess: String { s("去接住几条", "Review some") }
     static var brainCard: String { s("第二大脑", "Second Brain") }
+    static var reviewPendingShort: String { s("待处理", "Pending") }
+    static var reviewArchivedShort: String { s("已处理", "Archived") }
+    static var reviewDismissedShort: String { s("搁置", "Dismissed") }
+    static var reviewQueueEmpty: String { s("队列已清空。", "Queue is clear.") }
+    static var reviewQueueSeeYou: String { s("下周再见。", "See you next week.") }
+    static var deriveToBrain: String { s("→ 第二大脑", "→ Brain") }
     static var countItems: String { s("条", "items") }
     static var countCards: String { s("张", "cards") }
     static var weekLabel: String { s("周", "Week") }
@@ -253,6 +300,7 @@ enum L {
     static var rename: String { s("重命名", "Rename") }
     static var add: String { s("新增", "Add") }
     static var newGroupButton: String { s("新建分组", "New Group") }
+    static var reorderGroups: String { s("调整分组顺序", "Reorder Groups") }
     static var renameCheckItem: String { s("重命名打卡项", "Rename Check Item") }
     static var renameGroup: String { s("重命名分组", "Rename Group") }
     static var deleteGroup: String { s("删除分组", "Delete Group") }

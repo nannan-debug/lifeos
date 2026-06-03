@@ -12,6 +12,7 @@ struct BrainCardEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let mode: BrainCardEditorMode
+    var onDeleted: (() -> Void)? = nil
 
     @State private var title: String = ""
     @State private var content: String = ""
@@ -130,6 +131,7 @@ struct BrainCardEditorSheet: View {
                                 store.removeBrain(id: id)
                             }
                             dismiss()
+                            onDeleted?()
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                     }

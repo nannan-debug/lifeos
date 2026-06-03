@@ -1649,6 +1649,38 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertFalse(store.isAgentLoading)
         XCTAssertTrue(store.agentSession.pendingActions.isEmpty)
     }
+
+    func testAgentStripsStreamStructuredJSONLeakAndKeepsAction() {
+        let uid = "agent-json-leak-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        defer { cleanupAgentThreadFiles(uid) }
+
+        let leakedReply = """
+        帮你记下了。
+
+        <<<JSON>>>
+        {"followUpQuestion":null,"actionSuggestions":[{"kind":"task","title":"对话框增加按钮","detail":"给对话框 UI 添加时间、复制、反馈按钮","date":"2026-05-25","confidence":0.9,"reason":"用户明确要求记录此待办"}]}
+        <<<>>>
+        </JSON>
+        """
+        let response = AgentChatResponse(reply: leakedReply, followUpQuestion: nil, actionSuggestions: [])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("要给对话增加时间、复制、反馈")
+        waitForMainQueue()
+
+        XCTAssertFalse(store.isAgentLoading)
+        let messageContents = store.agentSession.messages.map(\.content)
+        XCTAssertTrue(messageContents.contains("帮你记下了。"))
+        XCTAssertFalse(messageContents.contains { $0.contains("<<<JSON>>>") })
+        XCTAssertFalse(messageContents.contains { $0.contains("</JSON>") })
+        XCTAssertTrue(
+            store.agentSession.pendingActions.contains { $0.title == "对话框增加按钮" }
+            || store.tasks.contains { $0.title == "对话框增加按钮" }
+        )
+    }
 }
 
 // MARK: - Mock
@@ -1669,7 +1701,8 @@ private final class MockAIClient: AIClient {
         currentTime: String,
         traceId: String?,
         sessionId: String?,
-        threadId: String?
+        threadId: String?,
+        userProfile: String?
     ) async throws -> AgentChatResponse {
         switch result {
         case .success(let response): return response
@@ -1695,6 +1728,39 @@ private final class MockAIClient: AIClient {
         switch titleResult {
         case .success(let title): return title
         case .failure(let error): throw error
+        }
+    }
+
+    func chatStream(
+        input: String,
+        messages: [AgentChatRequestMessage],
+        contextSummary: String,
+        currentDate: String,
+        currentTime: String,
+        traceId: String?,
+        sessionId: String?,
+        threadId: String?,
+        userProfile: String?,
+        trigger: String?
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            switch result {
+            case .success(let response):
+                continuation.yield(StreamEvent(
+                    type: .done,
+                    text: nil,
+                    reply: response.reply,
+                    followUpQuestion: response.followUpQuestion,
+                    actionSuggestions: response.actionSuggestions,
+                    toolCall: response.toolCall,
+                    usage: response.usage,
+                    reasoningTimeMs: nil,
+                    message: nil
+                ))
+                continuation.finish()
+            case .failure(let error):
+                continuation.finish(throwing: error)
+            }
         }
     }
 }

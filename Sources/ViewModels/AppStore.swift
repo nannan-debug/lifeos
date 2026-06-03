@@ -83,6 +83,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var streamingReasoning: String { agent.streamingReasoning }
     var streamingContent: String { agent.streamingContent }
     var agentReasoningTimeMs: Int? { agent.reasoningTimeMs }
+    var activeDBTSession: AgentDBTSessionState? {
+        agent.session.dbtSession?.status == "active" ? agent.session.dbtSession : nil
+    }
     func addAgentMemory(content: String) { agent.addMemory(content: content) }
     func removeAgentMemory(id: UUID) { agent.removeMemory(id: id) }
     var agentMessageQueue: [AgentManager.QueuedMessage] { agent.messageQueue }
@@ -159,9 +162,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private let legacyKeyDailyFields = "fields.daily"
     private let legacyKeyDailyInitialized = "fields.daily.initialized"
 
-    // 全新用户首次启动时预置的打卡项（按顺序展示，分到「早上 / 晚上」两组）。
+    // 全新用户首次启动时预置的打卡项（按顺序展示，分到 morning / evening 两组）。
     // 老用户（已 initialized）不会被覆盖。
-    private let fallbackCheckEntries: [(title: String, tag: String)] = [
+    private let zhFallbackCheckEntries: [(title: String, tag: String)] = [
         ("吃维生素", "早上"),
         ("回忆梦境", "早上"),
         ("洗漱", "早上"),
@@ -170,6 +173,18 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         ("洗澡", "晚上"),
         ("上床看书", "晚上"),
     ]
+    private let enFallbackCheckEntries: [(title: String, tag: String)] = [
+        ("Take vitamins", "Morning"),
+        ("Recall dreams", "Morning"),
+        ("Wash up", "Morning"),
+        ("Head out", "Morning"),
+        ("Journal", "Evening"),
+        ("Shower", "Evening"),
+        ("Read in bed", "Evening"),
+    ]
+    private var fallbackCheckEntries: [(title: String, tag: String)] {
+        L.isEn ? enFallbackCheckEntries : zhFallbackCheckEntries
+    }
 
     init() {
         if defaults.object(forKey: iCloudSyncEnabledKey) == nil {
@@ -234,7 +249,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         defaults.set(enabled, forKey: iCloudSyncEnabledKey)
         guard enabled else {
             cloudSync.stop()
-            iCloudSyncStatusText = "已关闭。数据只保存在本机。"
+            iCloudSyncStatusText = L.iCloudSyncOffStatus
             return
         }
 
@@ -245,8 +260,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         }
         migrateToCloudKitIfNeeded()
         iCloudSyncStatusText = isICloudAccountAvailable
-            ? "已开启。会在同一 Apple ID 的设备间同步。"
-            : "已开启。请先在系统里登录 iCloud。"
+            ? L.iCloudSyncOnStatus
+            : L.iCloudSyncNeedsAccountStatus
     }
 
     func setHealthSleepSyncEnabled(_ enabled: Bool) {
@@ -277,6 +292,18 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         }
     }
 
+    func refreshLocalizedSettingsStatusText() {
+        iCloudSyncStatusText = isICloudSyncEnabled
+            ? (isICloudAccountAvailable ? L.iCloudSyncOnStatus : L.iCloudSyncNeedsAccountStatus)
+            : L.iCloudSyncOffStatus
+        if !isHealthSyncing {
+            healthSyncStatusText = Self.defaultHealthSyncStatus(
+                sleepEnabled: isHealthSleepSyncEnabled,
+                workoutEnabled: isHealthWorkoutSyncEnabled
+            )
+        }
+    }
+
     func syncHealthKitNow(showCompletionAlert: Bool = false) {
         syncHealthKitNow(showCompletionAlert: showCompletionAlert, referenceDate: Date())
     }
@@ -303,7 +330,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private func syncHealthKitNow(showCompletionAlert: Bool = false, referenceDate: Date) {
         guard !isHealthSyncing else {
             if showCompletionAlert {
-                healthSyncCompletionMessage = "正在同步 Apple 健康，请稍等一下。"
+                healthSyncCompletionMessage = L.healthSyncAlreadyRunning
             }
             return
         }
@@ -312,13 +339,13 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         guard readSleep || readWorkouts else {
             healthSyncStatusText = Self.defaultHealthSyncStatus(sleepEnabled: false, workoutEnabled: false)
             if showCompletionAlert {
-                healthSyncCompletionMessage = "请先开启睡眠或运动同步。"
+                healthSyncCompletionMessage = L.healthSyncSelectTypeFirst
             }
             return
         }
 
         isHealthSyncing = true
-        healthSyncStatusText = "正在从 Apple 健康同步..."
+        healthSyncStatusText = L.healthSyncInProgressStatus
         defaults.set(referenceDate, forKey: healthLastSyncAttemptAtKey)
         let endDate = referenceDate
         let startDate = Calendar.current.date(byAdding: .day, value: -30, to: endDate) ?? endDate
@@ -334,13 +361,13 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
                     self.isHealthSyncing = false
                     let imported = self.importHealthKitTimeBlocks(fetchResult.blocks, replacingSleepSince: readSleep ? startDate : nil, until: endDate)
                     if imported > 0 {
-                        self.healthSyncStatusText = "已同步 \(imported) 条睡眠/运动记录。"
+                        self.healthSyncStatusText = L.healthSyncImported(imported)
                     } else if readSleep && fetchResult.rawSleepSampleCount == 0 {
-                        self.healthSyncStatusText = "已检查 Apple 健康，没有读到睡眠样本。请确认 LifeOS 已获得睡眠读取权限。"
+                        self.healthSyncStatusText = L.healthSyncNoSleepSamples
                     } else if readSleep && fetchResult.importableSleepBlockCount == 0 {
-                        self.healthSyncStatusText = "读到 \(fetchResult.rawSleepSampleCount) 条睡眠样本，但没有可导入的睡眠或卧床区间。"
+                        self.healthSyncStatusText = L.healthSyncNoImportableSleep(fetchResult.rawSleepSampleCount)
                     } else {
-                        self.healthSyncStatusText = "已检查 Apple 健康，没有新的记录。"
+                        self.healthSyncStatusText = L.healthSyncNoNewRecords
                     }
                     if showCompletionAlert {
                         self.healthSyncCompletionMessage = self.healthSyncStatusText
@@ -406,19 +433,19 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     }
 
     private static func defaultICloudSyncStatus(isEnabled: Bool) -> String {
-        isEnabled ? "开启中。会在同一 Apple ID 的设备间同步。" : "关闭。数据只保存在本机。"
+        isEnabled ? L.iCloudSyncStartingStatus : L.iCloudSyncOffStatus
     }
 
     private static func defaultHealthSyncStatus(sleepEnabled: Bool, workoutEnabled: Bool) -> String {
         switch (sleepEnabled, workoutEnabled) {
         case (true, true):
-            return "已开启睡眠和运动同步。"
+            return L.healthSyncSleepAndWorkoutStatus
         case (true, false):
-            return "已开启睡眠同步。"
+            return L.healthSyncSleepStatus
         case (false, true):
-            return "已开启运动同步。"
+            return L.healthSyncWorkoutStatus
         case (false, false):
-            return "关闭时不会读取 Apple 健康。"
+            return L.healthSyncOffStatus
         }
     }
 
@@ -983,6 +1010,35 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
     /// 给外部 UI 列出所有打卡项（含 tag）
     var dailyCheckEntries: [(title: String, tag: String)] { currentCheckEntries() }
+
+    /// 调整同一分组内打卡项顺序。只改字段配置顺序，不改变历史勾选状态。
+    func moveDailyCheckItems(inGroup group: String, from source: IndexSet, to destination: Int) {
+        var entries = currentCheckEntries()
+        let groupIndices = entries.indices.filter { entries[$0].tag == group }
+        guard !groupIndices.isEmpty else { return }
+
+        var groupEntries = groupIndices.map { entries[$0] }
+        groupEntries.move(fromOffsets: source, toOffset: destination)
+
+        for (index, entry) in zip(groupIndices, groupEntries) {
+            entries[index] = entry
+        }
+
+        defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
+        defaults.set(true, forKey: keyDailyInitialized)
+        reloadFieldConfig()
+        publishCheckWidgetSnapshot()
+        syncICloudAfterLocalChange()
+    }
+
+    /// 调整分组顺序。只改分组配置顺序，不改变组内项目和历史勾选状态。
+    func moveDailyCheckGroups(from source: IndexSet, to destination: Int) {
+        var groups = dailyCheckGroups
+        groups.move(fromOffsets: source, toOffset: destination)
+        saveGroups(groups)
+        reloadFieldConfig()
+        publishCheckWidgetSnapshot()
+    }
 
     /// 历史出现过的全部 tag，按首次出现顺序（不含空分组）
     var dailyCheckTags: [String] {
@@ -1687,7 +1743,14 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     // MARK: - Brain cards (第二大脑)
 
     @discardableResult
-    func addBrain(title: String, content: String = "", topics: [String] = [], sources: [BrainCardSource] = []) -> UUID? {
+    func addBrain(
+        title: String,
+        content: String = "",
+        topics: [String] = [],
+        sources: [BrainCardSource] = [],
+        kind: String = "note",
+        dbtSession: BrainDBTSession? = nil
+    ) -> UUID? {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return nil }
         let now = Date()
@@ -1697,6 +1760,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
             topics: topics,
             sources: sources,
             links: [],
+            kind: kind,
+            dbtSession: dbtSession,
             createdAt: now,
             updatedAt: now
         )
@@ -1816,6 +1881,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     func createNewAgentThread() { agent.createNewThread() }
     func selectAgentThread(id: UUID) { agent.selectThread(id: id) }
     @discardableResult
+    func renameAgentThread(id: UUID, title: String) -> Bool { agent.renameThread(id: id, title: title) }
+    @discardableResult
     func deleteAgentThread(id: UUID) -> AgentChatThread? { agent.deleteThread(id: id) }
     func restoreAgentThread(_ thread: AgentChatThread) { agent.restoreThread(thread) }
     func agentThreadMatchesSearch(_ item: AgentChatThreadIndexItem, query: String) -> Bool {
@@ -1839,6 +1906,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         objectWillChange.send()
     }
     func undoAutoSavedAgentAction(messageId: UUID) { agent.undoAutoSavedAction(messageId: messageId) }
+    func setAgentMessageFeedback(messageId: UUID, feedback: String?) {
+        agent.setMessageFeedback(messageId: messageId, feedback: feedback)
+    }
 
     // MARK: - Mutation support (AgentDataWriter)
 
@@ -2154,6 +2224,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         agent.dismissAllPendingActions()
     }
 
+    func cancelDBTSession() {
+        agent.cancelDBTSession()
+    }
+
     var agentExecutionState: ExecutionState {
         agent.executionState
     }
@@ -2365,6 +2439,15 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         } else {
             raw = ""
         }
+        if let localizedRaw = localizedDefaultCheckEntriesRawIfNeeded(raw) {
+            defaults.set(localizedRaw, forKey: keyDailyFields)
+            migrateDefaultCheckHistoryIfNeeded(from: raw, to: localizedRaw)
+            return decodeCheckEntries(localizedRaw)
+        }
+        return decodeCheckEntries(raw, initialized: initialized)
+    }
+
+    private func decodeCheckEntries(_ raw: String, initialized: Bool = true) -> [(title: String, tag: String)] {
         let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         var didNormalize = false
         let entries: [(String, String)] = parts.map { item in
@@ -2388,12 +2471,43 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         return entries
     }
 
+    private func localizedDefaultCheckEntriesRawIfNeeded(_ raw: String) -> String? {
+        let zhRaw = encodeCheckEntries(zhFallbackCheckEntries)
+        let enRaw = encodeCheckEntries(enFallbackCheckEntries)
+        if L.isEn, raw == zhRaw { return enRaw }
+        if !L.isEn, raw == enRaw { return zhRaw }
+        return nil
+    }
+
+    private func migrateDefaultCheckHistoryIfNeeded(from oldRaw: String, to newRaw: String) {
+        let oldEntries = decodeCheckEntries(oldRaw)
+        let newEntries = decodeCheckEntries(newRaw)
+        guard oldEntries.count == newEntries.count else { return }
+        let titleMap = Dictionary(uniqueKeysWithValues: zip(oldEntries.map(\.title), newEntries.map(\.title)))
+        guard !titleMap.isEmpty else { return }
+        var checks = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        var didChange = false
+        for date in checks.keys {
+            guard var day = checks[date] else { continue }
+            for (oldTitle, newTitle) in titleMap where oldTitle != newTitle {
+                if let value = day.removeValue(forKey: oldTitle) {
+                    day[newTitle] = value
+                    didChange = true
+                }
+            }
+            checks[date] = day
+        }
+        if didChange {
+            defaults.set(checks, forKey: keyChecks)
+        }
+    }
+
     /// 把历史上的简写标签归一到当前预设。
     /// "默认" → 空字符串（未分组），UI 上不再以分组形式呈现。
     private func normalizeCheckTag(_ tag: String) -> String {
-        switch tag {
-        case "早", "晨间", "morning": return "早上"
-        case "晚", "夜间", "evening": return "晚上"
+        switch tag.lowercased() {
+        case "早", "晨间", "morning": return L.isEn ? "Morning" : "早上"
+        case "晚", "夜间", "evening": return L.isEn ? "Evening" : "晚上"
         case "默认": return ""
         default: return tag
         }
