@@ -732,6 +732,7 @@ function renderUsage(data) {
 async function loadGrowth(silent = false) {
   const key = dateRangeKey();
   if (silent && state.growthLoadedFor === key) return;
+  if (!$("growthPage")) return;
   if (!silent) setBusy(true, "读取 Growth Ops...");
   try {
     const data = await requestJSON("/dashboard/api/growth", { _retries: 1, _timeout: 10000 });
@@ -742,7 +743,6 @@ async function loadGrowth(silent = false) {
   } catch (error) {
     $("growthSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
     $("growthFlow").innerHTML = "";
-    $("growthTopics").innerHTML = "";
     $("growthDrafts").innerHTML = "";
     $("growthReferences").innerHTML = "";
     setRefreshState("Growth 读取失败");
@@ -752,7 +752,7 @@ async function loadGrowth(silent = false) {
 }
 
 function renderGrowth(data) {
-  if (!data) return;
+  if (!data || !$("growthLedger")) return;
   $("growthRoot").textContent = data.root || "growth dir";
   const ledgerRows = growthLedgerRows(data);
   $("growthLedgerCount").textContent = String(ledgerRows.length);
