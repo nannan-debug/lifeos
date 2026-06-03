@@ -469,9 +469,6 @@ struct TodayView: View {
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary.opacity(0.7))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -508,12 +505,6 @@ struct TodayView: View {
                     .strikethrough(item.done, color: .secondary)
 
                 Spacer()
-
-                if isSorting {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary.opacity(0.7))
-                }
             }
             .padding(.leading, 28)   // 左边缩进，让打卡行视觉上挂在组头下面
             .padding(.trailing, 14)
