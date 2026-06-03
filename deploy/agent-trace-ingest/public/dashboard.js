@@ -780,6 +780,11 @@ function renderGrowth(data) {
       <div class="usage-card-value">${data.counts?.needsReview || 0}</div>
       <div class="usage-card-label">待复盘</div>
     </div>
+    <div class="growth-quick-actions">
+      <button class="ghost-button growth-create" type="button" data-type="references">录参考帖</button>
+      <button class="ghost-button growth-create" type="button" data-type="topics">建选题</button>
+      <button class="ghost-button growth-create" type="button" data-type="drafts">写草稿</button>
+    </div>
   `;
 
   const stages = [
@@ -830,7 +835,20 @@ function growthLedgerRows(data) {
 }
 
 function renderGrowthLedger(rows) {
-  if (!rows.length) return '<div class="empty-state">暂无运营内容</div>';
+  if (!rows.length) return `
+    <div class="growth-empty-workbench">
+      <div>
+        <p class="eyebrow">Start Here</p>
+        <h3>先把今天的一篇笔记推进去</h3>
+        <p>从参考帖、选题或草稿开始都可以。这里会写入本地 Markdown，之后表格、发布包和复盘区会自动出现内容。</p>
+      </div>
+      <div class="growth-empty-actions">
+        <button class="ghost-button growth-create" type="button" data-type="references">录一个参考帖</button>
+        <button class="ghost-button growth-create" type="button" data-type="topics">建一个选题</button>
+        <button class="ghost-button growth-create" type="button" data-type="drafts">直接写草稿</button>
+      </div>
+    </div>
+  `;
   return `
     <table class="growth-table">
       <thead>
@@ -870,7 +888,13 @@ function renderGrowthLedger(rows) {
 
 function renderDraftPack(items) {
   const draft = items.find((item) => item.data?.status === "ready") || items[0];
-  if (!draft) return '<div class="empty-state">暂无草稿</div>';
+  if (!draft) return `
+    <div class="growth-empty-card">
+      <strong>还没有发布包</strong>
+      <p>先创建一篇草稿。草稿出现后，这里会自动生成可复制的标题、正文、标签和图片路径。</p>
+      <button class="ghost-button growth-create" type="button" data-type="drafts">新建草稿</button>
+    </div>
+  `;
   const assets = draft.data?.assets || [];
   const tags = draft.data?.tags || [];
   const publishText = `${draft.data?.title || ""}\n\n${draft.excerpt || ""}\n\n${tags.map((tag) => `#${tag}`).join(" ")}`;
@@ -908,19 +932,56 @@ function renderCompactGrowthCard(item, label) {
 }
 
 async function saveGrowthDraft() {
-  const title = window.prompt("新草稿标题");
+  await saveGrowthContent("drafts");
+}
+
+function growthDefaults(type, title) {
+  const today = todayKey();
+  const common = {
+    title,
+    date: today,
+    pillar: "生活记录方法",
+    tags: ["生活记录", "LifeOS"],
+    keywords: ["生活记录"],
+  };
+  if (type === "references") {
+    return {
+      ...common,
+      status: "saved",
+      pillar: "参考素材",
+      body: `## Hook\n\n记录这个参考帖最吸引你的第一句话。\n\n## 结构观察\n\n- 开头：\n- 转折：\n- CTA：\n\n## 可借鉴点\n\n- \n`,
+    };
+  }
+  if (type === "topics") {
+    return {
+      ...common,
+      status: "idea",
+      body: `## 选题角度\n\n这个选题想解决什么生活记录问题？\n\n## 目标用户\n\n- \n\n## 可能标题\n\n- ${title}\n`,
+    };
+  }
+  return {
+    ...common,
+    status: "drafting",
+    body: `## 标题\n\n${title}\n\n## 正文\n\n今天想记录生活，但我不想写一篇完整日记。\n\n## 标签\n\n#生活记录 #LifeOS\n\n## 发布检查\n\n- 标题含关键词\n- 封面字数可读\n- AI 合成标识已确认\n- 发布前人工审核\n`,
+  };
+}
+
+async function saveGrowthContent(type) {
+  const labels = {
+    references: "参考帖标题",
+    topics: "选题标题",
+    drafts: "草稿标题",
+  };
+  const safeType = ["references", "topics", "drafts"].includes(type) ? type : "drafts";
+  const title = window.prompt(labels[safeType] || "标题");
   if (!title || !title.trim()) return;
+  const payload = growthDefaults(safeType, title.trim());
   try {
     await requestJSON("/dashboard/api/growth/content", {
       method: "POST",
       body: JSON.stringify({
-        type: "drafts",
-        title: title.trim(),
-        status: "drafting",
-        pillar: "生活记录方法",
-        tags: ["生活记录", "LifeOS"],
-        keywords: ["生活记录"],
-        body: "## 正文\n\n先写一个真实场景。\n\n## 发布检查\n\n- 标题含关键词\n- 发布前人工审核\n",
+        type: safeType,
+        ...payload,
       }),
       _retries: 1,
     });
@@ -951,7 +1012,14 @@ function bindEvents() {
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
   $("newGrowthDraftButton").addEventListener("click", saveGrowthDraft);
-  $("growthPage").addEventListener("click", copyGrowthPack);
+  $("growthPage").addEventListener("click", (event) => {
+    const createButton = event.target.closest(".growth-create");
+    if (createButton) {
+      saveGrowthContent(createButton.dataset.type);
+      return;
+    }
+    copyGrowthPack(event);
+  });
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
