@@ -61,6 +61,8 @@ struct TodayView: View {
     @FocusState private var addItemFocused: Bool
 
     @State private var celebratingGroup: String? = nil
+    @State private var sortingGroup: String? = nil
+    @State private var sortingGroups: Bool = false
 
     // 底部"新建分组"行
     @State private var addingNewGroup: Bool = false
@@ -106,6 +108,7 @@ struct TodayView: View {
                 }
                 .toolbar(.hidden, for: .navigationBar)
                 .listStyle(.insetGrouped)
+                .environment(\.editMode, .constant((sortingGroup == nil && !sortingGroups) ? EditMode.inactive : EditMode.active))
                 .tint(CreamTheme.green)
                 .scrollContentBackground(.hidden)
                 .background(CreamTheme.glassStrong)
@@ -125,9 +128,13 @@ struct TodayView: View {
             .onAppear {
                 displayMonth = startOfMonth(for: store.selectedDate)
                 refreshCalendarMarkers()
-                store.todaySegment = segment
+                segment = store.todaySegment
             }
             .onChange(of: segment) { store.todaySegment = $0 }
+            .onChange(of: store.todaySegment) { newSegment in
+                guard segment != newSegment else { return }
+                segment = newSegment
+            }
             .onChange(of: store.selectedDate) { newDate in
                 let m = startOfMonth(for: newDate)
                 if !calendar.isDate(m, equalTo: displayMonth, toGranularity: .month) {
@@ -275,38 +282,56 @@ struct TodayView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
-            ForEach(Array(groupedCheckTags.enumerated()), id: \.element) { idx, tag in
-                collapsibleHeader(for: tag)
-
-                if !isTagCollapsed(tag) {
-                    ForEach(store.checkItems.filter { $0.tag == tag }) { item in
-                        checkRow(item)
-                    }
-                    if addingItemForGroup == tag {
-                        inlineAddItemRow(forGroup: tag)
-                    }
-                    if celebratingGroup == tag {
-                        groupCompletionCelebration(for: tag)
+            if sortingGroups {
+                groupSortingHeader
+                ForEach(groupedCheckTags, id: \.self) { tag in
+                    groupSortingRow(for: tag)
+                }
+                .onMove { source, destination in
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        store.moveDailyCheckGroups(from: source, to: destination)
                     }
                 }
-            }
+            } else {
+                ForEach(Array(groupedCheckTags.enumerated()), id: \.element) { idx, tag in
+                    collapsibleHeader(for: tag)
 
-            // 未分组的打卡项：直接列出来，不挂 header
-            // 只有在确实存在未分组项时才显示这块（含其末尾的 inline 添加行），
-            // 避免所有分组都收起后，未分组添加行假装是最后一组的"漏网"添加行。
-            if !untaggedCheckItems.isEmpty {
-                ForEach(untaggedCheckItems) { item in
-                    checkRow(item)
+                    if !isTagCollapsed(tag) || sortingGroup == tag {
+                        ForEach(store.checkItems.filter { $0.tag == tag }) { item in
+                            checkRow(item, isSorting: sortingGroup == tag)
+                        }
+                        .onMove { source, destination in
+                            guard sortingGroup == tag else { return }
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                store.moveDailyCheckItems(inGroup: tag, from: source, to: destination)
+                            }
+                        }
+                        if addingItemForGroup == tag {
+                            inlineAddItemRow(forGroup: tag)
+                        }
+                        if celebratingGroup == tag {
+                            groupCompletionCelebration(for: tag)
+                        }
+                    }
                 }
-            }
 
-            inlineAddGroupRow
+                // 未分组的打卡项：直接列出来，不挂 header
+                // 只有在确实存在未分组项时才显示这块（含其末尾的 inline 添加行），
+                // 避免所有分组都收起后，未分组添加行假装是最后一组的"漏网"添加行。
+                if !untaggedCheckItems.isEmpty {
+                    ForEach(untaggedCheckItems) { item in
+                        checkRow(item, isSorting: false)
+                    }
+                }
+
+                inlineAddGroupRow
+            }
         }
     }
 
     /// tag → SF Symbol 映射（早/晚 用太阳月亮，其他用 tag 图标）
     private func iconName(for tag: String) -> String {
-        switch tag {
+        switch tag.lowercased() {
         case "早", "早上", "晨间", "morning": return "sun.max.fill"
         case "晚", "晚上", "夜间", "evening": return "moon.stars.fill"
         default: return "tag.fill"
@@ -322,6 +347,11 @@ struct TodayView: View {
         let allDone = total > 0 && doneCount == total
 
         Button {
+            if sortingGroup == tag {
+                endSorting()
+                return
+            }
+            guard sortingGroup == nil else { return }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
                 toggleCollapse(tag)
             }
@@ -343,53 +373,122 @@ struct TodayView: View {
 
                 Spacer()
 
-                Text("\(doneCount)/\(total)")
-                    .font(.subheadline.weight(.medium))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                if sortingGroup == tag {
+                    Text(L.done)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CreamTheme.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(CreamTheme.green.opacity(0.10)))
+                } else {
+                    Text("\(doneCount)/\(total)")
+                        .font(.subheadline.weight(.medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .rotationEffect(.degrees(collapsed ? -90 : 0))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .rotationEffect(.degrees(collapsed ? -90 : 0))
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.42).onEnded { _ in
+                startSortingGroups()
+            }
+        )
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 2, trailing: 6))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         // 左滑分组头：新增 / 重命名 / 删除（删除带级联确认弹窗）
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                groupToDelete = tag
-            } label: {
-                Label(L.delete, systemImage: "trash")
+            if sortingGroup == nil {
+                Button(role: .destructive) {
+                    groupToDelete = tag
+                } label: {
+                    Label(L.delete, systemImage: "trash")
+                }
+                Button {
+                    renamingGroup = tag
+                    renameGroupText = tag
+                } label: {
+                    Label(L.rename, systemImage: "pencil")
+                }
+                .tint(CreamTheme.green)
+                Button {
+                    startAddingItem(forGroup: tag)
+                } label: {
+                    Label(L.add, systemImage: "plus")
+                }
+                .tint(CreamTheme.green.opacity(0.88))
             }
-            Button {
-                renamingGroup = tag
-                renameGroupText = tag
-            } label: {
-                Label(L.rename, systemImage: "pencil")
-            }
-            .tint(CreamTheme.green)
-            Button {
-                startAddingItem(forGroup: tag)
-            } label: {
-                Label(L.add, systemImage: "plus")
-            }
-            .tint(CreamTheme.green.opacity(0.88))
         }
+    }
+
+    private var groupSortingHeader: some View {
+        HStack {
+            Text(L.reorderGroups)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button(L.done) { endSorting() }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CreamTheme.green)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 0, trailing: 6))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func groupSortingRow(for tag: String) -> some View {
+        let total = store.checkItems.filter { $0.tag == tag }.count
+        let doneCount = store.checkItems.filter { $0.tag == tag && $0.done }.count
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(CreamTheme.green.opacity(0.12))
+                    .frame(width: 30, height: 30)
+                Image(systemName: iconName(for: tag))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(CreamTheme.green)
+            }
+            Text(tag)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+            Spacer()
+            Text("\(doneCount)/\(total)")
+                .font(.subheadline.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(CreamTheme.green.opacity(0.05))
+        )
+        .listRowInsets(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     /// 单个打卡行（大号字，仿提醒事项）
     @ViewBuilder
-    private func checkRow(_ item: DailyCheckItem) -> some View {
+    private func checkRow(_ item: DailyCheckItem, isSorting: Bool = false) -> some View {
         Button {
+            guard !isSorting else { return }
             let wasComplete = isGroupComplete(item.tag)
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 store.toggle(item)
@@ -409,12 +508,22 @@ struct TodayView: View {
                     .strikethrough(item.done, color: .secondary)
 
                 Spacer()
+
+                if isSorting {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                }
             }
             .padding(.leading, 28)   // 左边缩进，让打卡行视觉上挂在组头下面
             .padding(.trailing, 14)
             .padding(.vertical, 6)   // 收紧（C 方案，原 8）
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(isSorting ? CreamTheme.green.opacity(0.05) : Color.clear)
+            )
         }
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
@@ -423,18 +532,20 @@ struct TodayView: View {
         .transition(.opacity.combined(with: .move(edge: .top)))
         // 左滑：重命名 / 删除（B 方案 inline 编辑）
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                withAnimation { store.removeDailyCheckItem(item.title) }
-            } label: {
-                Label(L.delete, systemImage: "trash")
+            if sortingGroup == nil {
+                Button(role: .destructive) {
+                    withAnimation { store.removeDailyCheckItem(item.title) }
+                } label: {
+                    Label(L.delete, systemImage: "trash")
+                }
+                Button {
+                    renamingItem = item.title
+                    renameItemText = item.title
+                } label: {
+                    Label(L.rename, systemImage: "pencil")
+                }
+                .tint(CreamTheme.green)
             }
-            Button {
-                renamingItem = item.title
-                renameItemText = item.title
-            } label: {
-                Label(L.rename, systemImage: "pencil")
-            }
-            .tint(CreamTheme.green)
         }
     }
 
@@ -539,10 +650,47 @@ struct TodayView: View {
         if isTagCollapsed(tag) {
             toggleCollapse(tag)
         }
+        endSorting()
         addingItemForGroup = tag
         addingItemText = ""
         DispatchQueue.main.async {
             addItemFocused = true
+        }
+    }
+
+    private func startSorting(group tag: String) {
+        guard sortingGroup != tag else { return }
+        sortingGroups = false
+        addingItemForGroup = nil
+        addingItemText = ""
+        addItemFocused = false
+        if isTagCollapsed(tag) {
+            toggleCollapse(tag)
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            sortingGroup = tag
+        }
+    }
+
+    private func startSortingGroups() {
+        guard !sortingGroups else { return }
+        sortingGroup = nil
+        addingItemForGroup = nil
+        addingItemText = ""
+        addItemFocused = false
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            sortingGroups = true
+        }
+    }
+
+    private func endSorting() {
+        guard sortingGroup != nil || sortingGroups else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.9)) {
+            sortingGroup = nil
+            sortingGroups = false
         }
     }
 
