@@ -232,23 +232,23 @@ private struct AgentChatPanel: View {
     }
 
     private var displayTitle: String {
-        if store.activeDBTSession != nil { return "DBT Coach" }
+        if store.activeDBTSession != nil { return L.dbtCoachTitle }
         return store.agentSession.messages.isEmpty ? "LifeOS AI" : store.currentAgentThreadTitle
     }
 
     private func dbtCoachBanner(_ session: AgentDBTSessionState) -> some View {
         HStack(spacing: 8) {
-            Label(dbtSkillTitle(session.skillId), systemImage: "leaf")
+            Label(L.dbtSkillName(session.skillId), systemImage: "leaf")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CreamTheme.green)
-            Text("Step \(max(session.currentStepIndex + 1, 1))")
+            Text(L.dbtStep(max(session.currentStepIndex + 1, 1)))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.black.opacity(0.045)))
             Spacer()
-            Button("退出") {
+            Button(L.dbtExit) {
                 store.cancelDBTSession()
             }
             .font(.caption.weight(.semibold))
@@ -261,19 +261,6 @@ private struct AgentChatPanel: View {
                 .fill(CreamTheme.green.opacity(0.08))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(CreamTheme.green.opacity(0.16), lineWidth: 1))
         )
-    }
-
-    private func dbtSkillTitle(_ id: String) -> String {
-        switch id {
-        case "check_the_facts": return "Check the Facts"
-        case "opposite_action": return "Opposite Action"
-        case "wise_mind": return "Wise Mind"
-        case "tipp": return "TIPP"
-        case "stop": return "STOP"
-        case "dear_man": return "DEAR MAN"
-        case "behavior_chain_analysis": return "Behavior Chain"
-        default: return "DBT Practice"
-        }
     }
 
     private var conversationArea: some View {

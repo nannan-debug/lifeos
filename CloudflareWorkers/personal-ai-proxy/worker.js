@@ -744,7 +744,8 @@ async function handleChat(body, provider, apiKey, trace) {
         incomingDBTSession,
         input,
         followUpQuestion,
-        currentDate
+        currentDate,
+        reply
       )
     : null;
 
@@ -1076,7 +1077,8 @@ DBT Coach 模式下 JSON 对象还必须包含 "dbtSession": {...}。
                       incomingDBTSession,
                       input,
                       followUpQuestion,
-                      currentDate
+                      currentDate,
+                      replyText
                     )
                   : null;
                 const shouldSuppressActions = followUpQuestion !== null || toolCall !== null;
@@ -1616,7 +1618,7 @@ function normalizeDBTSession(value, fallback = {}, currentDate = "", threadId = 
   };
 }
 
-function reconcileDBTSessionProgress(session, incoming = {}, input = "", followUpQuestion = null, currentDate = "") {
+function reconcileDBTSessionProgress(session, incoming = {}, input = "", followUpQuestion = null, currentDate = "", reply = "") {
   if (!session || session.status !== "active") return session;
   if (isDBTBootstrapInput(input)) return clampDBTStep(session);
 
@@ -1644,7 +1646,9 @@ function reconcileDBTSessionProgress(session, incoming = {}, input = "", followU
   }
 
   const modelAdvanced = Number(next.currentStepIndex) > safePrevStep;
-  if (followUpQuestion !== null && !modelAdvanced) {
+  const replyAsksQuestion = followUpQuestion !== null
+    || /？|\?/.test(reply || "");
+  if (replyAsksQuestion && !modelAdvanced) {
     next.currentStepIndex = Math.min(safePrevStep + 1, Math.max(steps.length - 1, 0));
   }
 
