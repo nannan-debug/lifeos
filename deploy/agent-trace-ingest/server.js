@@ -17,9 +17,20 @@ const CACHE_TTL_MS = 5000; // 5 秒缓存，避免同一秒内重复读磁盘
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
+const repoRoot = path.resolve(__dirname, "../..");
+const DEFAULT_GROWTH_DIR = path.join(repoRoot, "docs/operations/growth/xiaohongshu");
+
+const GROWTH_TYPES = {
+  references: "references",
+  topics: "topics",
+  drafts: "drafts",
+  published: "published",
+  weekly: "analytics/weekly",
+};
 
 export function createTraceServer(options = {}) {
   const traceDir = options.traceDir || process.env.TRACE_DIR || "/var/lib/lifeos-traces";
+  const growthDir = options.growthDir || process.env.GROWTH_DIR || DEFAULT_GROWTH_DIR;
   const traceToken = options.traceToken ?? process.env.TRACE_TOKEN ?? "";
   const dashboardUser = options.dashboardUser ?? process.env.DASHBOARD_USER ?? "";
   const dashboardPassword = options.dashboardPassword ?? process.env.DASHBOARD_PASSWORD ?? "";
@@ -416,6 +427,172 @@ export function createTraceServer(options = {}) {
     return { totalUsers: users.length, totalEvents, users, daily, featureTotals };
   }
 
+  function parseFrontmatter(text) {
+    if (!text.startsWith("---\n")) return { data: {}, body: text };
+    const end = text.indexOf("\n---", 4);
+    if (end === -1) return { data: {}, body: text };
+    const raw = text.slice(4, end).trim();
+    const body = text.slice(end + 4).replace(/^\n/, "");
+    const data = {};
+    let currentArrayKey = null;
+    for (const line of raw.split("\n")) {
+      const arrayItem = line.match(/^\s*-\s+(.*)$/);
+      if (arrayItem && currentArrayKey) {
+        data[currentArrayKey].push(coerceScalar(arrayItem[1]));
+        continue;
+      }
+      currentArrayKey = null;
+      const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!match) continue;
+      const [, key, value] = match;
+      if (value === "" || value === "[]") {
+        data[key] = [];
+        if (value === "") currentArrayKey = key;
+      } else if (value.startsWith("[") && value.endsWith("]")) {
+        data[key] = value.slice(1, -1).split(",").map((item) => coerceScalar(item.trim())).filter(Boolean);
+      } else {
+        data[key] = coerceScalar(value);
+      }
+    }
+    return { data, body };
+  }
+
+  function serializeFrontmatter(data, body = "") {
+    const lines = Object.entries(data).map(([key, value]) => {
+      if (Array.isArray(value)) {
+        if (value.length === 0) return `${key}: []\n`;
+        return `${key}:\n${value.map((item) => `  - ${escapeYamlScalar(item)}`).join("\n")}\n`;
+      }
+      if (value && typeof value === "object") return `${key}: ${JSON.stringify(value)}\n`;
+      return `${key}: ${escapeYamlScalar(value)}\n`;
+    }).join("");
+    return `---\n${lines}---\n\n${String(body || "").trim()}\n`;
+  }
+
+  function coerceScalar(value) {
+    const text = String(value ?? "").replace(/^"|"$/g, "");
+    if (text === "true") return true;
+    if (text === "false") return false;
+    if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
+    return text;
+  }
+
+  function escapeYamlScalar(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    const text = String(value);
+    return /[:\[\],{}#\n]/.test(text) ? JSON.stringify(text) : text;
+  }
+
+  function slugify(input) {
+    return String(input || "untitled")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "untitled";
+  }
+
+  function growthTypePath(type) {
+    const folder = GROWTH_TYPES[type];
+    if (!folder) {
+      const err = new Error("invalid_growth_type");
+      err.status = 400;
+      throw err;
+    }
+    return path.join(growthDir, folder);
+  }
+
+  async function walkMarkdown(dir) {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const files = await Promise.all(entries.map((entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return walkMarkdown(full);
+        return entry.name.endsWith(".md") && entry.name.toLowerCase() !== "readme.md" ? [full] : [];
+      }));
+      return files.flat();
+    } catch {
+      return [];
+    }
+  }
+
+  async function listGrowthContent(type) {
+    const base = growthTypePath(type);
+    const files = await walkMarkdown(base);
+    const items = await Promise.all(files.map(async (file) => {
+      const text = await fs.readFile(file, "utf8");
+      const { data, body } = parseFrontmatter(text);
+      return {
+        id: path.relative(base, file).replace(/\.md$/, ""),
+        type,
+        path: path.relative(growthDir, file),
+        data,
+        excerpt: body.trim().split("\n").find(Boolean) || "",
+      };
+    }));
+    return items.sort((a, b) => String(b.data.updated_at || b.data.date || "").localeCompare(String(a.data.updated_at || a.data.date || "")));
+  }
+
+  async function growthOverview() {
+    await fs.mkdir(growthDir, { recursive: true });
+    for (const folder of Object.values(GROWTH_TYPES)) {
+      await fs.mkdir(path.join(growthDir, folder), { recursive: true });
+    }
+    const [references, topics, drafts, published, weekly] = await Promise.all([
+      listGrowthContent("references"),
+      listGrowthContent("topics"),
+      listGrowthContent("drafts"),
+      listGrowthContent("published"),
+      listGrowthContent("weekly"),
+    ]);
+    return {
+      root: growthDir,
+      references,
+      topics,
+      drafts,
+      published,
+      weekly,
+      counts: {
+        references: references.length,
+        topics: topics.length,
+        drafts: drafts.length,
+        readyDrafts: drafts.filter((item) => item.data.status === "ready").length,
+        published: published.length,
+        needsReview: published.filter((item) => item.data.status !== "reviewed").length,
+      },
+    };
+  }
+
+  async function saveGrowthContent(input = {}) {
+    const type = String(input.type || "");
+    const title = String(input.title || input.data?.title || "未命名");
+    const now = new Date().toISOString();
+    const date = String(input.date || input.data?.date || now.slice(0, 10));
+    const base = growthTypePath(type);
+    const monthly = new Set(["drafts", "published"]);
+    const folder = monthly.has(type) ? path.join(base, date.slice(0, 7)) : base;
+    await fs.mkdir(folder, { recursive: true });
+    const file = path.join(folder, `${date}-${slugify(title)}.md`);
+    const data = {
+      title,
+      date,
+      created_at: input.data?.created_at || now,
+      updated_at: now,
+      status: input.status || input.data?.status || (type === "topics" ? "idea" : "draft"),
+      pillar: input.pillar || input.data?.pillar || "",
+      keywords: input.keywords || input.data?.keywords || [],
+      tags: input.tags || input.data?.tags || [],
+      ...input.data,
+    };
+    await fs.writeFile(file, serializeFrontmatter(data, input.body || ""), "utf8");
+    return {
+      id: path.relative(base, file).replace(/\.md$/, ""),
+      path: path.relative(growthDir, file),
+      data,
+    };
+  }
+
   async function dashboardEvents(query) {
     const allEvents = await listEvents(query);
     const source = String(query.get("source") || "").trim();
@@ -570,6 +747,26 @@ export function createTraceServer(options = {}) {
           return;
         }
         const data = await usageReport(url.searchParams);
+        await writeJSON(res, 200, { ok: true, ...data });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/dashboard/api/growth") {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const data = await growthOverview();
+        await writeJSON(res, 200, { ok: true, ...data });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/dashboard/api/growth/content") {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const data = await saveGrowthContent(await readJSONBody(req));
         await writeJSON(res, 200, { ok: true, ...data });
         return;
       }

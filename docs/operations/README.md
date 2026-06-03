@@ -10,6 +10,9 @@
 - [`reddit-warmup-plan.md`](growth/reddit-warmup-plan.md) — Reddit 养号行动计划（50+ karma 再发产品帖）。
 - [`REDDIT_POSTS.md`](growth/REDDIT_POSTS.md) — Reddit 帖子素材（价值帖 + 产品帖 + 回复模板 + subreddit 规则）。
 - [`overseas-feedback-tracker.csv`](growth/overseas-feedback-tracker.csv) — 海外推广渠道反馈追踪表。
+- `growth/xiaohongshu/` — 小红书日更运营素材库（本地目录，已 gitignore，不上传 GitHub）：调研、选题、草稿、发布归档和复盘。
+
+配套管理入口在 Trace Dashboard 的 `Growth Ops` tab，只做运营素材管理和手动发布包，不自动发帖。
 
 ## appstore/ — App Store 审核与上架
 

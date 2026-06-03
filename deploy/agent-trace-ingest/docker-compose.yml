@@ -9,3 +9,4 @@ services:
       - "127.0.0.1:8787:8787"
     volumes:
       - /var/lib/lifeos-traces:/var/lib/lifeos-traces
+      - /var/lib/lifeos-growth:/var/lib/lifeos-growth

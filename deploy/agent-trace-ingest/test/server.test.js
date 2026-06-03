@@ -7,8 +7,10 @@ import { createTraceServer } from "../server.js";
 
 async function withServer(fn, options = {}) {
   const traceDir = await fs.mkdtemp(path.join(os.tmpdir(), "lifeos-traces-"));
+  const growthDir = await fs.mkdtemp(path.join(os.tmpdir(), "lifeos-growth-"));
   const { server } = createTraceServer({
     traceDir,
+    growthDir,
     traceToken: "test-token",
     dashboardUser: options.dashboardUser,
     dashboardPassword: options.dashboardPassword,
@@ -17,10 +19,11 @@ async function withServer(fn, options = {}) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
   try {
-    await fn({ baseURL: `http://127.0.0.1:${port}`, traceDir });
+    await fn({ baseURL: `http://127.0.0.1:${port}`, traceDir, growthDir });
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await fs.rm(traceDir, { recursive: true, force: true });
+    await fs.rm(growthDir, { recursive: true, force: true });
   }
 }
 
@@ -244,6 +247,54 @@ test("allows a logged-in dashboard session to query traces", async () => {
     assert.equal(usageOnlyBody.traces.length, 1);
     assert.equal(usageOnlyBody.traces[0].traceId, "usage-12345678");
     assert.equal(usageOnlyBody.traces[0].title.includes("使用统计"), true);
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});
+
+test("allows a logged-in dashboard session to manage growth content", async () => {
+  await withServer(async ({ baseURL, growthDir }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get("set-cookie");
+
+    const denied = await fetch(`${baseURL}/dashboard/api/growth`);
+    assert.equal(denied.status, 401);
+
+    const save = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        type: "drafts",
+        title: "生活记录不用写很完整",
+        pillar: "生活记录方法",
+        status: "ready",
+        keywords: ["生活记录"],
+        tags: ["LifeOS"],
+        body: "今天先记录一句也算数。",
+      }),
+    });
+    assert.equal(save.status, 200);
+    const saved = await save.json();
+    assert.equal(saved.path.includes("drafts/"), true);
+
+    const overview = await fetch(`${baseURL}/dashboard/api/growth`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(overview.status, 200);
+    const body = await overview.json();
+    assert.equal(body.counts.drafts, 1);
+    assert.equal(body.counts.readyDrafts, 1);
+    assert.equal(body.drafts[0].data.title, "生活记录不用写很完整");
+
+    const files = await fs.readdir(path.join(growthDir, "drafts", new Date().toISOString().slice(0, 7)));
+    assert.equal(files.some((file) => file.endsWith(".md")), true);
   }, {
     dashboardUser: "anna",
     dashboardPassword: "secret",

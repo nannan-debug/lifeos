@@ -12,6 +12,7 @@
 ```bash
 cp .env.example .env
 mkdir -p /var/lib/lifeos-traces
+mkdir -p /var/lib/lifeos-growth
 docker compose up -d --build
 ```
 
@@ -20,6 +21,7 @@ docker compose up -d --build
 ```text
 PORT=8787
 TRACE_DIR=/var/lib/lifeos-traces
+GROWTH_DIR=/var/lib/lifeos-growth
 TRACE_TOKEN=App 和 Worker 上传 trace 使用的共享 token
 DASHBOARD_USER=Dashboard 登录账户
 DASHBOARD_PASSWORD=Dashboard 登录密码
@@ -61,7 +63,9 @@ https://trace.dogdada.com/dashboard
 - 账户/密码登录，登录会话存 HttpOnly Cookie。
 - 按日期、`traceId`、关键词、来源、错误状态过滤。
 - 左侧按最新 trace 倒序展示摘要，中间展示单条 trace 时间线，右侧展示格式化 JSON。
+- `Growth Ops` tab 管理小红书日更运营流：参考帖、选题、草稿、发布包和复盘。
 - Dashboard API 不使用 `TRACE_TOKEN` 暴露给浏览器，只依赖登录 cookie。
+- `Growth Ops` API 读写 `GROWTH_DIR`；本地开发默认读仓库 `docs/operations/growth/xiaohongshu`，线上建议挂载 `/var/lib/lifeos-growth`。
 
 如果服务器使用 systemd 部署，更新代码和 `.env` 后重启：
 

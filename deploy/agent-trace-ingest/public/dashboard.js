@@ -9,6 +9,8 @@ const state = {
   currentDate: null,           // 当前查询的日期，切日期时重置
   currentView: "traces",
   usageLoadedFor: null,
+  growthLoadedFor: null,
+  growth: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -277,7 +279,9 @@ function stopAutoRefresh() {
 }
 
 function viewFromHash() {
-  return window.location.hash === "#usage" ? "usage" : "traces";
+  if (window.location.hash === "#usage") return "usage";
+  if (window.location.hash === "#growth") return "growth";
+  return "traces";
 }
 
 function dateRangeKey() {
@@ -289,21 +293,25 @@ function updateViewUI() {
   $("appPanel").dataset.view = view;
   $("tracesPage").hidden = view !== "traces";
   $("usagePage").hidden = view !== "usage";
+  $("growthPage").hidden = view !== "growth";
   $("tracesTab").classList.toggle("active", view === "traces");
   $("usageTab").classList.toggle("active", view === "usage");
-  $("searchButton").textContent = view === "usage" ? "刷新" : "搜索";
+  $("growthTab").classList.toggle("active", view === "growth");
+  $("searchButton").textContent = view === "traces" ? "搜索" : "刷新";
 }
 
 async function loadCurrentView(silent = false) {
   if (state.currentView === "usage") {
     await loadUsage(silent);
+  } else if (state.currentView === "growth") {
+    await loadGrowth(silent);
   } else {
     await loadTraces(silent);
   }
 }
 
 async function setView(view, { updateHash = true } = {}) {
-  state.currentView = view === "usage" ? "usage" : "traces";
+  state.currentView = ["usage", "growth"].includes(view) ? view : "traces";
   updateViewUI();
   if (updateHash && window.location.hash !== `#${state.currentView}`) {
     window.location.hash = state.currentView;
@@ -354,6 +362,12 @@ function queryURL(extra = {}) {
   if ($("errorsOnlyInput").checked) params.set("errorsOnly", "1");
   if (extra.since) params.set("since", extra.since);
   return `/dashboard/api/traces?${params}`;
+}
+
+function listByDate(items = [], max = 4) {
+  return [...items]
+    .sort((a, b) => String(b.data?.updated_at || b.data?.date || "").localeCompare(String(a.data?.updated_at || a.data?.date || "")))
+    .slice(0, max);
 }
 
 // 从 traces 列表里提取最晚的 receivedAt（用于增量检测）
@@ -714,6 +728,213 @@ function renderUsage(data) {
   }
 }
 
+// ── Growth Ops ──
+async function loadGrowth(silent = false) {
+  const key = dateRangeKey();
+  if (silent && state.growthLoadedFor === key) return;
+  if (!silent) setBusy(true, "读取 Growth Ops...");
+  try {
+    const data = await requestJSON("/dashboard/api/growth", { _retries: 1, _timeout: 10000 });
+    state.growth = data;
+    state.growthLoadedFor = key;
+    renderGrowth(data);
+    setRefreshState("Growth 已更新");
+  } catch (error) {
+    $("growthSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
+    $("growthFlow").innerHTML = "";
+    $("growthTopics").innerHTML = "";
+    $("growthDrafts").innerHTML = "";
+    $("growthReferences").innerHTML = "";
+    setRefreshState("Growth 读取失败");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderGrowth(data) {
+  if (!data) return;
+  $("growthRoot").textContent = data.root || "growth dir";
+  const ledgerRows = growthLedgerRows(data);
+  $("growthLedgerCount").textContent = String(ledgerRows.length);
+  $("growthDraftCount").textContent = String(data.drafts?.length || 0);
+  $("growthReferenceCount").textContent = String(data.references?.length || 0);
+
+  $("growthSummary").innerHTML = `
+    <div class="usage-card compact">
+      <div class="usage-card-value">${data.counts?.references || 0}</div>
+      <div class="usage-card-label">参考帖</div>
+    </div>
+    <div class="usage-card compact">
+      <div class="usage-card-value">${data.counts?.topics || 0}</div>
+      <div class="usage-card-label">选题</div>
+    </div>
+    <div class="usage-card compact">
+      <div class="usage-card-value">${data.counts?.readyDrafts || 0}</div>
+      <div class="usage-card-label">Ready 草稿</div>
+    </div>
+    <div class="usage-card compact">
+      <div class="usage-card-value">${data.counts?.needsReview || 0}</div>
+      <div class="usage-card-label">待复盘</div>
+    </div>
+  `;
+
+  const stages = [
+    ["调研", data.counts?.references || 0, "沉淀参考帖、hook、结构、视觉"],
+    ["选题", data.counts?.topics || 0, "从素材库和产品动态挑主题"],
+    ["生产", data.counts?.drafts || 0, "文案、封面、发布检查"],
+    ["发布", data.counts?.published || 0, "手动复制到小红书"],
+    ["复盘", data.weekly?.length || 0, "记录数据，调整下周策略"],
+  ];
+  $("growthFlow").innerHTML = stages.map(([label, count, desc], index) => `
+    <article class="growth-stage ${count > 0 ? "has-data" : ""}">
+      <span class="growth-stage-index">${index + 1}</span>
+      <div>
+        <strong>${escapeHTML(label)}</strong>
+        <p>${escapeHTML(desc)}</p>
+      </div>
+      <em>${count}</em>
+    </article>
+  `).join("");
+
+  $("growthLedger").innerHTML = renderGrowthLedger(ledgerRows);
+  $("growthDrafts").innerHTML = renderDraftPack(data.drafts || []);
+  const referenceCards = [
+    ...listByDate(data.references, 4).map((item) => renderCompactGrowthCard(item, "参考")),
+    ...listByDate(data.weekly, 3).map((item) => renderCompactGrowthCard(item, "周报")),
+  ].join("");
+  $("growthReferences").innerHTML = referenceCards || '<div class="empty-state">暂无素材或周报</div>';
+}
+
+function growthLedgerRows(data) {
+  const mapItem = (stage, item) => ({
+    stage,
+    title: item.data?.title || item.id,
+    status: item.data?.status || "",
+    pillar: item.data?.pillar || "",
+    date: item.data?.publish_at || item.data?.date || "",
+    keywords: [...(item.data?.keywords || []), ...(item.data?.tags || [])],
+    source: item.path,
+    excerpt: item.excerpt,
+  });
+  return [
+    ...(data.references || []).map((item) => mapItem("调研", item)),
+    ...(data.topics || []).map((item) => mapItem("选题", item)),
+    ...(data.drafts || []).map((item) => mapItem("生产", item)),
+    ...(data.published || []).map((item) => mapItem("发布", item)),
+    ...(data.weekly || []).map((item) => mapItem("复盘", item)),
+  ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+function renderGrowthLedger(rows) {
+  if (!rows.length) return '<div class="empty-state">暂无运营内容</div>';
+  return `
+    <table class="growth-table">
+      <thead>
+        <tr>
+          <th>阶段</th>
+          <th>标题 / 摘要</th>
+          <th>支柱</th>
+          <th>状态</th>
+          <th>时间</th>
+          <th>关键词</th>
+          <th>文件</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => `
+          <tr>
+            <td><span class="stage-chip">${escapeHTML(row.stage)}</span></td>
+            <td>
+              <strong>${escapeHTML(row.title)}</strong>
+              <small>${escapeHTML(compact(row.excerpt, "暂无摘要"))}</small>
+            </td>
+            <td>${row.pillar ? `<span class="pill ok">${escapeHTML(row.pillar)}</span>` : ""}</td>
+            <td><span class="status-dot ${escapeHTML(row.status)}"></span>${escapeHTML(row.status || "n/a")}</td>
+            <td><code>${escapeHTML(row.date || "-")}</code></td>
+            <td>
+              <div class="keyword-line">
+                ${row.keywords.slice(0, 4).map((tag) => `<span>${escapeHTML(tag)}</span>`).join("")}
+              </div>
+            </td>
+            <td><code class="path-code">${escapeHTML(row.source)}</code></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderDraftPack(items) {
+  const draft = items.find((item) => item.data?.status === "ready") || items[0];
+  if (!draft) return '<div class="empty-state">暂无草稿</div>';
+  const assets = draft.data?.assets || [];
+  const tags = draft.data?.tags || [];
+  const publishText = `${draft.data?.title || ""}\n\n${draft.excerpt || ""}\n\n${tags.map((tag) => `#${tag}`).join(" ")}`;
+  return `
+    <article class="publish-card">
+      <div class="growth-card-head">
+        <span class="pill ${draft.data?.status === "ready" ? "ok" : ""}">${escapeHTML(draft.data?.status || "draft")}</span>
+        <span>${escapeHTML(draft.data?.publish_at || draft.data?.date || "")}</span>
+      </div>
+      <h3>${escapeHTML(draft.data?.title || draft.id)}</h3>
+      <textarea readonly>${escapeHTML(`${draft.excerpt || ""}\n\n${tags.map((tag) => `#${tag}`).join(" ")}`)}</textarea>
+      <button class="copy-button growth-copy" type="button" data-copy="${escapeHTML(publishText)}">复制标题 + 正文 + 标签</button>
+      <div class="asset-stack">
+        ${assets.length ? assets.map((asset) => `<code>${escapeHTML(asset)}</code>`).join("") : "<span>暂无图片资产</span>"}
+      </div>
+    </article>
+  `;
+}
+
+function renderCompactGrowthCard(item, label) {
+  const tags = [...(item.data?.keywords || []), ...(item.data?.tags || [])].slice(0, 3);
+  return `
+    <article class="growth-mini-card">
+      <div class="growth-card-head">
+        <span class="pill">${escapeHTML(label)}</span>
+        <span>${escapeHTML(item.data?.date || "")}</span>
+      </div>
+      <strong>${escapeHTML(item.data?.title || item.id)}</strong>
+      <p>${escapeHTML(compact(item.excerpt || item.data?.hook || item.path, item.path))}</p>
+      <div class="keyword-line">
+        ${tags.map((tag) => `<span>${escapeHTML(tag)}</span>`).join("")}
+      </div>
+    </article>
+  `;
+}
+
+async function saveGrowthDraft() {
+  const title = window.prompt("新草稿标题");
+  if (!title || !title.trim()) return;
+  try {
+    await requestJSON("/dashboard/api/growth/content", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "drafts",
+        title: title.trim(),
+        status: "drafting",
+        pillar: "生活记录方法",
+        tags: ["生活记录", "LifeOS"],
+        keywords: ["生活记录"],
+        body: "## 正文\n\n先写一个真实场景。\n\n## 发布检查\n\n- 标题含关键词\n- 发布前人工审核\n",
+      }),
+      _retries: 1,
+    });
+    state.growthLoadedFor = null;
+    await loadGrowth();
+  } catch (error) {
+    $("growthDrafts").innerHTML = `<div class="empty-state">保存失败：${escapeHTML(error.message)}</div>`;
+  }
+}
+
+async function copyGrowthPack(event) {
+  const button = event.target.closest(".growth-copy");
+  if (!button) return;
+  await navigator.clipboard.writeText(button.dataset.copy || "");
+  button.textContent = "已复制";
+  setTimeout(() => { button.textContent = "复制发布包"; }, 1200);
+}
+
 function bindEvents() {
   $("startDateInput").value = todayKey();
   $("endDateInput").value = todayKey();
@@ -725,6 +946,8 @@ function bindEvents() {
     loadCurrentView();
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
+  $("newGrowthDraftButton").addEventListener("click", saveGrowthDraft);
+  $("growthPage").addEventListener("click", copyGrowthPack);
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
@@ -735,6 +958,7 @@ function bindEvents() {
       state.lastReceivedAt = null;
       state.currentDate = null;
       state.usageLoadedFor = null;
+      state.growthLoadedFor = null;
       loadCurrentView();
     });
   });
