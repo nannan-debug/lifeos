@@ -24,11 +24,11 @@ enum HealthKitSyncError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "这台设备暂时无法读取 Apple 健康数据。"
+            return L.healthSyncUnavailable
         case .noTypesSelected:
-            return "请选择要同步的 Apple 健康数据。"
+            return L.healthSyncNoTypesSelected
         case .typeUnavailable:
-            return "暂时无法读取对应的 Apple 健康数据类型。"
+            return L.healthSyncTypeUnavailable
         }
     }
 }
