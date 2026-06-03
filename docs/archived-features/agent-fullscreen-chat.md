@@ -35,13 +35,23 @@ Agent V2 已经完成「快录 / 对话」分层与轻量 Memory，但 UI 仍是
 - `GlobalAIInputBar` 折叠态保留猫猫 FAB
 - 展开改为 `fullScreenCover` 全屏 AI 面板
 - 顶部支持历史入口和新建对话
-- 历史抽屉支持搜索、切换、删除，并提供撤销
+- 历史抽屉支持搜索、切换、新建、删除撤销
+- 历史条目长按打开系统 context menu，支持重命名和删除
+- 手动重命名只改历史显示名称，不改消息正文；并防止后续 AI 自动标题覆盖
 - 底部输入区保留显式「快录 / 对话」模式
 - action card 改为出现在对话流中，确认后写入随手记 / 待办 / 时间记录
 
 **Memory：**
 - 新建对话、关闭面板、清空对话时，若当前对话足够长则提取记忆
 - 删除历史不触发记忆提取
+
+**DBT Coach：**
+- 普通 chat 只负责发现适合练习的时机并征求用户同意
+- 用户同意切换 DBT 后，App 会确定性进入 DBT Coach，不只依赖模型返回 toolCall
+- DBT Coach 首次进入必须主动问第 1 步；如果模型只说“准备好了”，App 会补本地首步问题
+- DBT 练习进度通过 `AgentDBTSessionState` 持久化，`currentStepIndex` 和 `stepAnswers` 随用户回答推进
+
+当前行为契约与回归样本见 [`../agent-chat-and-dbt-coach.md`](../agent-chat-and-dbt-coach.md)。
 
 ## 上架收尾
 
