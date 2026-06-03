@@ -229,7 +229,7 @@ enum L {
         default: return s("DBT 练习", "DBT Practice")
         }
     }
-    static var dbtSwitchingFallback: String { s("好，我们现在切到 DBT Coach。", "OK, let's switch to DBT Coach.") }
+    static var dbtSwitchingFallback: String { s("好，我们现在切到 DBT 教练。", "OK, let's switch to DBT Coach.") }
     static var dbtDefaultOpener: String { s("好，我们先不急着解决，只把它拆小一点。", "OK, let's not rush to solve it — just break it down a little.") }
     static func dbtFirstQuestion(_ skillId: String) -> String {
         switch skillId {
