@@ -301,3 +301,217 @@ test("allows a logged-in dashboard session to manage growth content", async () =
     dashboardSecret: "dashboard-secret",
   });
 });
+
+test("GET single growth item returns full body", async () => {
+  await withServer(async ({ baseURL, growthDir }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    const cookie = login.headers.get("set-cookie");
+
+    const save = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        type: "topics",
+        title: "测试选题",
+        status: "idea",
+        pillar: "生活记录方法",
+        keywords: ["测试"],
+        tags: ["测试标签"],
+        body: "## 角度\n\n这是完整正文。\n\n## 用户搜索意图\n\n测试用。",
+      }),
+    });
+    const saved = await save.json();
+
+    const get = await fetch(`${baseURL}/dashboard/api/growth/content?type=topics&id=${encodeURIComponent(saved.id)}`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(get.status, 200);
+    const item = await get.json();
+    assert.equal(item.data.title, "测试选题");
+    assert.equal(item.body.includes("这是完整正文"), true);
+    assert.equal(item.body.includes("用户搜索意图"), true);
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});
+
+test("PUT updates growth item fully", async () => {
+  await withServer(async ({ baseURL }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    const cookie = login.headers.get("set-cookie");
+
+    const save = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        type: "references",
+        title: "原标题",
+        status: "saved",
+        body: "原正文",
+      }),
+    });
+    const saved = await save.json();
+
+    const put = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        type: "references",
+        id: saved.id,
+        data: { title: "改后标题", status: "saved", pillar: "AI 陪伴记录" },
+        body: "改后正文。",
+      }),
+    });
+    assert.equal(put.status, 200);
+
+    const get = await fetch(`${baseURL}/dashboard/api/growth/content?type=references&id=${encodeURIComponent(saved.id)}`, {
+      headers: { Cookie: cookie },
+    });
+    const item = await get.json();
+    assert.equal(item.data.title, "改后标题");
+    assert.equal(item.data.pillar, "AI 陪伴记录");
+    assert.equal(item.body.includes("改后正文"), true);
+    assert.ok(item.data.updated_at);
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});
+
+test("PATCH updates growth item status only", async () => {
+  await withServer(async ({ baseURL }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    const cookie = login.headers.get("set-cookie");
+
+    const save = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        type: "topics",
+        title: "状态测试",
+        status: "idea",
+        body: "不应该变。",
+      }),
+    });
+    const saved = await save.json();
+
+    const patch = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ type: "topics", id: saved.id, status: "selected" }),
+    });
+    assert.equal(patch.status, 200);
+
+    const get = await fetch(`${baseURL}/dashboard/api/growth/content?type=topics&id=${encodeURIComponent(saved.id)}`, {
+      headers: { Cookie: cookie },
+    });
+    const item = await get.json();
+    assert.equal(item.data.status, "selected");
+    assert.equal(item.data.title, "状态测试");
+    assert.equal(item.body.includes("不应该变"), true);
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});
+
+test("DELETE removes growth item", async () => {
+  await withServer(async ({ baseURL }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    const cookie = login.headers.get("set-cookie");
+
+    const save = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ type: "references", title: "要删的", body: "bye" }),
+    });
+    const saved = await save.json();
+
+    const del = await fetch(`${baseURL}/dashboard/api/growth/content`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ type: "references", id: saved.id }),
+    });
+    assert.equal(del.status, 200);
+
+    const get = await fetch(`${baseURL}/dashboard/api/growth/content?type=references&id=${encodeURIComponent(saved.id)}`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(get.status, 404);
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});
+
+test("GET growth config returns tags.json content", async () => {
+  await withServer(async ({ baseURL, growthDir }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    const cookie = login.headers.get("set-cookie");
+
+    await fs.mkdir(path.join(growthDir, "config"), { recursive: true });
+    await fs.writeFile(path.join(growthDir, "config/tags.json"), JSON.stringify({
+      pillars: ["生活记录方法", "AI 陪伴记录"],
+      keywords: ["生活记录"],
+      hashtags: ["#生活记录"],
+      qualityChecklist: ["标题含关键词"],
+    }));
+
+    const res = await fetch(`${baseURL}/dashboard/api/growth/config`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(res.status, 200);
+    const config = await res.json();
+    assert.equal(config.pillars.length, 2);
+    assert.equal(config.pillars[0], "生活记录方法");
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});
+
+test("rejects path traversal in growth content GET", async () => {
+  await withServer(async ({ baseURL }) => {
+    const login = await fetch(`${baseURL}/dashboard/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: "anna", password: "secret" }),
+    });
+    const cookie = login.headers.get("set-cookie");
+
+    const get = await fetch(`${baseURL}/dashboard/api/growth/content?type=references&id=${encodeURIComponent("../../etc/passwd")}`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(get.status, 403);
+  }, {
+    dashboardUser: "anna",
+    dashboardPassword: "secret",
+    dashboardSecret: "dashboard-secret",
+  });
+});

@@ -1220,4 +1220,253 @@ select:focus {
   .usage-body {
     grid-template-columns: 1fr;
   }
+
+  .content-modal {
+    max-width: 96vw;
+    max-height: 96vh;
+  }
+}
+
+/* ── Growth: Today Focus ── */
+.growth-today {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 0 14px;
+}
+
+.growth-today:empty {
+  display: none;
+}
+
+.growth-today-card {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.12s;
+}
+
+.growth-today-card:hover {
+  border-color: var(--green);
+}
+
+.growth-today-card .stage-chip {
+  font-size: 10px;
+  padding: 3px 7px;
+}
+
+.growth-today-card strong {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.growth-today-card small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.growth-today-card .today-action {
+  margin-top: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  color: var(--green);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  width: fit-content;
+  transition: background 0.12s;
+}
+
+.growth-today-card .today-action:hover {
+  background: var(--green-soft);
+}
+
+/* ── Growth: Ledger Filters ── */
+.growth-filters {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.growth-filters select,
+.growth-filters input[type="text"] {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-family: var(--body);
+}
+
+.growth-filters select {
+  min-width: 80px;
+}
+
+.growth-filters input[type="text"] {
+  min-width: 140px;
+  flex: 1;
+  max-width: 220px;
+}
+
+/* ── Growth: Table row click ── */
+.growth-table tr[data-type] {
+  cursor: pointer;
+}
+
+.growth-table tr[data-type]:hover td {
+  background: rgba(233, 245, 236, 0.4);
+}
+
+/* ── Growth: Status advance button ── */
+.status-advance {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.status-advance:hover {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+/* ── Content Editor Modal ── */
+.content-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(30, 40, 34, 0.36);
+  backdrop-filter: blur(4px);
+}
+
+.content-modal-overlay[hidden] {
+  display: none;
+}
+
+.content-modal {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 24px;
+  background: #f8fbf6;
+  box-shadow: 0 12px 48px rgba(30, 40, 34, 0.18);
+  animation: page-in 0.15s ease-out;
+}
+
+.content-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 12px;
+}
+
+.content-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.content-modal-form {
+  padding: 0 24px 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.content-modal-row label {
+  display: grid;
+  gap: 5px;
+}
+
+.content-modal-row label > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.content-modal-row input[type="text"],
+.content-modal-row input[type="date"],
+.content-modal-row select {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-family: var(--body);
+}
+
+.content-modal-row textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: #24342a;
+  background: rgba(255, 255, 255, 0.78);
+  font: 13px/1.6 var(--mono);
+  resize: vertical;
+}
+
+.content-modal-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.content-modal-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.content-modal-delete {
+  margin-left: auto;
+  color: #c44;
+  border-color: #c44;
+}
+
+.content-modal-delete:hover {
+  background: rgba(204, 68, 68, 0.08);
+}
+
+/* ── Growth: Publish empty state ── */
+.publish-empty {
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.publish-empty span {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
 }
