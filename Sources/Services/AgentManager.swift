@@ -1714,7 +1714,10 @@ final class AgentManager: ObservableObject {
             ))
         }
         applyDBTSessionUpdate(response.dbtSession)
-        mergeActionSuggestions(mergedActions)
+        let finalActions = mergedActions.isEmpty && replySoundsLikeSaving(response.reply)
+            ? synthesizeFallbackInboxAction(from: response)
+            : mergedActions
+        mergeActionSuggestions(finalActions)
         saveCurrentThread()
 
         streamingPhase = .idle
@@ -2252,6 +2255,45 @@ final class AgentManager: ObservableObject {
         ].reduce(0) { score, value in
             score + (value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
         }
+    }
+
+    private static let savePromisePatterns: [String] = [
+        "帮你收", "帮你记", "记下来", "帮你存", "存到", "保存",
+        "help you save", "noted it", "record it", "save it"
+    ]
+
+    private func replySoundsLikeSaving(_ reply: String) -> Bool {
+        let lower = reply.lowercased()
+        return Self.savePromisePatterns.contains { lower.contains($0) }
+    }
+
+    private func synthesizeFallbackInboxAction(from response: AgentChatResponse) -> [AgentActionDraft] {
+        let recentUserMessages = session.messages
+            .suffix(6)
+            .filter { $0.role == "user" }
+            .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let lastUserText = recentUserMessages.last else { return [] }
+        let detail = recentUserMessages.count > 1
+            ? recentUserMessages.joined(separator: "\n")
+            : lastUserText
+        let action = AgentActionDraft(
+            kind: .inbox,
+            inboxType: "感受",
+            title: fallbackTitle(lastUserText),
+            detail: detail,
+            confidence: 0.7,
+            reason: "模型承诺保存但未生成 action，App 兜底"
+        )
+        emitTrace(
+            traceID: UUID().uuidString,
+            eventName: "save_promise_fallback",
+            payload: [
+                "reply": response.reply,
+                "synthesizedAction": AgentTracePayload.json(action)
+            ]
+        )
+        return [action]
     }
 
     private func fallbackTitle(_ text: String) -> String {

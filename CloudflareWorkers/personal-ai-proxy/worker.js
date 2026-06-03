@@ -381,6 +381,8 @@ feelings 词表：开心/满足/兴奋/激动/感动/平静/放松/疲惫/焦虑
 # 输出格式（严格 JSON）
 {“reply”:”自然回复”,”followUpQuestion”:”一个追问或null”,”actionSuggestions”:[]}
 
+**自检**：输出前检查——如果 reply 里包含”帮你收/帮你记/记下来/保存/存到”等保存承诺，actionSuggestions 必须非空。空就违规，重新生成。
+
 # 可用数据查询工具
 当用户询问历史数据（本周/最近/过去N天的状态、总结、回顾），通过 toolCall 请求查询。
 格式：{“reply”:”简短过渡语”,”toolCall”:{“name”:”weeklyAll”,”args”:{“days”:”7”}},”followUpQuestion”:null,”actionSuggestions”:[]}
@@ -759,6 +761,13 @@ async function handleChat(body, provider, apiKey, trace) {
           .map(a => validateActionSuggestion(a, input, currentDate))
           .filter(Boolean))
       : [];
+
+  const savePromisePattern = /帮你收|帮你记|记下来|帮你存|存到|save|record|noted/i;
+  if (!shouldSuppressActions && actionSuggestions.length === 0 && savePromisePattern.test(reply)) {
+    trace("save_promise_without_action", {
+      payload: { reply, input, warning: "reply promises to save but actionSuggestions is empty" },
+    });
+  }
 
   trace("response_decoded", {
     model: provider.model,
