@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LifeOS Dashboard</title>
-  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260526b">
+  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260603a">
 </head>
 <body>
   <main class="shell">
@@ -48,6 +48,10 @@
         <button class="view-tab" id="usageTab" type="button" data-view="usage">
           <span>Usage Analytics</span>
           <small>用户行为与功能使用</small>
+        </button>
+        <button class="view-tab" id="growthTab" type="button" data-view="growth">
+          <span>Growth Ops</span>
+          <small>小红书日更运营流</small>
         </button>
       </nav>
 
@@ -121,8 +125,48 @@
           <div class="usage-users" id="usageUsers"></div>
         </div>
       </section>
+
+      <section class="dashboard-page growth-page" id="growthPage" hidden>
+        <div class="usage-header">
+          <div>
+            <p class="eyebrow">Growth Ops</p>
+            <h2>小红书日更运营流</h2>
+          </div>
+          <div class="growth-header-actions">
+            <span class="session-pill" id="growthRoot">读取中</span>
+            <button class="ghost-button" id="newGrowthDraftButton" type="button">新建草稿</button>
+          </div>
+        </div>
+        <div class="usage-summary" id="growthSummary"></div>
+        <div class="growth-flow" id="growthFlow"></div>
+        <div class="growth-body">
+          <section class="growth-ledger-panel">
+            <div class="panel-title">
+              <span>内容生产表</span>
+              <small id="growthLedgerCount">0</small>
+            </div>
+            <div id="growthLedger" class="growth-ledger"></div>
+          </section>
+          <aside class="growth-side-panel">
+            <section class="growth-side-section">
+              <div class="panel-title">
+                <span>发布包</span>
+                <small id="growthDraftCount">0</small>
+              </div>
+              <div id="growthDrafts" class="growth-side-content"></div>
+            </section>
+            <section class="growth-side-section">
+              <div class="panel-title">
+                <span>素材与复盘</span>
+                <small id="growthReferenceCount">0</small>
+              </div>
+              <div id="growthReferences" class="growth-side-content"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
     </section>
   </main>
-  <script src="/dashboard/dashboard.js?v=20260526b"></script>
+  <script src="/dashboard/dashboard.js?v=20260603a"></script>
 </body>
 </html>
