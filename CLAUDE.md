@@ -111,6 +111,15 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 
 接手时先汇报：当前 git 分支、工作区是否干净、最近 release/tag 状态、`IN_PROGRESS.md` 当前状态、`main` 是否包含用户指定的关键 PR。
 
+如果主工作区已有未追踪文件、ahead 提交或其它 agent 的改动，不要为了新任务直接在主工作区切分支/提交。优先从最新 `origin/main` 创建独立 worktree 和独立分支：
+
+```bash
+git fetch origin
+git worktree add -b codex/<task-name> /private/tmp/lifeos-<task-name> origin/main
+```
+
+完成后把 PR、验证结果和剩余人工步骤写清楚，再提醒用户主工作区若有 ahead/未追踪内容需要单独整理。
+
 状态文档分工：
 
 - `IN_PROGRESS.md`：只记录跨多个 PR 的在飞大功能；单 PR 小改动不强行写入。
@@ -122,6 +131,10 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 - 从最新 `main` 新建功能分支，照常 PR。
 - 不改当前审核中版本号，不重新 Archive / Upload / Submit。
 - 不打 tag，不创建 GitHub Release；只有 ASC 显示已上架 / Ready for Distribution 后才做。
+- 对外沟通必须明确区分三种状态：
+  - **代码已合并**：PR 已进 `main`，但还没提交 Apple 审核。
+  - **已提交审核**：App Store Connect 已 Submit to App Review，等待 Apple 结果。
+  - **已上架**：ASC 显示 Ready for Distribution / 已 release，此时才打 tag 和 GitHub Release。
 
 多 Agent 并行开发：
 
@@ -130,6 +143,23 @@ feat/xxx   fix/xxx   style/xxx   refactor/xxx   docs/xxx
 - 默认按模块划分文件所有权：Agent / AI / Worker / Trace 方向归 Agent 分支；非 Agent 的 UI、HealthKit、Widget、设置、导出等可走独立修复分支。
 - `Sources/ViewModels/AppStore.swift`、`Sources/Models/Models.swift` 是高冲突共享文件，动之前先说明影响范围，后合并的一方负责基于最新 `main` 解决冲突。
 - 多个方向独立 PR 到 `main`，不建议先合成一个“大集成分支”；谁先 ready 谁先合，谁后合谁 rebase / merge 最新 `main` 并重新验证。
+
+## 用户协作习惯（必须遵守）
+
+- 准备 PR 或发版 PR 时，最终回复必须给出可直接粘贴的 **PR description**、**Squash merge title/body**；body 至少 1-3 句说明改动，不要只留下 `Co-authored-by`。
+- 如果用户截图停在 GitHub “Confirm squash and merge” 页面，直接给出 Extended description 可粘贴文本，不要让用户猜怎么写。
+- 做 App Store 发版时，Archive 前必须确认当前 Xcode 工程来自最新 `main`，并用 `project.yml` / `Info.plist` / `.xcodeproj` 核对版本号；用户看到旧版本 archive 时，先检查本地分支是否还是旧分支。
+- 对本地运营内容、密钥、截图素材保持保守：`Secrets.swift`、`.env`、`docs/operations/growth/xiaohongshu/` 不进仓库；提交前用 `git status --short --ignored` 复查。
+- 用户问“这个怎么用/为什么这么多入口”时，优先修正信息架构和可用性，不要只解释。界面里的同义按钮必须收敛：同一动作只保留一个主入口；多个入口必须对应不同对象或阶段，并在文案上说清楚。
+- 给用户的阶段性更新要短，但要说明正在确认什么、为什么；最终回复用中文，写清楚已经完成什么、用户下一步怎么验收、如果通过下一步做什么。
+
+## Growth Ops / 小红书运营台
+
+- Dashboard 入口：Trace Dashboard 的 `Growth Ops` tab。
+- 代码位置：`deploy/agent-trace-ingest/public/dashboard.{html,css,js}` 与 `deploy/agent-trace-ingest/server.js`。
+- 运营内容位置：默认本地目录 `docs/operations/growth/xiaohongshu/` 或部署环境的 `LIFEOS_GROWTH_DIR`（线上当前显示为 `/var/lib/lifeos-growth`）；该内容目录已 gitignore，不上传 GitHub。
+- Growth Ops 只做「参考帖 / 选题 / 草稿 / 发布包 / 复盘」管理，不接小红书自动发布。发布仍由用户手动复制到小红书 App。
+- CTA 约定：`录参考帖` 创建 `references`；`建选题` 创建 `topics`；`写今日草稿` 创建 `drafts/YYYY-MM`。发布包区域只展示 ready 草稿的可复制内容，不再放重复的“新建草稿”。
 
 ---
 

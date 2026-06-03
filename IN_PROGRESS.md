@@ -12,6 +12,11 @@
 
 ## 最近完成
 
+- LifeOS `1.12.0 (build 16)` — 已上传 App Store Connect 并提交 App Review（2026-06-04）。等待 Apple 审核结果；尚未上架，不能打 tag / GitHub Release。
+- Trace Dashboard / Growth Ops — 已合入 `main`：
+  - #94 新增 Growth Ops tab，读取本地小红书运营素材目录，只做素材管理和手动发布包，不自动发布。
+  - #98 收敛 Growth Ops 空状态 CTA：`录参考帖` / `建选题` / `写今日草稿` 分别创建 `references` / `topics` / 月份草稿 Markdown；发布包区域不再重复放“新建草稿”。
+  - 小红书运营内容目录 `docs/operations/growth/xiaohongshu/` 已 gitignore，默认只保留本地，不上传 GitHub。
 - 中英文双语支持 — `1.11.0 (build 15)` 已提交审核（2026-05-25）。[#83](https://github.com/nannan-debug/lifeos/pull/83)。
   - 轻量 i18n 方案：`Sources/Localization/L.swift` 集中管理 ~150 个双语字符串，`UserDefaults("app.language")` 切换
   - 设置页语言 Picker + 全 App UI 替换 + AI 语言匹配 + 70 条英文每日语录

@@ -39,6 +39,22 @@ gh pr create --title "feat: 感恩多事件合并为一条" --body "..."
 # 6. 删除分支
 ```
 
+### Squash Merge 文案
+
+GitHub 合并页的 `Commit message` 可以保留默认标题，但 `Extended description` 不要只剩 `Co-authored-by`。合并前应写 1-3 句说明本次改动的实际内容，方便之后回看历史。
+
+示例：
+
+```text
+Clarifies the Growth Ops empty-state flow so the creation actions no longer look like duplicate draft buttons.
+
+The header now uses “写今日草稿” as the single draft shortcut, while the start panel separates “录参考帖”, “建选题”, and “写今日草稿” into three real Markdown creation actions. The publish-pack empty state now explains that a copyable pack appears only after a ready draft exists.
+
+Co-authored-by: Anna <...>
+```
+
+负责开 PR 的 agent 必须在最终回复里提供可直接粘贴的 squash title/body，避免用户到合并页时还要临时写。
+
 ### main 分支保护
 
 建议在 GitHub 仓库 Settings → Branches 开启：
