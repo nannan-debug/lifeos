@@ -101,6 +101,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         case capture
         case todo
         case time(dateKey: String?)
+        case review
     }
     @Published var isICloudSyncEnabled: Bool
     @Published var iCloudSyncStatusText: String

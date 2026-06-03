@@ -579,6 +579,8 @@ private struct AgentChatPanel: View {
                 store.pendingNavigation = .todo
             case .time:
                 store.pendingNavigation = .time(dateKey: nil)
+            case .brain:
+                store.pendingNavigation = .review
             default:
                 break
             }

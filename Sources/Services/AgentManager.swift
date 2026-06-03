@@ -2424,7 +2424,11 @@ final class AgentManager: ObservableObject {
     }
 
     private func isDBTPractice(_ action: AgentActionDraft) -> Bool {
-        (action.kind == .inbox || action.kind == .brain) && action.inboxType == "DBT练习"
+        guard action.kind == .inbox || action.kind == .brain else { return false }
+        if action.inboxType == "DBT练习" { return true }
+        if action.kind == .brain { return true }
+        let t = (action.title + " " + action.detail).lowercased()
+        return t.contains("dbt")
     }
 
     private func saveDBTSessionToBrain(action: AgentActionDraft, sourceTurnId: UUID) {
