@@ -227,6 +227,7 @@ async function requestJSON(url, options = {}) {
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           ...(options.headers || {}),
@@ -234,12 +235,15 @@ async function requestJSON(url, options = {}) {
       });
       clearTimeout(timer);
 
+      const body = await response.json().catch(() => ({}));
       if (response.status === 401) {
+        if (body.error === "invalid_credentials") {
+          throw new Error("invalid_credentials");
+        }
         handleSessionExpired();
         throw new Error("会话已过期，请重新登录");
       }
 
-      const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(body.error || `HTTP ${response.status}`);
       }
