@@ -186,6 +186,20 @@ test("allows a logged-in dashboard session to query traces", async () => {
         payload: { reply: "收到，已记录。" },
       }),
     });
+    await fetch(`${baseURL}/v1/traces/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-LifeOS-Trace-Token": "test-token",
+      },
+      body: JSON.stringify({
+        traceId: "usage-12345678",
+        eventName: "usage_batch",
+        source: "ios",
+        timestamp: "2026-05-20T10:05:00.000Z",
+        payload: { usage_app_open: "1", usage_ai_chat_sent: "2" },
+      }),
+    });
 
     const login = await fetch(`${baseURL}/dashboard/api/login`, {
       method: "POST",
@@ -212,7 +226,24 @@ test("allows a logged-in dashboard session to query traces", async () => {
     assert.equal(summaryOnly.status, 200);
     const summaryBody = await summaryOnly.json();
     assert.equal(summaryBody.events.length, 0);
-    assert.equal(summaryBody.traces.length, 1);
+    assert.equal(summaryBody.traces.length, 2);
+
+    const aiOnly = await fetch(`${baseURL}/dashboard/api/traces?date=2026-05-20&summaryOnly=1&kind=ai`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(aiOnly.status, 200);
+    const aiOnlyBody = await aiOnly.json();
+    assert.equal(aiOnlyBody.traces.length, 1);
+    assert.equal(aiOnlyBody.traces[0].traceId, "dashboard-trace");
+
+    const usageOnly = await fetch(`${baseURL}/dashboard/api/traces?date=2026-05-20&summaryOnly=1&kind=usage`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(usageOnly.status, 200);
+    const usageOnlyBody = await usageOnly.json();
+    assert.equal(usageOnlyBody.traces.length, 1);
+    assert.equal(usageOnlyBody.traces[0].traceId, "usage-12345678");
+    assert.equal(usageOnlyBody.traces[0].title.includes("使用统计"), true);
   }, {
     dashboardUser: "anna",
     dashboardPassword: "secret",

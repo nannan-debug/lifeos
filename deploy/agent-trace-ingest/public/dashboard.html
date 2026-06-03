@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LifeOS Trace</title>
-  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260525a">
+  <title>LifeOS Dashboard</title>
+  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260526b">
 </head>
 <body>
   <main class="shell">
@@ -35,11 +35,21 @@
         <div class="topbar-actions">
           <span class="session-pill" id="sessionUser"></span>
           <span class="refresh-state" id="refreshState"></span>
-          <button class="ghost-button" id="usageButton" type="button">📊 Usage</button>
           <button class="ghost-button" id="refreshButton" type="button">刷新</button>
           <button class="ghost-button" id="logoutButton" type="button">退出</button>
         </div>
       </header>
+
+      <nav class="view-tabs" aria-label="Dashboard views">
+        <button class="view-tab active" id="tracesTab" type="button" data-view="traces">
+          <span>AI Traces</span>
+          <small>模型、工具、Worker 链路</small>
+        </button>
+        <button class="view-tab" id="usageTab" type="button" data-view="usage">
+          <span>Usage Analytics</span>
+          <small>用户行为与功能使用</small>
+        </button>
+      </nav>
 
       <form class="filters" id="traceFilters" aria-label="查询条件">
         <label class="filter-date">
@@ -52,7 +62,7 @@
         </label>
         <input id="searchInput" type="hidden">
         <input id="traceInput" type="hidden">
-        <label class="filter-source">
+        <label class="filter-source trace-filter">
           <span>来源</span>
           <select id="sourceInput">
             <option value="all">全部</option>
@@ -61,17 +71,49 @@
             <option value="manual">Manual</option>
           </select>
         </label>
-        <label class="check-row">
+        <label class="check-row trace-filter">
           <input id="errorsOnlyInput" type="checkbox">
           <span>只看错误</span>
         </label>
         <button class="search-button" id="searchButton" type="submit">搜索</button>
       </form>
 
-      <section class="usage-panel" id="usagePanel" hidden>
+      <section class="dashboard-page" id="tracesPage">
+        <section class="workspace">
+          <aside class="trace-list">
+            <div class="panel-title">
+              <span>Traces</span>
+              <small id="traceCount">0</small>
+            </div>
+            <div id="traceList" class="trace-items"></div>
+          </aside>
+
+          <section class="timeline-panel">
+            <div class="panel-title">
+              <span id="selectedTraceTitle">选择一条 trace</span>
+              <small id="selectedTraceMeta"></small>
+            </div>
+            <div id="timeline" class="timeline empty-state">暂无数据</div>
+          </section>
+
+          <aside class="detail-panel">
+            <div class="panel-title">
+              <span>Event Detail</span>
+              <button class="copy-button" id="copyJsonButton" type="button">复制 JSON</button>
+            </div>
+            <div id="eventSummary" class="event-summary empty-state">选择时间线中的事件</div>
+            <div id="readableView" class="readable-view"></div>
+            <pre id="jsonView" class="json-view"></pre>
+          </aside>
+        </section>
+      </section>
+
+      <section class="dashboard-page usage-page" id="usagePage" hidden>
         <div class="usage-header">
-          <h2>Usage Overview</h2>
-          <button class="ghost-button" id="usageClose" type="button">关闭</button>
+          <div>
+            <p class="eyebrow">Usage Analytics</p>
+            <h2>用户行为与功能使用</h2>
+          </div>
         </div>
         <div class="usage-summary" id="usageSummary"></div>
         <div class="usage-body">
@@ -79,35 +121,8 @@
           <div class="usage-users" id="usageUsers"></div>
         </div>
       </section>
-
-      <section class="workspace">
-        <aside class="trace-list">
-          <div class="panel-title">
-            <span>Traces</span>
-            <small id="traceCount">0</small>
-          </div>
-          <div id="traceList" class="trace-items"></div>
-        </aside>
-
-        <section class="timeline-panel">
-          <div class="panel-title">
-            <span id="selectedTraceTitle">选择一条 trace</span>
-            <small id="selectedTraceMeta"></small>
-          </div>
-          <div id="timeline" class="timeline empty-state">暂无数据</div>
-        </section>
-
-        <aside class="detail-panel">
-          <div class="panel-title">
-            <span>Event Detail</span>
-            <button class="copy-button" id="copyJsonButton" type="button">复制 JSON</button>
-          </div>
-          <div id="eventSummary" class="event-summary empty-state">选择时间线中的事件</div>
-          <pre id="jsonView" class="json-view"></pre>
-        </aside>
-      </section>
     </section>
   </main>
-  <script src="/dashboard/dashboard.js?v=20260525b"></script>
+  <script src="/dashboard/dashboard.js?v=20260526b"></script>
 </body>
 </html>

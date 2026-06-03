@@ -7,6 +7,8 @@ const state = {
   autoRefreshTimer: null,
   lastReceivedAt: null,        // 最新 event 的 receivedAt，用于增量检测
   currentDate: null,           // 当前查询的日期，切日期时重置
+  currentView: "traces",
+  usageLoadedFor: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -49,6 +51,7 @@ const EVENT_LABELS = {
   model_call_started: "模型调用",
   model_call_finished: "模型返回",
   model_call_failed: "模型失败",
+  usage_batch: "使用统计汇总",
 };
 function eventLabel(name) { return EVENT_LABELS[name] ? `${name} ${EVENT_LABELS[name]}` : name; }
 
@@ -77,6 +80,16 @@ function eventId(event, index) {
   return `${event.traceId}-${event.eventName}-${event.timestamp || event.receivedAt}-${index}`;
 }
 
+function usageSummary(payload = {}, maxItems = 4) {
+  return Object.entries(payload)
+    .map(([key, value]) => [USAGE_LABELS[key] || key, Number(value) || 0])
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxItems)
+    .map(([label, count]) => `${label} ${count}`)
+    .join("、");
+}
+
 function escapeHTML(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -94,6 +107,106 @@ function highlightJSON(value) {
     .replace(/: (-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
     .replace(/\\n/g, "\n")
     .replace(/\\t/g, "  ");
+}
+
+function tryParseJSON(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || !["{", "["].includes(trimmed[0])) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function readableText(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
+}
+
+function renderDialogue(messages) {
+  const parsed = tryParseJSON(messages);
+  if (!Array.isArray(parsed)) return "";
+  return `
+    <section class="readable-section">
+      <h3>Messages</h3>
+      <div class="message-list">
+        ${parsed.map((message) => `
+          <article class="message-row ${escapeHTML(message.role || "unknown")}">
+            <span>${escapeHTML(message.role || "unknown")}</span>
+            <p>${escapeHTML(readableText(message.content))}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderReadablePayload(event) {
+  const payload = event.payload || {};
+  const rows = [
+    ["Input", payload.input],
+    ["Reply", payload.reply],
+    ["Follow-up", payload.followUpQuestion],
+    ["Intermediate", payload.intermediateReply],
+    ["Tool", payload.toolName || payload.toolCall],
+    ["Reasoning", payload.reasoning],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "");
+
+  const messages = renderDialogue(payload.messages);
+  const dbtSession = tryParseJSON(payload.dbtSession);
+  const actionSuggestions = tryParseJSON(payload.actionSuggestions);
+  const mergedActions = tryParseJSON(payload.mergedActions);
+
+  const sections = [];
+  if (rows.length) {
+    sections.push(`
+      <section class="readable-section">
+        <h3>Payload</h3>
+        <div class="readable-fields">
+          ${rows.map(([label, value]) => `
+            <div class="readable-field">
+              <span>${escapeHTML(label)}</span>
+              <p>${escapeHTML(readableText(tryParseJSON(value)))}</p>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    `);
+  }
+  if (messages) sections.push(messages);
+  if (dbtSession && typeof dbtSession === "object") {
+    sections.push(`
+      <section class="readable-section">
+        <h3>DBT Session</h3>
+        <div class="readable-fields compact">
+          <div class="readable-field"><span>Status</span><p>${escapeHTML(dbtSession.status || "n/a")}</p></div>
+          <div class="readable-field"><span>Skill</span><p>${escapeHTML(dbtSession.skillId || "n/a")}</p></div>
+          <div class="readable-field"><span>Step</span><p>${escapeHTML(String((dbtSession.currentStepIndex ?? 0) + 1))}</p></div>
+        </div>
+      </section>
+    `);
+  }
+  for (const [title, value] of [["Actions", actionSuggestions], ["Merged Actions", mergedActions]]) {
+    if (Array.isArray(value) && value.length) {
+      sections.push(`
+        <section class="readable-section">
+          <h3>${escapeHTML(title)}</h3>
+          <div class="action-list">
+            ${value.map((action) => `
+              <article class="action-row">
+                <strong>${escapeHTML(action.title || action.kind || "action")}</strong>
+                <p>${escapeHTML(action.detail || action.reason || "")}</p>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      `);
+    }
+  }
+  return sections.join("");
 }
 
 // ── 带超时 + 自动重试的 fetch ──
@@ -152,7 +265,7 @@ function handleSessionExpired() {
 function startAutoRefresh() {
   stopAutoRefresh();
   state.autoRefreshTimer = setInterval(() => {
-    loadTraces(true);
+    loadCurrentView(true);
   }, 60000);
 }
 
@@ -161,6 +274,42 @@ function stopAutoRefresh() {
     clearInterval(state.autoRefreshTimer);
     state.autoRefreshTimer = null;
   }
+}
+
+function viewFromHash() {
+  return window.location.hash === "#usage" ? "usage" : "traces";
+}
+
+function dateRangeKey() {
+  return `${currentStartDate()}..${currentEndDate()}`;
+}
+
+function updateViewUI() {
+  const view = state.currentView;
+  $("appPanel").dataset.view = view;
+  $("tracesPage").hidden = view !== "traces";
+  $("usagePage").hidden = view !== "usage";
+  $("tracesTab").classList.toggle("active", view === "traces");
+  $("usageTab").classList.toggle("active", view === "usage");
+  $("searchButton").textContent = view === "usage" ? "刷新" : "搜索";
+}
+
+async function loadCurrentView(silent = false) {
+  if (state.currentView === "usage") {
+    await loadUsage(silent);
+  } else {
+    await loadTraces(silent);
+  }
+}
+
+async function setView(view, { updateHash = true } = {}) {
+  state.currentView = view === "usage" ? "usage" : "traces";
+  updateViewUI();
+  if (updateHash && window.location.hash !== `#${state.currentView}`) {
+    window.location.hash = state.currentView;
+    return;
+  }
+  await loadCurrentView();
 }
 
 async function loadSession() {
@@ -175,7 +324,9 @@ async function loadSession() {
   }
   if (session.authenticated) {
     $("sessionUser").textContent = session.user;
-    await loadTraces();
+    state.currentView = viewFromHash();
+    updateViewUI();
+    await loadCurrentView();
     startAutoRefresh();
   }
 }
@@ -193,6 +344,7 @@ function queryURL(extra = {}) {
   params.set("endDate", currentEndDate());
   params.set("limit", "1000");
   params.set("summaryOnly", "1");
+  params.set("kind", extra.kind || "ai");
   const q = $("searchInput").value.trim();
   const traceId = $("traceInput").value.trim();
   const source = $("sourceInput").value;
@@ -335,6 +487,9 @@ function selectedEvents() {
 }
 
 function eventPreview(event) {
+  if (event.eventName === "usage_batch") {
+    return usageSummary(event.payload) || "没有使用计数";
+  }
   return compact(
     event.error?.message ||
     event.payload?.input ||
@@ -386,6 +541,7 @@ function renderEventDetail() {
   if (!event) {
     $("eventSummary").className = "event-summary empty-state";
     $("eventSummary").textContent = "选择时间线中的事件";
+    $("readableView").innerHTML = "";
     $("jsonView").innerHTML = "";
     return;
   }
@@ -397,8 +553,10 @@ function renderEventDetail() {
       <div class="metric"><span>Latency</span><strong>${event.latencyMs ? formatLatency(event.latencyMs) : "n/a"}</strong></div>
       <div class="metric"><span>Tokens</span><strong>${escapeHTML(event.usage?.total_tokens || event.usage?.totalTokens || "n/a")}</strong></div>
     </div>
+    ${event.eventName === "usage_batch" ? `<div class="summary-line">${escapeHTML(usageSummary(event.payload, 12) || "没有使用计数")}</div>` : ""}
     ${event.error ? `<div class="pill error">${escapeHTML(event.error.type || "error")}: ${escapeHTML(event.error.message)}</div>` : ""}
   `;
+  $("readableView").innerHTML = renderReadablePayload(event);
   $("jsonView").innerHTML = highlightJSON(event);
 }
 
@@ -447,7 +605,10 @@ function showError(error) {
 }
 
 // ── Usage Analytics ──
-async function loadUsage() {
+async function loadUsage(silent = false) {
+  const key = dateRangeKey();
+  if (silent && state.usageLoadedFor === key) return;
+  if (!silent) setBusy(true, "读取 Usage...");
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -462,10 +623,15 @@ async function loadUsage() {
     }
     const body = await response.json();
     renderUsage(body);
+    state.usageLoadedFor = key;
+    setRefreshState("Usage 已更新");
   } catch (error) {
     $("usageSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
     $("usageFeatures").innerHTML = "";
     $("usageUsers").innerHTML = "";
+    setRefreshState("Usage 读取失败");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -548,35 +714,28 @@ function renderUsage(data) {
   }
 }
 
-function toggleUsagePanel() {
-  const panel = $("usagePanel");
-  if (panel.hidden) {
-    panel.hidden = false;
-    loadUsage();
-  } else {
-    panel.hidden = true;
-  }
-}
-
 function bindEvents() {
   $("startDateInput").value = todayKey();
   $("endDateInput").value = todayKey();
   $("loginForm").addEventListener("submit", login);
   $("logoutButton").addEventListener("click", logout);
-  $("refreshButton").addEventListener("click", () => loadTraces());
+  $("refreshButton").addEventListener("click", () => loadCurrentView());
   $("traceFilters").addEventListener("submit", (event) => {
     event.preventDefault();
-    loadTraces();
+    loadCurrentView();
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
-  $("usageButton").addEventListener("click", toggleUsagePanel);
-  $("usageClose").addEventListener("click", () => { $("usagePanel").hidden = true; });
+  document.querySelectorAll(".view-tab").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.view));
+  });
+  window.addEventListener("hashchange", () => setView(viewFromHash(), { updateHash: false }));
   // 切日期 / 切来源 / 切错误过滤 → 重置增量状态，全量加载
   ["startDateInput", "endDateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => {
     $(id).addEventListener("change", () => {
       state.lastReceivedAt = null;
       state.currentDate = null;
-      loadTraces();
+      state.usageLoadedFor = null;
+      loadCurrentView();
     });
   });
 }
