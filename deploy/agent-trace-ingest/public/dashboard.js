@@ -11,6 +11,9 @@ const state = {
   usageLoadedFor: null,
   growthLoadedFor: null,
   growth: null,
+  growthConfig: null,
+  growthFilters: { stage: "all", status: "all", pillar: "all", search: "" },
+  contentModal: { mode: null, type: null, id: null },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -211,7 +214,7 @@ function renderReadablePayload(event) {
   return sections.join("");
 }
 
-// ── 带超时 + 自动重试的 fetch ──
+// -- 带超时 + 自动重试的 fetch --
 async function requestJSON(url, options = {}) {
   const maxRetries = options._retries ?? 2;
   const timeoutMs = options._timeout ?? 15000;
@@ -263,7 +266,7 @@ function handleSessionExpired() {
   stopAutoRefresh();
 }
 
-// ── 自动刷新 ──
+// -- 自动刷新 --
 function startAutoRefresh() {
   stopAutoRefresh();
   state.autoRefreshTimer = setInterval(() => {
@@ -382,7 +385,7 @@ function extractLastReceivedAt(traces) {
 async function loadTraces(silent = false) {
   const queryDate = currentStartDate();
 
-  // ── 增量检测：静默刷新时，先查有没有新数据 ──
+  // -- 增量检测：静默刷新时，先查有没有新数据 --
   if (silent && state.lastReceivedAt && state.currentDate === queryDate) {
     try {
       const check = await requestJSON(queryURL({ since: state.lastReceivedAt }), { _retries: 1, _timeout: 8000 });
@@ -618,7 +621,7 @@ function showError(error) {
   $("timeline").innerHTML = `<span>读取失败：${escapeHTML(error.message)}</span> <button class="retry-link" onclick="loadTraces()">重试</button>`;
 }
 
-// ── Usage Analytics ──
+// -- Usage Analytics --
 async function loadUsage(silent = false) {
   const key = dateRangeKey();
   if (silent && state.usageLoadedFor === key) return;
@@ -728,12 +731,32 @@ function renderUsage(data) {
   }
 }
 
-// ── Growth Ops ──
+// -- Growth Ops --
+const STAGE_MAP = { references: "调研", topics: "选题", drafts: "生产", published: "发布", weekly: "复盘" };
+const TYPE_FOR_STAGE = { "调研": "references", "选题": "topics", "生产": "drafts", "发布": "published", "复盘": "weekly" };
+const STATUS_ORDER = ["idea", "saved", "selected", "drafting", "ready", "published", "reviewed"];
+const DEFAULT_BODIES = {
+  references: "## Hook\n\n\n## 结构观察\n\n\n## 视觉参考\n\n\n## 可借鉴点\n\n",
+  topics: "## 角度\n\n\n## 用户搜索意图\n\n\n## 标题钩子\n\n",
+  drafts: "## 正文\n\n先写一个真实场景。\n\n## 发布检查\n\n- 标题含关键词\n- 发布前人工审核\n",
+};
+const DEFAULT_STATUS = { references: "saved", topics: "idea", drafts: "drafting", published: "published", weekly: "reviewed" };
+
+async function loadGrowthConfig() {
+  if (state.growthConfig) return;
+  try {
+    state.growthConfig = await requestJSON("/dashboard/api/growth/config", { _retries: 1, _timeout: 5000 });
+  } catch {
+    state.growthConfig = { pillars: [], keywords: [], hashtags: [] };
+  }
+}
+
 async function loadGrowth(silent = false) {
   const key = dateRangeKey();
   if (silent && state.growthLoadedFor === key) return;
   if (!silent) setBusy(true, "读取 Growth Ops...");
   try {
+    await loadGrowthConfig();
     const data = await requestJSON("/dashboard/api/growth", { _retries: 1, _timeout: 10000 });
     state.growth = data;
     state.growthLoadedFor = key;
@@ -742,7 +765,7 @@ async function loadGrowth(silent = false) {
   } catch (error) {
     $("growthSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
     $("growthFlow").innerHTML = "";
-    $("growthTopics").innerHTML = "";
+    $("growthToday").innerHTML = "";
     $("growthDrafts").innerHTML = "";
     $("growthReferences").innerHTML = "";
     setRefreshState("Growth 读取失败");
@@ -754,8 +777,8 @@ async function loadGrowth(silent = false) {
 function renderGrowth(data) {
   if (!data) return;
   $("growthRoot").textContent = data.root || "growth dir";
-  const ledgerRows = growthLedgerRows(data);
-  $("growthLedgerCount").textContent = String(ledgerRows.length);
+  const allRows = growthLedgerRows(data);
+  $("growthLedgerCount").textContent = String(allRows.length);
   $("growthDraftCount").textContent = String(data.drafts?.length || 0);
   $("growthReferenceCount").textContent = String(data.references?.length || 0);
 
@@ -778,6 +801,8 @@ function renderGrowth(data) {
     </div>
   `;
 
+  renderGrowthToday(data);
+
   const stages = [
     ["调研", data.counts?.references || 0, "沉淀参考帖、hook、结构、视觉"],
     ["选题", data.counts?.topics || 0, "从素材库和产品动态挑主题"],
@@ -796,7 +821,8 @@ function renderGrowth(data) {
     </article>
   `).join("");
 
-  $("growthLedger").innerHTML = renderGrowthLedger(ledgerRows);
+  renderGrowthFilters();
+  renderFilteredLedger(allRows);
   $("growthDrafts").innerHTML = renderDraftPack(data.drafts || []);
   const referenceCards = [
     ...listByDate(data.references, 4).map((item) => renderCompactGrowthCard(item, "参考")),
@@ -805,9 +831,89 @@ function renderGrowth(data) {
   $("growthReferences").innerHTML = referenceCards || '<div class="empty-state">暂无素材或周报</div>';
 }
 
+// -- Today Focus --
+function renderGrowthToday(data) {
+  const actions = [];
+  for (const item of (data.drafts || [])) {
+    if (item.data?.status === "ready") {
+      actions.push({ priority: 1, label: "可发布", title: item.data.title || item.id, stage: "生产", type: "drafts", id: item.id, action: "发布", actionType: "copy" });
+    } else if (item.data?.status === "drafting") {
+      actions.push({ priority: 2, label: "继续写", title: item.data.title || item.id, stage: "生产", type: "drafts", id: item.id, action: "编辑", actionType: "edit" });
+    }
+  }
+  for (const item of (data.topics || [])) {
+    if (item.data?.status === "selected") {
+      actions.push({ priority: 3, label: "待写稿", title: item.data.title || item.id, stage: "选题", type: "topics", id: item.id, action: "写草稿", actionType: "create-draft" });
+    }
+  }
+  for (const item of (data.published || [])) {
+    if (item.data?.status !== "reviewed") {
+      actions.push({ priority: 4, label: "待复盘", title: item.data?.title || item.id, stage: "发布", type: "published", id: item.id, action: "复盘", actionType: "edit" });
+    }
+  }
+  actions.sort((a, b) => a.priority - b.priority);
+  const top = actions.slice(0, 5);
+  if (!top.length) {
+    $("growthToday").innerHTML = "";
+    return;
+  }
+  $("growthToday").innerHTML = top.map((a) => `
+    <div class="growth-today-card" data-today-type="${escapeHTML(a.type)}" data-today-id="${escapeHTML(a.id)}" data-today-action="${escapeHTML(a.actionType)}">
+      <span class="stage-chip">${escapeHTML(a.label)}</span>
+      <strong>${escapeHTML(a.title)}</strong>
+      <small>${escapeHTML(a.stage)}</small>
+      <button class="today-action" type="button">${escapeHTML(a.action)}</button>
+    </div>
+  `).join("");
+}
+
+// -- Ledger Filtering --
+function renderGrowthFilters() {
+  const pillars = state.growthConfig?.pillars || [];
+  const f = state.growthFilters;
+  $("growthFilters").innerHTML = `
+    <select data-gf="stage">
+      <option value="all" ${f.stage === "all" ? "selected" : ""}>全部阶段</option>
+      <option value="调研" ${f.stage === "调研" ? "selected" : ""}>调研</option>
+      <option value="选题" ${f.stage === "选题" ? "selected" : ""}>选题</option>
+      <option value="生产" ${f.stage === "生产" ? "selected" : ""}>生产</option>
+      <option value="发布" ${f.stage === "发布" ? "selected" : ""}>发布</option>
+      <option value="复盘" ${f.stage === "复盘" ? "selected" : ""}>复盘</option>
+    </select>
+    <select data-gf="status">
+      <option value="all" ${f.status === "all" ? "selected" : ""}>全部状态</option>
+      ${STATUS_ORDER.map((s) => `<option value="${s}" ${f.status === s ? "selected" : ""}>${s}</option>`).join("")}
+    </select>
+    <select data-gf="pillar">
+      <option value="all" ${f.pillar === "all" ? "selected" : ""}>全部支柱</option>
+      ${pillars.map((p) => `<option value="${escapeHTML(p)}" ${f.pillar === p ? "selected" : ""}>${escapeHTML(p)}</option>`).join("")}
+    </select>
+    <input type="text" data-gf="search" placeholder="搜索标题..." value="${escapeHTML(f.search)}">
+  `;
+}
+
+function applyGrowthFilters(rows) {
+  const f = state.growthFilters;
+  return rows.filter((row) => {
+    if (f.stage !== "all" && row.stage !== f.stage) return false;
+    if (f.status !== "all" && row.status !== f.status) return false;
+    if (f.pillar !== "all" && row.pillar !== f.pillar) return false;
+    if (f.search && !row.title.toLowerCase().includes(f.search.toLowerCase()) && !row.excerpt.toLowerCase().includes(f.search.toLowerCase())) return false;
+    return true;
+  });
+}
+
+function renderFilteredLedger(allRows) {
+  const rows = allRows || growthLedgerRows(state.growth);
+  const filtered = applyGrowthFilters(rows);
+  $("growthLedger").innerHTML = renderGrowthLedger(filtered);
+}
+
 function growthLedgerRows(data) {
-  const mapItem = (stage, item) => ({
+  const mapItem = (stage, type, item) => ({
     stage,
+    type,
+    id: item.id,
     title: item.data?.title || item.id,
     status: item.data?.status || "",
     pillar: item.data?.pillar || "",
@@ -817,12 +923,17 @@ function growthLedgerRows(data) {
     excerpt: item.excerpt,
   });
   return [
-    ...(data.references || []).map((item) => mapItem("调研", item)),
-    ...(data.topics || []).map((item) => mapItem("选题", item)),
-    ...(data.drafts || []).map((item) => mapItem("生产", item)),
-    ...(data.published || []).map((item) => mapItem("发布", item)),
-    ...(data.weekly || []).map((item) => mapItem("复盘", item)),
+    ...(data.references || []).map((item) => mapItem("调研", "references", item)),
+    ...(data.topics || []).map((item) => mapItem("选题", "topics", item)),
+    ...(data.drafts || []).map((item) => mapItem("生产", "drafts", item)),
+    ...(data.published || []).map((item) => mapItem("发布", "published", item)),
+    ...(data.weekly || []).map((item) => mapItem("复盘", "weekly", item)),
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+function nextStatus(current) {
+  const idx = STATUS_ORDER.indexOf(current);
+  return idx >= 0 && idx < STATUS_ORDER.length - 1 ? STATUS_ORDER[idx + 1] : null;
 }
 
 function renderGrowthLedger(rows) {
@@ -837,28 +948,31 @@ function renderGrowthLedger(rows) {
           <th>状态</th>
           <th>时间</th>
           <th>关键词</th>
-          <th>文件</th>
         </tr>
       </thead>
       <tbody>
-        ${rows.map((row) => `
-          <tr>
+        ${rows.map((row) => {
+          const next = nextStatus(row.status);
+          return `
+          <tr data-type="${escapeHTML(row.type)}" data-id="${escapeHTML(row.id)}">
             <td><span class="stage-chip">${escapeHTML(row.stage)}</span></td>
             <td>
               <strong>${escapeHTML(row.title)}</strong>
               <small>${escapeHTML(compact(row.excerpt, "暂无摘要"))}</small>
             </td>
             <td>${row.pillar ? `<span class="pill ok">${escapeHTML(row.pillar)}</span>` : ""}</td>
-            <td><span class="status-dot ${escapeHTML(row.status)}"></span>${escapeHTML(row.status || "n/a")}</td>
+            <td>
+              <span class="status-dot ${escapeHTML(row.status)}"></span>${escapeHTML(row.status || "n/a")}
+              ${next ? `<button class="status-advance" type="button" data-advance-type="${escapeHTML(row.type)}" data-advance-id="${escapeHTML(row.id)}" data-advance-to="${escapeHTML(next)}" title="${escapeHTML(next)}">→</button>` : ""}
+            </td>
             <td><code>${escapeHTML(row.date || "-")}</code></td>
             <td>
               <div class="keyword-line">
                 ${row.keywords.slice(0, 4).map((tag) => `<span>${escapeHTML(tag)}</span>`).join("")}
               </div>
             </td>
-            <td><code class="path-code">${escapeHTML(row.source)}</code></td>
-          </tr>
-        `).join("")}
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -870,7 +984,7 @@ function renderGrowthStartPanel() {
       <div class="growth-start-copy">
         <span>START HERE</span>
         <h3>今天先推进一篇笔记</h3>
-        <p>三个入口对应三个不同文件类型：参考帖、选题、草稿。右上角也只是同一个“写今日草稿”快捷入口。</p>
+        <p>点击右上角的按钮开始：录参考帖、建选题、写今日草稿。</p>
       </div>
       <div class="growth-start-actions">
         <button class="ghost-button" type="button" data-growth-action="reference">录参考帖</button>
@@ -908,37 +1022,6 @@ function renderDraftPack(items) {
   `;
 }
 
-function handleGrowthAction(event) {
-  const button = event.target.closest("[data-growth-action]");
-  if (!button) return;
-  const action = button.dataset.growthAction;
-  if (action === "draft") {
-    saveGrowthDraft();
-    return;
-  }
-  const configs = {
-    reference: {
-      type: "references",
-      promptLabel: "参考帖标题",
-      status: "saved",
-      pillar: "生活记录方法",
-      tags: ["生活记录方法"],
-      keywords: ["生活记录"],
-      body: "## Hook\n\n\n## 结构观察\n\n\n## 视觉参考\n\n\n## 可借鉴点\n\n",
-    },
-    topic: {
-      type: "topics",
-      promptLabel: "选题标题",
-      status: "idea",
-      pillar: "生活记录方法",
-      tags: ["生活记录"],
-      keywords: ["生活记录"],
-      body: "## 角度\n\n\n## 用户搜索意图\n\n\n## 标题钩子\n\n",
-    },
-  };
-  if (configs[action]) saveGrowthItem(configs[action]);
-}
-
 function renderCompactGrowthCard(item, label) {
   const tags = [...(item.data?.keywords || []), ...(item.data?.tags || [])].slice(0, 3);
   return `
@@ -956,48 +1039,182 @@ function renderCompactGrowthCard(item, label) {
   `;
 }
 
-async function saveGrowthDraft() {
-  await saveGrowthItem({
-    type: "drafts",
-    promptLabel: "今日草稿标题",
-    status: "drafting",
-    pillar: "生活记录方法",
-    tags: ["生活记录", "LifeOS"],
-    keywords: ["生活记录"],
-    body: "## 正文\n\n先写一个真实场景。\n\n## 发布检查\n\n- 标题含关键词\n- 发布前人工审核\n",
-  });
+// -- Content Editor Modal --
+function openContentModal(mode, opts = {}) {
+  state.contentModal = { mode, type: opts.type || "drafts", id: opts.id || null };
+  const modal = $("contentModal");
+  const form = $("contentModalForm");
+  form.reset();
+  $("contentModalTitle").textContent = mode === "edit" ? "编辑内容" : "新建内容";
+  $("cmDelete").hidden = mode !== "edit";
+  $("cmType").disabled = mode === "edit";
+  $("cmDate").value = todayKey();
+
+  const pillars = state.growthConfig?.pillars || [];
+  $("cmPillar").innerHTML = `<option value="">—</option>${pillars.map((p) => `<option value="${escapeHTML(p)}">${escapeHTML(p)}</option>`).join("")}`;
+
+  if (mode === "create") {
+    const type = opts.type || "drafts";
+    $("cmType").value = type;
+    $("cmStatus").value = DEFAULT_STATUS[type] || "idea";
+    $("cmBody").value = DEFAULT_BODIES[type] || "";
+    if (pillars.length) $("cmPillar").value = pillars[0];
+    const defaultKw = state.growthConfig?.keywords?.slice(0, 2) || [];
+    $("cmKeywords").value = defaultKw.join(", ");
+    $("cmTags").value = (state.growthConfig?.hashtags?.slice(0, 2) || []).join(", ");
+  }
+
+  modal.hidden = false;
+  $("cmTitle").focus();
 }
 
-async function saveGrowthItem(config) {
-  const title = window.prompt(config.promptLabel);
-  if (!title || !title.trim()) return;
+function closeContentModal() {
+  $("contentModal").hidden = true;
+  state.contentModal = { mode: null, type: null, id: null };
+}
+
+async function openEditModal(type, id) {
+  openContentModal("edit", { type, id });
+  try {
+    const item = await requestJSON(`/dashboard/api/growth/content?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`, { _retries: 1 });
+    $("cmTitle").value = item.data?.title || "";
+    $("cmType").value = type;
+    $("cmStatus").value = item.data?.status || "";
+    $("cmPillar").value = item.data?.pillar || "";
+    $("cmDate").value = item.data?.date || "";
+    $("cmKeywords").value = (item.data?.keywords || []).join(", ");
+    $("cmTags").value = (item.data?.tags || []).join(", ");
+    $("cmBody").value = item.body || "";
+  } catch (error) {
+    closeContentModal();
+    alert(`加载失败：${error.message}`);
+  }
+}
+
+async function submitContentModal(event) {
+  event.preventDefault();
+  const { mode, type: editType, id } = state.contentModal;
+  const type = mode === "edit" ? editType : $("cmType").value;
+  const payload = {
+    type,
+    data: {
+      title: $("cmTitle").value.trim(),
+      status: $("cmStatus").value,
+      pillar: $("cmPillar").value,
+      date: $("cmDate").value || todayKey(),
+      keywords: $("cmKeywords").value.split(",").map((s) => s.trim()).filter(Boolean),
+      tags: $("cmTags").value.split(",").map((s) => s.trim()).filter(Boolean),
+    },
+    body: $("cmBody").value,
+  };
+  try {
+    if (mode === "edit") {
+      payload.id = id;
+      await requestJSON("/dashboard/api/growth/content", { method: "PUT", body: JSON.stringify(payload), _retries: 1 });
+    } else {
+      await requestJSON("/dashboard/api/growth/content", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          title: payload.data.title,
+          status: payload.data.status,
+          pillar: payload.data.pillar,
+          keywords: payload.data.keywords,
+          tags: payload.data.tags,
+          body: payload.body,
+        }),
+        _retries: 1,
+      });
+    }
+    closeContentModal();
+    state.growthLoadedFor = null;
+    await loadGrowth();
+  } catch (error) {
+    alert(`保存失败：${error.message}`);
+  }
+}
+
+async function deleteContentItem() {
+  const { type, id } = state.contentModal;
+  if (!type || !id) return;
+  if (!confirm("确认删除这条内容？")) return;
   try {
     await requestJSON("/dashboard/api/growth/content", {
-      method: "POST",
-      body: JSON.stringify({
-        type: config.type,
-        title: title.trim(),
-        status: config.status,
-        pillar: config.pillar,
-        tags: config.tags,
-        keywords: config.keywords,
-        body: config.body,
-      }),
+      method: "DELETE",
+      body: JSON.stringify({ type, id }),
+      _retries: 1,
+    });
+    closeContentModal();
+    state.growthLoadedFor = null;
+    await loadGrowth();
+  } catch (error) {
+    alert(`删除失败：${error.message}`);
+  }
+}
+
+async function advanceStatus(type, id, newStatus) {
+  try {
+    await requestJSON("/dashboard/api/growth/content", {
+      method: "PATCH",
+      body: JSON.stringify({ type, id, status: newStatus }),
       _retries: 1,
     });
     state.growthLoadedFor = null;
     await loadGrowth();
   } catch (error) {
-    $("growthLedger").innerHTML = `<div class="empty-state">保存失败：${escapeHTML(error.message)}</div>`;
+    alert(`状态更新失败：${error.message}`);
   }
+}
+
+function handleGrowthAction(event) {
+  const button = event.target.closest("[data-growth-action]");
+  if (!button) return;
+  const action = button.dataset.growthAction;
+  const typeMap = { reference: "references", topic: "topics", draft: "drafts" };
+  openContentModal("create", { type: typeMap[action] || "drafts" });
 }
 
 async function copyGrowthPack(event) {
   const button = event.target.closest(".growth-copy");
   if (!button) return;
+  event.stopPropagation();
   await navigator.clipboard.writeText(button.dataset.copy || "");
   button.textContent = "已复制";
-  setTimeout(() => { button.textContent = "复制发布包"; }, 1200);
+  setTimeout(() => { button.textContent = "复制标题 + 正文 + 标签"; }, 1200);
+}
+
+function handleGrowthLedgerClick(event) {
+  if (event.target.closest(".status-advance")) return;
+  const row = event.target.closest("tr[data-type]");
+  if (!row) return;
+  openEditModal(row.dataset.type, row.dataset.id);
+}
+
+function handleStatusAdvance(event) {
+  const btn = event.target.closest(".status-advance");
+  if (!btn) return;
+  event.stopPropagation();
+  advanceStatus(btn.dataset.advanceType, btn.dataset.advanceId, btn.dataset.advanceTo);
+}
+
+function handleGrowthFilterChange(event) {
+  const el = event.target.closest("[data-gf]");
+  if (!el) return;
+  state.growthFilters[el.dataset.gf] = el.value;
+  renderFilteredLedger();
+}
+
+function handleTodayCardClick(event) {
+  const card = event.target.closest(".growth-today-card");
+  if (!card) return;
+  const { todayType: type, todayId: id, todayAction: action } = card.dataset;
+  if (action === "edit") {
+    openEditModal(type, id);
+  } else if (action === "create-draft") {
+    openContentModal("create", { type: "drafts" });
+  } else if (action === "copy") {
+    openEditModal(type, id);
+  }
 }
 
 function bindEvents() {
@@ -1011,14 +1228,24 @@ function bindEvents() {
     loadCurrentView();
   });
   $("copyJsonButton").addEventListener("click", copyJSON);
-  $("newGrowthDraftButton").addEventListener("click", saveGrowthDraft);
   $("growthPage").addEventListener("click", copyGrowthPack);
   $("growthPage").addEventListener("click", handleGrowthAction);
+  $("growthLedger").addEventListener("click", handleGrowthLedgerClick);
+  $("growthLedger").addEventListener("click", handleStatusAdvance);
+  $("growthFilters").addEventListener("change", handleGrowthFilterChange);
+  $("growthFilters").addEventListener("input", handleGrowthFilterChange);
+  $("growthToday").addEventListener("click", handleTodayCardClick);
+  $("contentModalForm").addEventListener("submit", submitContentModal);
+  $("contentModalClose").addEventListener("click", closeContentModal);
+  $("cmCancel").addEventListener("click", closeContentModal);
+  $("cmDelete").addEventListener("click", deleteContentItem);
+  $("contentModal").addEventListener("click", (event) => {
+    if (event.target === $("contentModal")) closeContentModal();
+  });
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
   window.addEventListener("hashchange", () => setView(viewFromHash(), { updateHash: false }));
-  // 切日期 / 切来源 / 切错误过滤 → 重置增量状态，全量加载
   ["startDateInput", "endDateInput", "sourceInput", "errorsOnlyInput"].forEach((id) => {
     $(id).addEventListener("change", () => {
       state.lastReceivedAt = null;

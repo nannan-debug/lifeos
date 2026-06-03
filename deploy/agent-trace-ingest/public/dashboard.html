@@ -134,10 +134,13 @@
           </div>
           <div class="growth-header-actions">
             <span class="session-pill" id="growthRoot">读取中</span>
-            <button class="ghost-button" id="newGrowthDraftButton" type="button">写今日草稿</button>
+            <button class="ghost-button" type="button" data-growth-action="reference">录参考帖</button>
+            <button class="ghost-button" type="button" data-growth-action="topic">建选题</button>
+            <button class="copy-button" type="button" data-growth-action="draft">写今日草稿</button>
           </div>
         </div>
         <div class="usage-summary" id="growthSummary"></div>
+        <div id="growthToday" class="growth-today"></div>
         <div class="growth-flow" id="growthFlow"></div>
         <div class="growth-body">
           <section class="growth-ledger-panel">
@@ -145,6 +148,7 @@
               <span>内容生产表</span>
               <small id="growthLedgerCount">0</small>
             </div>
+            <div id="growthFilters" class="growth-filters"></div>
             <div id="growthLedger" class="growth-ledger"></div>
           </section>
           <aside class="growth-side-panel">
@@ -166,7 +170,79 @@
         </div>
       </section>
     </section>
+
+    <div class="content-modal-overlay" id="contentModal" hidden>
+      <div class="content-modal">
+        <div class="content-modal-header">
+          <h3 id="contentModalTitle">新建内容</h3>
+          <button class="ghost-button" id="contentModalClose" type="button">✕</button>
+        </div>
+        <form id="contentModalForm" class="content-modal-form">
+          <div class="content-modal-row">
+            <label>
+              <span>标题</span>
+              <input id="cmTitle" type="text" required>
+            </label>
+          </div>
+          <div class="content-modal-row content-modal-row-2col">
+            <label>
+              <span>类型</span>
+              <select id="cmType">
+                <option value="references">参考帖</option>
+                <option value="topics">选题</option>
+                <option value="drafts">草稿</option>
+                <option value="published">已发布</option>
+                <option value="weekly">周复盘</option>
+              </select>
+            </label>
+            <label>
+              <span>状态</span>
+              <select id="cmStatus">
+                <option value="idea">idea</option>
+                <option value="saved">saved</option>
+                <option value="selected">selected</option>
+                <option value="drafting">drafting</option>
+                <option value="ready">ready</option>
+                <option value="published">published</option>
+                <option value="reviewed">reviewed</option>
+              </select>
+            </label>
+          </div>
+          <div class="content-modal-row content-modal-row-2col">
+            <label>
+              <span>支柱</span>
+              <select id="cmPillar"><option value="">—</option></select>
+            </label>
+            <label>
+              <span>日期</span>
+              <input id="cmDate" type="date">
+            </label>
+          </div>
+          <div class="content-modal-row content-modal-row-2col">
+            <label>
+              <span>关键词</span>
+              <input id="cmKeywords" type="text" placeholder="逗号分隔">
+            </label>
+            <label>
+              <span>标签</span>
+              <input id="cmTags" type="text" placeholder="逗号分隔">
+            </label>
+          </div>
+          <div class="content-modal-row">
+            <label>
+              <span>正文 (Markdown)</span>
+              <textarea id="cmBody" rows="14"></textarea>
+            </label>
+          </div>
+          <div class="content-modal-actions">
+            <button class="copy-button" type="submit" id="cmSave">保存</button>
+            <button class="ghost-button" type="button" id="cmCancel">取消</button>
+            <button class="ghost-button content-modal-delete" type="button" id="cmDelete" hidden>删除</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
-  <script src="/dashboard/dashboard.js?v=20260603a"></script>
+  <script src="/dashboard/dashboard.js?v=20260604a"></script>
 </body>
 </html>

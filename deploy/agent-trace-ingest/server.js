@@ -564,6 +564,61 @@ export function createTraceServer(options = {}) {
     };
   }
 
+  function resolveGrowthFile(type, id) {
+    const base = growthTypePath(type);
+    const file = path.join(base, `${id}.md`);
+    const resolved = path.resolve(file);
+    if (!resolved.startsWith(path.resolve(growthDir))) {
+      const err = new Error("path_traversal");
+      err.status = 403;
+      throw err;
+    }
+    return resolved;
+  }
+
+  async function readGrowthItem(type, id) {
+    const file = resolveGrowthFile(type, id);
+    let text;
+    try {
+      text = await fs.readFile(file, "utf8");
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        const notFound = new Error("not_found");
+        notFound.status = 404;
+        throw notFound;
+      }
+      throw err;
+    }
+    const { data, body } = parseFrontmatter(text);
+    const base = growthTypePath(type);
+    return { id, type, path: path.relative(growthDir, file), data, body };
+  }
+
+  async function updateGrowthItem(type, id, newData, newBody) {
+    const file = resolveGrowthFile(type, id);
+    const existing = await readGrowthItem(type, id);
+    const merged = { ...existing.data, ...newData, updated_at: new Date().toISOString() };
+    const body = newBody !== undefined ? newBody : existing.body;
+    await fs.writeFile(file, serializeFrontmatter(merged, body), "utf8");
+    return { id, type, path: existing.path, data: merged };
+  }
+
+  async function deleteGrowthItem(type, id) {
+    const file = resolveGrowthFile(type, id);
+    await fs.access(file);
+    await fs.unlink(file);
+  }
+
+  async function loadGrowthConfig() {
+    const configFile = path.join(growthDir, "config/tags.json");
+    try {
+      const text = await fs.readFile(configFile, "utf8");
+      return JSON.parse(text);
+    } catch {
+      return { pillars: [], keywords: [], hashtags: [], qualityChecklist: [] };
+    }
+  }
+
   async function saveGrowthContent(input = {}) {
     const type = String(input.type || "");
     const title = String(input.title || input.data?.title || "未命名");
@@ -761,13 +816,78 @@ export function createTraceServer(options = {}) {
         return;
       }
 
-      if (req.method === "POST" && url.pathname === "/dashboard/api/growth/content") {
+      if (url.pathname === "/dashboard/api/growth/content") {
         if (!isDashboardAuthorized(req)) {
           await writeJSON(res, 401, { error: "unauthorized" });
           return;
         }
-        const data = await saveGrowthContent(await readJSONBody(req));
-        await writeJSON(res, 200, { ok: true, ...data });
+        if (req.method === "POST") {
+          const data = await saveGrowthContent(await readJSONBody(req));
+          await writeJSON(res, 200, { ok: true, ...data });
+          return;
+        }
+        if (req.method === "GET") {
+          const type = url.searchParams.get("type");
+          const id = url.searchParams.get("id");
+          if (!type || !id) {
+            await writeJSON(res, 400, { error: "missing_type_or_id" });
+            return;
+          }
+          const item = await readGrowthItem(type, id);
+          await writeJSON(res, 200, { ok: true, ...item });
+          return;
+        }
+        if (req.method === "PUT") {
+          const body = await readJSONBody(req);
+          const type = String(body?.type || "");
+          const id = String(body?.id || "");
+          if (!type || !id) {
+            await writeJSON(res, 400, { error: "missing_type_or_id" });
+            return;
+          }
+          const result = await updateGrowthItem(type, id, body.data || {}, body.body);
+          await writeJSON(res, 200, { ok: true, ...result });
+          return;
+        }
+        if (req.method === "PATCH") {
+          const body = await readJSONBody(req);
+          const type = String(body?.type || "");
+          const id = String(body?.id || "");
+          if (!type || !id) {
+            await writeJSON(res, 400, { error: "missing_type_or_id" });
+            return;
+          }
+          const patch = {};
+          for (const key of ["status", "pillar", "tags", "keywords", "title"]) {
+            if (body[key] !== undefined) patch[key] = body[key];
+          }
+          const result = await updateGrowthItem(type, id, patch);
+          await writeJSON(res, 200, { ok: true, ...result });
+          return;
+        }
+        if (req.method === "DELETE") {
+          const body = await readJSONBody(req);
+          const type = String(body?.type || "");
+          const id = String(body?.id || "");
+          if (!type || !id) {
+            await writeJSON(res, 400, { error: "missing_type_or_id" });
+            return;
+          }
+          await deleteGrowthItem(type, id);
+          await writeJSON(res, 200, { ok: true });
+          return;
+        }
+        await writeJSON(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/dashboard/api/growth/config") {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const config = await loadGrowthConfig();
+        await writeJSON(res, 200, { ok: true, ...config });
         return;
       }
 
