@@ -64,7 +64,17 @@
 - 明确待办信号已经出现。
 - 明确感受/感恩/做梦类型。
 
-## 4. 标准测试集维护
+## 4. DBT Coach 边界
+
+DBT Coach 不是普通记录归类，也不是二次确认 UI；它是 AI 对话里的独立练习状态机。
+
+- 普通 chat 模式可以在情绪调节、反复纠结、人际困扰、行为复盘等场景里提议 DBT 练习。
+- 用户未同意前，不直接开始 DBT 步骤，也不生成 DBT 练习总结。
+- 用户同意后，App 端应确定性启动 `AgentDBTSessionState`，并切到 `agentMode = "dbtCoach"`。
+- DBT Coach 每轮最多推进一个步骤，未完成时不生成 action card。
+- 具体 handoff、步骤推进和回归样本见 [`agent-chat-and-dbt-coach.md`](agent-chat-and-dbt-coach.md)。
+
+## 5. 标准测试集维护
 
 - 标准样本放在 `Tests/Fixtures/ai-routing-cases.json`。
 - 每个 case 至少包含 `id`、`input`、`aiRecords`、`expectedRecords`、`notes`、`tags`。
@@ -82,7 +92,7 @@
 4. 跑完整单测，确认新增样本通过且旧样本没有回归。
 5. 如果这次改动改变了产品边界，同步更新本文档前面的规则章节。
 
-## 5. 当前不做
+## 6. 当前不做
 
 - 不新增真正数据库。
 - 不改 Worker prompt。

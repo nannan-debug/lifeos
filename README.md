@@ -15,6 +15,7 @@
 - 🧘 不 streak、不审判、不通知轰炸
 
 发版状态见 [`LAUNCH_CHECKLIST.md`](./LAUNCH_CHECKLIST.md)，版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
+AI 对话与 DBT Coach 的行为契约见 [`docs/agent-chat-and-dbt-coach.md`](./docs/agent-chat-and-dbt-coach.md)。
 
 ---
 
@@ -84,6 +85,7 @@ Cmd + R 即可。默认 scheme = `PersonalSystem`。
 - 🌿 分支 & commit 规范：见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - 🔢 版本号规范：见 [`VERSIONING.md`](./VERSIONING.md)
 - 🚢 上架清单：见 [`LAUNCH_CHECKLIST.md`](./LAUNCH_CHECKLIST.md)
+- 🤖 AI 对话 / DBT Coach：见 [`docs/agent-chat-and-dbt-coach.md`](./docs/agent-chat-and-dbt-coach.md)
 
 ---
 

@@ -167,6 +167,66 @@ A：1.0 完全免费、无内购、无广告。未来即使加内购，原有功
 
 ---
 
+## 7.1 海外英文 ASO / Custom Product Page 草稿（推广用）
+
+> 用途：配合海外英文推广。默认 App Store 主页面可以继续保持中文/双语策略；如果要承接 Reddit、X、Indie Hackers、Product Hunt 等英文流量，优先在 App Store Connect 创建一个 Custom Product Page，主题聚焦 `ADHD-style brain dump`。
+
+### English subtitle candidates（30 字符内）
+
+| 方向 | 文案 | 字符数 | 适用场景 |
+|---|---|---:|---|
+| 推荐 | `Brain dump, gently sorted` | 26 | 最清楚，适合海外反馈期 |
+| ADHD 定位 | `ADHD-friendly brain dump` | 24 | 适合 Custom Product Page |
+| 情绪定位 | `Gentle life tracking` | 20 | 更宽，但不如 brain dump 具体 |
+
+### English promotional text（170 字符内）
+
+```
+A gentle iOS app for ADHD-style brain dumps, tasks, time blocks, moods, and reflection. No streaks, no shame, no ads, and no tracking.
+```
+
+约 142 字符。
+
+### English keywords（100 字符内）
+
+```
+ADHD,brain dump,journal,mood,todo,habits,time tracking,self care,reflection,AI assistant
+```
+
+约 88 字符。
+
+### Custom Product Page concept
+
+页面主题：
+
+```
+ADHD-style brain dump
+```
+
+页面第一屏建议突出：
+
+- Brain dump first. Organize later.
+- Capture tasks, notes, moods, and time blocks without choosing the perfect category first.
+- No streaks, no shame, no tracking.
+
+截图顺序建议：
+
+1. 全局 AI 输入 / brain dump 入口。
+2. 自动整理成待办、时间、随记或建议卡片。
+3. 今日打卡无 streak、低压力状态。
+4. 时间记录 / 周回看，强调 observe rather than judge。
+5. 设置页隐私：no ads, no tracking, optional iCloud sync。
+
+外部链接建议统一使用：
+
+```
+https://apps.apple.com/app/lifeos/id6763877227
+```
+
+如果 ASC 生成了 Custom Product Page 专属 URL，Reddit / X / Product Hunt 等外部渠道优先使用专属 URL，便于分来源观察转化。
+
+---
+
 ## 8. Category（类目）
 
 | 栏位 | 推荐 | 理由 |

@@ -54,8 +54,8 @@
 ├── PersonalSystem.xcodeproj
 ├── Sources/
 ├── PRIVACY_POLICY.md
-├── ASC_COPY_DRAFT_v1.md
-├── ASC_SCREENSHOT_PLAN.md
+├── docs/operations/appstore/ASC_COPY_DRAFT_v1.md
+├── docs/operations/appstore/ASC_SCREENSHOT_PLAN.md
 ├── docs/                     # GitHub Pages 页面（Support / Privacy）
 └── LAUNCH_CHECKLIST.md
 ```
@@ -89,8 +89,8 @@
 
 - ✅ 中文隐私政策草稿已填入真实开发者名和邮箱：`PRIVACY_POLICY.md`
 - ✅ AI 首次同意流程已落地：`ai.consent.v1`
-- ✅ App Store Connect 文案草稿已整理：`ASC_COPY_DRAFT_v1.md`
-- ✅ App Store 截图执行方案已整理：`ASC_SCREENSHOT_PLAN.md`
+- ✅ App Store Connect 文案草稿已整理：`docs/operations/appstore/ASC_COPY_DRAFT_v1.md`
+- ✅ App Store 截图执行方案已整理：`docs/operations/appstore/ASC_SCREENSHOT_PLAN.md`
 - ✅ App Review Notes 英文草稿已准备
 
 ### 2.4 支持页面
@@ -113,7 +113,7 @@
 - ✅ Age Rating 填写
 - ✅ Pricing & Availability 设置（已排除 China mainland）
 - ✅ 5 张 6.7" 截图生成并上传
-- ✅ ASC metadata 文案填写（按 [ASC_COPY_DRAFT_v1.md](ASC_COPY_DRAFT_v1.md)）
+- ✅ ASC metadata 文案填写（按 [ASC_COPY_DRAFT_v1.md](docs/operations/appstore/ASC_COPY_DRAFT_v1.md)）
 - ✅ Support URL / Privacy Policy URL 公开链接落地
 - ✅ 首次审核通过、上架
 
@@ -203,13 +203,13 @@ open PersonalSystem.xcodeproj
 1. App Store Connect → LifeOS → Distribution → 左侧 `iOS App` 旁的 **+** → 输入新版本号 → Create
 2. 填 **What's New in This Version**（用户更新时看到的"更新内容"，中文，每条一行，总长不超过 4000 字符）
 3. 滚到 **Build** 区域 → Add Build → 选刚才上传的 build（如果还没出现就过几分钟刷新）
-4. 截图如果新功能引起明显 UI 变化，重新生成（参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)）；变化不大就不换
+4. 截图如果新功能引起明显 UI 变化，重新生成（参考 [ASC_SCREENSHOT_PLAN.md](docs/operations/appstore/ASC_SCREENSHOT_PLAN.md)）；变化不大就不换
 5. App Privacy / Age Rating / Pricing 通常无需改
 6. **Save** → 顶部 **Add for Review** → **Submit to App Review**
 
 > 💡 出口合规已永久豁免。`project.yml` 里的 `ITSAppUsesNonExemptEncryption: false` 会让每次新 build 自动跳过"missing export compliance information"那个弹窗，无需手动到 TestFlight 标签答题。
 
-按 [ASC_FINAL_REVIEW_CHECKLIST.md](ASC_FINAL_REVIEW_CHECKLIST.md) 过一遍提交前自检。
+按 [ASC_FINAL_REVIEW_CHECKLIST.md](docs/operations/appstore/ASC_FINAL_REVIEW_CHECKLIST.md) 过一遍提交前自检。
 
 ### 4.6 等审核
 
@@ -271,7 +271,7 @@ EOF
 之后改设置页 / AI 入口 / 同意弹窗的逻辑时，务必同步检查：
 
 - `AIConsentSheet.swift`
-- `ASC_COPY_DRAFT_v1.md`（用作 ASC 提审文案）
+- `docs/operations/appstore/ASC_COPY_DRAFT_v1.md`（用作 ASC 提审文案）
 - 截图文案
 
 ### 5.2 永远不要把 LifeOS 表述成"医疗 app"
@@ -283,7 +283,7 @@ EOF
 - 不提供医疗建议
 - 是个人记录 / 观察工具
 
-`ASC_COPY_DRAFT_v1.md` 里已经处理好这条，后续改文案不要漂回敏感表述。
+`docs/operations/appstore/ASC_COPY_DRAFT_v1.md` 里已经处理好这条，后续改文案不要漂回敏感表述。
 
 ### 5.3 build number 永远 +1，永远不重复
 
@@ -308,7 +308,7 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ### 5.5 截图随版本演进
 
-如果新版本的 UI 跟商店截图差距明显（比如打卡页大改），上版本前需要重新出图。当前规则参考 [ASC_SCREENSHOT_PLAN.md](ASC_SCREENSHOT_PLAN.md)。
+如果新版本的 UI 跟商店截图差距明显（比如打卡页大改），上版本前需要重新出图。当前规则参考 [ASC_SCREENSHOT_PLAN.md](docs/operations/appstore/ASC_SCREENSHOT_PLAN.md)。
 
 ### 5.6 出口合规已永久豁免
 
@@ -427,8 +427,8 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - `Sources/Views/AIConsentSheet.swift`
 - `Sources/Services/AIParser.swift`
 - `PRIVACY_POLICY.md`
-- `ASC_COPY_DRAFT_v1.md`
-- `ASC_SCREENSHOT_PLAN.md`
+- `docs/operations/appstore/ASC_COPY_DRAFT_v1.md`
+- `docs/operations/appstore/ASC_SCREENSHOT_PLAN.md`
 - `docs/index.html`
 - `docs/privacy.html`
 
