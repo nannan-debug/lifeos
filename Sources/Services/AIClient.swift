@@ -10,7 +10,9 @@ protocol AIClient {
         traceId: String?,
         sessionId: String?,
         threadId: String?,
-        userProfile: String?
+        userProfile: String?,
+        agentMode: String?,
+        dbtSession: AgentDBTSessionState?
     ) async throws -> AgentChatResponse
 
     func quick(
@@ -34,7 +36,9 @@ protocol AIClient {
         sessionId: String?,
         threadId: String?,
         userProfile: String?,
-        trigger: String?
+        trigger: String?,
+        agentMode: String?,
+        dbtSession: AgentDBTSessionState?
     ) -> AsyncThrowingStream<StreamEvent, Error>
 }
 
@@ -48,7 +52,9 @@ struct DefaultAIClient: AIClient {
         traceId: String?,
         sessionId: String?,
         threadId: String?,
-        userProfile: String?
+        userProfile: String?,
+        agentMode: String? = nil,
+        dbtSession: AgentDBTSessionState? = nil
     ) async throws -> AgentChatResponse {
         try await AIParser.chat(
             input: input,
@@ -59,7 +65,9 @@ struct DefaultAIClient: AIClient {
             traceId: traceId,
             sessionId: sessionId,
             threadId: threadId,
-            userProfile: userProfile
+            userProfile: userProfile,
+            agentMode: agentMode,
+            dbtSession: dbtSession
         )
     }
 
@@ -95,7 +103,9 @@ struct DefaultAIClient: AIClient {
         sessionId: String?,
         threadId: String?,
         userProfile: String?,
-        trigger: String? = nil
+        trigger: String? = nil,
+        agentMode: String? = nil,
+        dbtSession: AgentDBTSessionState? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AIParser.chatStream(
             input: input,
@@ -107,7 +117,9 @@ struct DefaultAIClient: AIClient {
             sessionId: sessionId,
             threadId: threadId,
             userProfile: userProfile,
-            trigger: trigger
+            trigger: trigger,
+            agentMode: agentMode,
+            dbtSession: dbtSession
         )
     }
 }

@@ -159,9 +159,20 @@ struct BrainCardWallView: View {
 
     private func cardRow(_ card: BrainCard) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(card.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if card.kind == "dbtSession" {
+                    Label("DBT", systemImage: "leaf")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(CreamTheme.green)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(CreamTheme.green.opacity(0.12)))
+                }
+                Text(card.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+            }
 
             if !card.content.isEmpty {
                 Text(snippet(card.content))
@@ -178,6 +189,11 @@ struct BrainCardWallView: View {
                 }
                 if !card.extensions.isEmpty {
                     Text("\(card.extensions.count) 条延伸")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if let transcriptCount = card.dbtSession?.transcript.count {
+                    Label("\(transcriptCount) 轮", systemImage: "text.bubble")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

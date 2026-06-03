@@ -49,7 +49,9 @@ enum AIParser {
         traceId: String? = nil,
         sessionId: String? = nil,
         threadId: String? = nil,
-        userProfile: String? = nil
+        userProfile: String? = nil,
+        agentMode: String? = nil,
+        dbtSession: AgentDBTSessionState? = nil
     ) async throws -> AgentChatResponse {
         var body: [String: Any] = [
             "mode": "chat",
@@ -65,6 +67,14 @@ enum AIParser {
         if let userProfile, !userProfile.isEmpty {
             body["userProfile"] = userProfile
         }
+        if let agentMode, !agentMode.isEmpty {
+            body["agentMode"] = agentMode
+        }
+        if let dbtSession,
+           let data = try? JSONEncoder().encode(dbtSession),
+           let object = try? JSONSerialization.jsonObject(with: data) {
+            body["dbtSession"] = object
+        }
         let data = try await postWorker(body: body)
         do {
             let decoded = try JSONDecoder().decode(AgentChatResponse.self, from: data)
@@ -73,6 +83,7 @@ enum AIParser {
                 followUpQuestion: decoded.followUpQuestion,
                 actionSuggestions: decoded.actionSuggestions,
                 toolCall: decoded.toolCall,
+                dbtSession: decoded.dbtSession,
                 debug: decoded.debug,
                 rawBody: String(data: data, encoding: .utf8) ?? "<binary>",
                 usage: decoded.usage
@@ -193,7 +204,9 @@ enum AIParser {
         sessionId: String? = nil,
         threadId: String? = nil,
         userProfile: String? = nil,
-        trigger: String? = nil
+        trigger: String? = nil,
+        agentMode: String? = nil,
+        dbtSession: AgentDBTSessionState? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
@@ -215,6 +228,14 @@ enum AIParser {
                     }
                     if let trigger, !trigger.isEmpty {
                         body["trigger"] = trigger
+                    }
+                    if let agentMode, !agentMode.isEmpty {
+                        body["agentMode"] = agentMode
+                    }
+                    if let dbtSession,
+                       let data = try? JSONEncoder().encode(dbtSession),
+                       let object = try? JSONSerialization.jsonObject(with: data) {
+                        body["dbtSession"] = object
                     }
 
                     var req = URLRequest(url: workerURL)

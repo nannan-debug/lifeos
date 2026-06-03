@@ -4,6 +4,7 @@ import SwiftUI
 /// 右上角"编辑"按钮弹 BrainCardEditorSheet。
 struct BrainCardDetailView: View {
     @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) private var dismiss
 
     let cardId: UUID
 
@@ -20,7 +21,7 @@ struct BrainCardDetailView: View {
             if let card {
                 content(for: card)
             } else {
-                // 卡片被删除（编辑 sheet 内删除按钮触发）→ 让 NavigationStack 自动 pop
+                // 卡片被删除后等待 dismiss 动画返回卡片墙。
                 Color.clear
             }
         }
@@ -37,7 +38,9 @@ struct BrainCardDetailView: View {
         .creamBackground()
         .sheet(isPresented: $showEditor) {
             if let card {
-                BrainCardEditorSheet(mode: .edit(card: card))
+                BrainCardEditorSheet(mode: .edit(card: card)) {
+                    dismiss()
+                }
                     .environmentObject(store)
             }
         }
@@ -45,31 +48,20 @@ struct BrainCardDetailView: View {
             BrainCardExtensionComposerSheet(cardId: cardId)
                 .environmentObject(store)
         }
+        .onChange(of: store.brainCards.map(\.id)) { ids in
+            if !ids.contains(cardId), !showEditor {
+                dismiss()
+            }
+        }
     }
 
     @ViewBuilder
     private func content(for card: BrainCard) -> some View {
         List {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(card.title)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.primary)
-
-                    if !card.topics.isEmpty {
-                        Text(card.topics.joined(separator: "  "))
-                            .font(.caption)
-                            .foregroundStyle(CreamTheme.green)
-                    }
-
-                    if !card.content.isEmpty {
-                        Text(card.content)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .padding(.vertical, 4)
-                .listRowBackground(Color.white.opacity(0.9))
+            if let dbt = card.dbtSession {
+                dbtSessionSection(card: card, session: dbt)
+            } else {
+                regularCardSection(card)
             }
 
             if !card.sources.isEmpty {
@@ -78,7 +70,7 @@ struct BrainCardDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(src.excerpt)
                                 .font(.subheadline)
-                            Text("来自随手记")
+                            Text(card.kind == "dbtSession" ? "来自 DBT 对话" : "来自随手记")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -87,6 +79,26 @@ struct BrainCardDetailView: View {
                     }
                 } header: {
                     sectionHeader(icon: "link", text: "来源 (\(card.sources.count))")
+                }
+            }
+
+            if let dbt = card.dbtSession, !dbt.transcript.isEmpty {
+                Section {
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(dbt.transcript) { turn in
+                                DBTTranscriptTurnRow(turn: turn)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    } label: {
+                        Label("\(dbt.transcript.count) 轮完整对话", systemImage: "text.bubble")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CreamTheme.green)
+                    }
+                    .listRowBackground(Color.white.opacity(0.86))
+                } header: {
+                    sectionHeader(icon: "quote.bubble", text: "完整对话")
                 }
             }
 
@@ -130,6 +142,145 @@ struct BrainCardDetailView: View {
         .background(CreamTheme.glassStrong)
     }
 
+    private func regularCardSection(_ card: BrainCard) -> some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(card.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.primary)
+
+                if !card.topics.isEmpty {
+                    Text(card.topics.joined(separator: "  "))
+                        .font(.caption)
+                        .foregroundStyle(CreamTheme.green)
+                }
+
+                if !card.content.isEmpty {
+                    Text(card.content)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                }
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(Color.white.opacity(0.9))
+        }
+    }
+
+    @ViewBuilder
+    private func dbtSessionSection(card: BrainCard, session: BrainDBTSession) -> some View {
+        let summaries = displayDBTSummaries(session.summary)
+        let actions = displayDBTActions(session.actions)
+        Section {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("DBT 会话卡", systemImage: "leaf")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(CreamTheme.green)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(CreamTheme.green.opacity(0.12)))
+
+                Text(card.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.primary)
+
+                if !card.topics.isEmpty {
+                    Text(card.topics.joined(separator: "  "))
+                        .font(.caption)
+                        .foregroundStyle(CreamTheme.green)
+                }
+
+                if let shift = session.emotionalShift, !shift.isEmpty {
+                    Label(shift, systemImage: "waveform.path.ecg")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(CreamTheme.green.opacity(0.08)))
+                }
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(Color.white.opacity(0.9))
+
+            if !summaries.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("本次练习摘要")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(summaries.enumerated()), id: \.offset) { _, item in
+                        HStack(alignment: .top, spacing: 9) {
+                            Circle()
+                                .fill(CreamTheme.green.opacity(0.68))
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 7)
+                            Text(item)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                .listRowBackground(Color.white.opacity(0.86))
+            }
+
+            if !session.skills.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("使用技能")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(session.skills) { skill in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(skill.name)
+                                .font(.subheadline.weight(.semibold))
+                            Text(skill.note)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(CreamTheme.green.opacity(0.07)))
+                    }
+                }
+                .padding(.vertical, 4)
+                .listRowBackground(Color.white.opacity(0.86))
+            }
+
+            if !actions.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("后续行动")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
+                        Label(action, systemImage: "checkmark.circle")
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                    }
+                }
+                .padding(.vertical, 4)
+                .listRowBackground(Color.white.opacity(0.86))
+            }
+        }
+    }
+
+    private func displayDBTSummaries(_ summaries: [String]) -> [String] {
+        summaries
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { item in
+                !item.isEmpty
+                    && !item.contains("保留完整对话")
+                    && !item.contains("沉淀到第二大脑")
+                    && !item.contains("不只停留在当下")
+            }
+    }
+
+    private func displayDBTActions(_ actions: [String]) -> [String] {
+        let markers = ["下一步", "后续行动", "我会", "我准备", "我打算", "行动：", "行动:"]
+        return actions
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { item in
+                guard !item.isEmpty else { return false }
+                return markers.contains { item.hasPrefix($0) }
+            }
+    }
+
     private func sectionHeader(icon: String, text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
@@ -160,6 +311,31 @@ private struct BrainCardExtensionRow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct DBTTranscriptTurnRow: View {
+    let turn: BrainDBTTurn
+
+    private var isUser: Bool { turn.role == "user" }
+
+    var body: some View {
+        VStack(alignment: isUser ? .trailing : .leading, spacing: 5) {
+            Text(isUser ? "我" : "AI")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(turn.content)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(isUser ? Color.black.opacity(0.045) : CreamTheme.green.opacity(0.08))
+                )
+                .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+        }
     }
 }
 

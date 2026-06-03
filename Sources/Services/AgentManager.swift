@@ -23,6 +23,14 @@ protocol AgentDataWriter: AnyObject {
     func updateTurnFromAgent(id: UUID, title: String?, detail: String?) -> String?
     func removeTurnFromAgent(id: UUID) -> DeletedRecordSnapshot?
     func restoreFromSnapshot(_ snapshot: DeletedRecordSnapshot)
+    func addBrain(
+        title: String,
+        content: String,
+        topics: [String],
+        sources: [BrainCardSource],
+        kind: String,
+        dbtSession: BrainDBTSession?
+    ) -> UUID?
 }
 
 final class AgentManager: ObservableObject {
@@ -48,6 +56,7 @@ final class AgentManager: ObservableObject {
     private var lastCalendarEventId: String?
     private var nearbyTimeEntries: [(String, [TimeEntry])] = []
     private var currentRequestTask: Task<Void, Never>?
+    private var activeRequestToken: UUID?
     private var lastUserInput: String = ""
     @Published var messageQueue: [QueuedMessage] = []
 
@@ -131,8 +140,23 @@ final class AgentManager: ObservableObject {
     ) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        if shouldStartDBTFromConfirmation(clean) {
+            startDBTCoachAfterConsent(
+                text: clean,
+                turns: turns,
+                tasks: tasks,
+                timeEntries: timeEntries,
+                checks: checks,
+                nearbyTimeEntries: nearbyTimeEntries,
+                userProfile: userProfile
+            )
+            return
+        }
         self.nearbyTimeEntries = nearbyTimeEntries
         ensureCurrentThread()
+        let requestThreadID = currentThreadID
+        let requestToken = UUID()
+        activeRequestToken = requestToken
         let traceID = UUID().uuidString
         let threadID = currentThreadID?.uuidString
 
@@ -151,6 +175,8 @@ final class AgentManager: ObservableObject {
         lastUserInput = clean
         markMemoriesUsed()
         appendMessage(AgentChatMessage(role: "user", content: clean))
+        let agentMode = session.dbtSession?.status == "active" ? "dbtCoach" : "chat"
+        let requestContextSummary = agentMode == "dbtCoach" ? dbtContextSummary() : request.contextSummary
         requestTitleIfNeeded(seed: clean)
         isLoading = true
         errorMessage = nil
@@ -164,7 +190,7 @@ final class AgentManager: ObservableObject {
                 "input": clean,
                 "currentDate": today,
                 "currentTime": now,
-                "contextSummary": request.contextSummary,
+                "contextSummary": requestContextSummary,
                 "messages": AgentTracePayload.json(request.messages)
             ]
         )
@@ -176,6 +202,7 @@ final class AgentManager: ObservableObject {
             let startedAt = Date()
 
             await MainActor.run {
+                guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
                 self.streamingPhase = .reasoning
                 self.streamingReasoning = ""
                 self.streamingContent = ""
@@ -189,18 +216,21 @@ final class AgentManager: ObservableObject {
                     response = try await self.consumeStream(
                         input: request.input,
                         messages: request.messages,
-                        contextSummary: request.contextSummary,
+                        contextSummary: requestContextSummary,
                         currentDate: today,
                         currentTime: now,
                         traceId: traceID,
                         sessionId: self.userSuffix,
                         threadId: threadID,
-                        userProfile: userProfile
+                        userProfile: userProfile,
+                        agentMode: agentMode,
+                        dbtSession: self.session.dbtSession
                     )
                 } catch {
                     if Self.isNetworkLostError(error) {
                         // 流式断线（后台切出等），用非流式重试一次
                         await MainActor.run {
+                            guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
                             self.streamingPhase = .reasoning
                             self.streamingReasoning = ""
                             self.streamingContent = ""
@@ -208,26 +238,104 @@ final class AgentManager: ObservableObject {
                         response = try await self.client.chat(
                             input: request.input,
                             messages: request.messages,
-                            contextSummary: request.contextSummary,
+                            contextSummary: requestContextSummary,
                             currentDate: today,
                             currentTime: now,
                             traceId: traceID,
                             sessionId: self.userSuffix,
                             threadId: threadID,
-                            userProfile: userProfile
+                            userProfile: userProfile,
+                            agentMode: agentMode,
+                            dbtSession: self.session.dbtSession
                         )
-                        await MainActor.run { self.streamingPhase = .done }
+                        await MainActor.run {
+                            guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                            self.streamingPhase = .done
+                        }
                     } else {
                         throw error
                     }
                 }
 
-                if let toolCall = response.toolCall, let executor = toolExecutor {
+                let responseSnapshot = response
+
+                if agentMode == "chat", responseSnapshot.toolCall?.name == "startDBTSession" {
                     await MainActor.run {
-                        if !response.reply.isEmpty {
+                        guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                        if !responseSnapshot.reply.isEmpty {
                             self.appendMessage(AgentChatMessage(
                                 role: "assistant",
-                                content: response.reply,
+                                content: responseSnapshot.reply,
+                                reasoningContent: self.streamingReasoning.isEmpty ? nil : self.streamingReasoning,
+                                reasoningTimeMs: self.reasoningTimeMs
+                            ))
+                        }
+                        self.startDBTSession(skillId: responseSnapshot.toolCall?.args?["skillId"])
+                        self.streamingPhase = .reasoning
+                        self.streamingReasoning = ""
+                        self.streamingContent = ""
+                        self.reasoningTimeMs = nil
+                    }
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "dbt_handoff_started",
+                        latencyMs: Self.msSince(startedAt),
+                        payload: [
+                            "mode": "chat",
+                            "skillId": responseSnapshot.toolCall?.args?["skillId"] ?? ""
+                        ]
+                    )
+                    let dbtRequest = AgentOrchestrator.makeRequest(
+                        input: "用户已同意开始 DBT 练习。请以 DBT Coach 身份开始第 1 步。",
+                        session: self.session,
+                        turns: turns,
+                        tasks: tasks,
+                        timeEntries: timeEntries,
+                        checks: checks,
+                        memories: self.memories
+                    )
+                    let dbtResponse = try await self.consumeStream(
+                        input: dbtRequest.input,
+                        messages: dbtRequest.messages,
+                        contextSummary: self.dbtContextSummary(),
+                        currentDate: today,
+                        currentTime: now,
+                        traceId: traceID,
+                        sessionId: self.userSuffix,
+                        threadId: threadID,
+                        userProfile: userProfile,
+                        agentMode: "dbtCoach",
+                        dbtSession: self.session.dbtSession
+                    )
+                    await MainActor.run {
+                        guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                        let coachedResponse = self.ensureDBTStarterResponse(dbtResponse)
+                        let mergedActions = self.actionSuggestionsToMerge(from: coachedResponse)
+                        self.finishStreaming(response: coachedResponse, mergedActions: mergedActions)
+                        self.emitTrace(
+                            traceID: traceID,
+                            eventName: "dbt_response_merged",
+                            usage: coachedResponse.usage,
+                            latencyMs: Self.msSince(startedAt),
+                            payload: [
+                                "mode": "dbtCoach",
+                                "reply": coachedResponse.reply,
+                                "followUpQuestion": coachedResponse.followUpQuestion ?? "",
+                                "actionSuggestions": AgentTracePayload.json(coachedResponse.actionSuggestions),
+                                "dbtSession": AgentTracePayload.json(coachedResponse.dbtSession)
+                            ]
+                        )
+                    }
+                    return
+                }
+
+                if let toolCall = responseSnapshot.toolCall, let executor = toolExecutor {
+                    await MainActor.run {
+                        guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                        if !responseSnapshot.reply.isEmpty {
+                            self.appendMessage(AgentChatMessage(
+                                role: "assistant",
+                                content: responseSnapshot.reply,
                                 reasoningContent: self.streamingReasoning.isEmpty ? nil : self.streamingReasoning,
                                 reasoningTimeMs: self.reasoningTimeMs
                             ))
@@ -246,7 +354,7 @@ final class AgentManager: ObservableObject {
                             "mode": "chat",
                             "toolName": toolCall.name,
                             "toolArgs": AgentTracePayload.json(toolCall.args ?? [:]),
-                            "intermediateReply": response.reply
+                            "intermediateReply": responseSnapshot.reply
                         ]
                     )
                     let toolResult = executor(toolCall)
@@ -278,9 +386,12 @@ final class AgentManager: ObservableObject {
                         traceId: traceID,
                         sessionId: self.userSuffix,
                         threadId: threadID,
-                        userProfile: userProfile
+                        userProfile: userProfile,
+                        agentMode: "chat",
+                        dbtSession: nil
                     )
                     await MainActor.run {
+                        guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
                         let mergedActions = self.actionSuggestionsToMerge(from: followUpResponse)
                         self.finishStreaming(
                             response: followUpResponse,
@@ -313,23 +424,24 @@ final class AgentManager: ObservableObject {
                     }
                 } else {
                     await MainActor.run {
-                        let mergedActions = self.actionSuggestionsToMerge(from: response)
+                        guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                        let mergedActions = self.actionSuggestionsToMerge(from: responseSnapshot)
                         self.finishStreaming(
-                            response: response,
+                            response: responseSnapshot,
                             mergedActions: mergedActions
                         )
                         self.emitTrace(
                             traceID: traceID,
                             eventName: "response_merged",
-                            usage: response.usage,
+                            usage: responseSnapshot.usage,
                             latencyMs: Self.msSince(startedAt),
                             payload: [
                                 "mode": "chat",
-                                "reply": response.reply,
-                                "followUpQuestion": response.followUpQuestion ?? "",
-                                "actionSuggestions": AgentTracePayload.json(response.actionSuggestions),
+                                "reply": responseSnapshot.reply,
+                                "followUpQuestion": responseSnapshot.followUpQuestion ?? "",
+                                "actionSuggestions": AgentTracePayload.json(responseSnapshot.actionSuggestions),
                                 "mergedActions": AgentTracePayload.json(mergedActions),
-                                "rawResponse": response.rawBody ?? ""
+                                "rawResponse": responseSnapshot.rawBody ?? ""
                             ]
                         )
                         self.recordDebugLog(
@@ -337,7 +449,7 @@ final class AgentManager: ObservableObject {
                             request: request,
                             currentDate: today,
                             currentTime: now,
-                            response: response,
+                            response: responseSnapshot,
                             mergedActions: mergedActions,
                             traceID: traceID
                         )
@@ -345,10 +457,13 @@ final class AgentManager: ObservableObject {
                 }
             } catch is CancellationError {
                 await MainActor.run {
+                    guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
                     self.streamingPhase = .idle
                     self.streamingReasoning = ""
                     self.streamingContent = ""
                     self.isLoading = false
+                    self.activeRequestToken = nil
+                    self.currentRequestTask = nil
                     self.session.messages.append(
                         AgentChatMessage(role: "assistant", content: "已取消", isError: true)
                     )
@@ -357,9 +472,12 @@ final class AgentManager: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
+                    guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
                     self.streamingPhase = .idle
                     self.streamingReasoning = ""
                     self.streamingContent = ""
+                    self.activeRequestToken = nil
+                    self.currentRequestTask = nil
 
                     let fallback = AgentOrchestrator.fallbackResponse(for: clean, weeklySummary: weeklySummary)
                     self.errorMessage = weeklySummary != nil && AgentOrchestrator.detectsReviewIntent(clean)
@@ -367,10 +485,7 @@ final class AgentManager: ObservableObject {
                         : "对话服务暂时没有接上，我先用本地方式陪你。"
                     let mergedActions = self.actionSuggestionsToMerge(from: fallback)
                     self.isLoading = false
-                    let pieces = [fallback.reply, fallback.followUpQuestion]
-                        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty }
-                    let content = pieces.joined(separator: "\n\n")
+                    let content = self.assistantContent(reply: fallback.reply, followUpQuestion: fallback.followUpQuestion)
                     if !content.isEmpty {
                         self.session.messages.append(
                             AgentChatMessage(role: "assistant", content: content, isError: true)
@@ -399,7 +514,133 @@ final class AgentManager: ObservableObject {
                         errorMessage: error.localizedDescription,
                         traceID: traceID
                     )
+                    self.activeRequestToken = nil
+                    self.currentRequestTask = nil
                     self.processQueue()
+                }
+            }
+        }
+    }
+
+    private func startDBTCoachAfterConsent(
+        text: String,
+        turns: [ConversationTurn],
+        tasks: [TaskEntry],
+        timeEntries: [TimeEntry],
+        checks: [DailyCheckItem],
+        nearbyTimeEntries: [(String, [TimeEntry])] = [],
+        userProfile: String? = nil
+    ) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        self.nearbyTimeEntries = nearbyTimeEntries
+        ensureCurrentThread()
+        let requestThreadID = currentThreadID
+        let requestToken = UUID()
+        activeRequestToken = requestToken
+        let traceID = UUID().uuidString
+        let threadID = currentThreadID?.uuidString
+        let selectedSkill = suggestedDBTSkillFromLastAssistant()
+
+        lastUserInput = clean
+        markMemoriesUsed()
+        appendMessage(AgentChatMessage(role: "user", content: clean))
+        startDBTSession(skillId: selectedSkill)
+        isLoading = true
+        errorMessage = nil
+        let today = AIParser.isoDate()
+        let now = AIParser.isoTime()
+
+        emitTrace(
+            traceID: traceID,
+            eventName: "dbt_handoff_confirmed_locally",
+            payload: [
+                "mode": "dbtCoach",
+                "input": clean,
+                "skillId": selectedSkill ?? "validation",
+                "contextSummary": dbtContextSummary()
+            ]
+        )
+
+        currentRequestTask = Task { [weak self] in
+            guard let self else { return }
+            let bgTaskId = await UIApplication.shared.beginBackgroundTask(withName: "AgentDBTCoach") {}
+            defer { Task { @MainActor in UIApplication.shared.endBackgroundTask(bgTaskId) } }
+            let startedAt = Date()
+
+            await MainActor.run {
+                guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                self.streamingPhase = .reasoning
+                self.streamingReasoning = ""
+                self.streamingContent = ""
+                self.reasoningTimeMs = nil
+            }
+
+            do {
+                let dbtRequest = AgentOrchestrator.makeRequest(
+                    input: "用户已同意开始 DBT 练习。请以 DBT Coach 身份直接开始第 1 步，问出第一个练习问题。",
+                    session: self.session,
+                    turns: turns,
+                    tasks: tasks,
+                    timeEntries: timeEntries,
+                    checks: checks,
+                    memories: self.memories
+                )
+                let dbtResponse = try await self.consumeStream(
+                    input: dbtRequest.input,
+                    messages: dbtRequest.messages,
+                    contextSummary: self.dbtContextSummary(),
+                    currentDate: today,
+                    currentTime: now,
+                    traceId: traceID,
+                    sessionId: self.userSuffix,
+                    threadId: threadID,
+                    userProfile: userProfile,
+                    agentMode: "dbtCoach",
+                    dbtSession: self.session.dbtSession
+                )
+
+                await MainActor.run {
+                    guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                    let coachedResponse = self.ensureDBTStarterResponse(dbtResponse)
+                    let mergedActions = self.actionSuggestionsToMerge(from: coachedResponse)
+                    self.finishStreaming(response: coachedResponse, mergedActions: mergedActions)
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "dbt_response_merged",
+                        usage: coachedResponse.usage,
+                        latencyMs: Self.msSince(startedAt),
+                        payload: [
+                            "mode": "dbtCoach",
+                            "reply": coachedResponse.reply,
+                            "followUpQuestion": coachedResponse.followUpQuestion ?? "",
+                            "dbtSession": AgentTracePayload.json(coachedResponse.dbtSession)
+                        ]
+                    )
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                    self.streamingPhase = .idle
+                    self.streamingReasoning = ""
+                    self.streamingContent = ""
+                    self.isLoading = false
+                    self.activeRequestToken = nil
+                    self.currentRequestTask = nil
+                    self.processQueue()
+                }
+            } catch {
+                await MainActor.run {
+                    guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
+                    let fallback = self.ensureDBTStarterResponse(AgentChatResponse(reply: "好，我们现在切到 DBT Coach。"))
+                    self.finishStreaming(response: fallback, mergedActions: [])
+                    self.emitTrace(
+                        traceID: traceID,
+                        eventName: "dbt_handoff_failed_with_local_fallback",
+                        latencyMs: Self.msSince(startedAt),
+                        error: AgentTraceErrorInfo(type: String(describing: type(of: error)), message: error.localizedDescription, status: nil),
+                        payload: ["mode": "dbtCoach", "input": clean]
+                    )
                 }
             }
         }
@@ -489,8 +730,14 @@ final class AgentManager: ObservableObject {
     }
 
     func cancelCurrentRequest() {
+        activeRequestToken = nil
         currentRequestTask?.cancel()
         currentRequestTask = nil
+        isLoading = false
+        streamingPhase = .idle
+        streamingReasoning = ""
+        streamingContent = ""
+        reasoningTimeMs = nil
     }
 
     func enqueueMessage(_ text: String) {
@@ -548,11 +795,9 @@ final class AgentManager: ObservableObject {
                     self.isLoading = false
                     let actions = response.actionSuggestions.filter { self.hasContent($0) }
                     self.mergeActionSuggestions(actions)
-                    let pieces = [response.reply, response.followUpQuestion]
-                        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty }
-                    if !pieces.isEmpty {
-                        self.appendMessage(AgentChatMessage(role: "assistant", content: pieces.joined(separator: "\n\n")))
+                    let content = self.assistantContent(reply: response.reply, followUpQuestion: response.followUpQuestion)
+                    if !content.isEmpty {
+                        self.appendMessage(AgentChatMessage(role: "assistant", content: content))
                     } else {
                         self.saveCurrentThread()
                     }
@@ -644,6 +889,9 @@ final class AgentManager: ObservableObject {
         var resolved = action
 
         switch action.kind {
+        case .brain:
+            // 第二大脑记录不需要解析已有 record target。
+            return nil
         case .editTask, .deleteTask, .completeTask:
             guard let (fullId, task) = writer?.resolveTaskId(shortId: shortId) else { return nil }
             resolved.targetId = fullId.uuidString
@@ -788,12 +1036,15 @@ final class AgentManager: ObservableObject {
         if action.isMutation { return false }
         // AI 自报 confidence 太低时不自动保存
         guard action.confidence >= 0.7 else { return false }
-        // DBT练习记录需要用户确认，不自动保存
-        if action.inboxType == "DBT练习" { return false }
         switch action.kind {
         case .inbox:
+            // DBT 旧格式仍保留人工确认，避免继续自动落到随手记。
+            if action.inboxType == "DBT练习" { return false }
             // 随手记：有标题或内容就自动存
             return !action.title.isEmpty || !action.detail.isEmpty
+        case .brain:
+            // 目前只开放 DBT 技能训练直接沉淀到第二大脑，避免普通闲聊污染知识库。
+            return isDBTPractice(action) && (!action.title.isEmpty || !action.detail.isEmpty)
         case .task:
             // 待办：必须有标题
             return !action.title.isEmpty
@@ -818,6 +1069,10 @@ final class AgentManager: ObservableObject {
             let turnId = commitInboxActionReturningId(action)
             ref = turnId.map { AutoSavedActionRef(kind: .inbox, title: action.title, turnId: $0) }
             result = turnId == nil ? "内容为空，未保存" : nil
+        case .brain:
+            let brainId = commitBrainActionReturningId(action)
+            ref = brainId.map { _ in AutoSavedActionRef(kind: .brain, title: action.title) }
+            result = brainId == nil ? "内容为空，未保存" : nil
         case .task:
             let taskId = commitTaskActionReturningId(action)
             ref = taskId.map { AutoSavedActionRef(kind: .task, title: action.title, taskId: $0) }
@@ -837,7 +1092,8 @@ final class AgentManager: ObservableObject {
             appendMessage(AgentChatMessage(
                 role: "assistant",
                 content: savedMessage(for: action),
-                autoSavedAction: ref
+                autoSavedAction: ref,
+                isActionResult: true
             ))
             emitTrace(
                 traceID: UUID().uuidString,
@@ -875,6 +1131,41 @@ final class AgentManager: ObservableObject {
         ) else { return nil }
         let err = writer.commitTurn(id: id)
         return err == nil ? id : nil
+    }
+
+    private func commitBrainActionReturningId(_ action: AgentActionDraft, sourceTurnId: UUID? = nil) -> UUID? {
+        guard let writer else { return nil }
+        guard isDBTPractice(action) else { return nil }
+        let titleSeed = action.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? fallbackTitle(action.detail)
+            : action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !titleSeed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let title = titleSeed.hasPrefix("DBT") ? titleSeed : "DBT 会话：\(titleSeed)"
+        let activeDBT = session.dbtSession
+        let summary = activeDBT?.summary.isEmpty == false ? (activeDBT?.summary ?? []) : dbtSummaryBullets(for: action)
+        let skillIds = activeDBT?.skillIds.isEmpty == false ? (activeDBT?.skillIds ?? []) : [normalizedDBTSkillId(activeDBT?.skillId)]
+        let sessionRecord = BrainDBTSession(
+            summary: summary,
+            skills: dbtSkills(for: action, skillIds: skillIds),
+            actions: activeDBT?.followUpActions.isEmpty == false ? (activeDBT?.followUpActions ?? []) : dbtActions(for: action),
+            transcript: currentDBTTranscript(),
+            emotionalShift: activeDBT?.emotionalShift ?? dbtEmotionalShift(for: action),
+            sourceThreadId: currentThreadID
+        )
+        let sources: [BrainCardSource]
+        if let sourceTurnId {
+            sources = [BrainCardSource(noteId: sourceTurnId, excerpt: excerpt(action.detail.isEmpty ? action.title : action.detail, maxLength: 180))]
+        } else {
+            sources = []
+        }
+        return writer.addBrain(
+            title: title,
+            content: dbtBrainContent(summary: summary, action: action),
+            topics: ["#DBT", "#情绪调节", "#AI对话"],
+            sources: sources,
+            kind: "dbtSession",
+            dbtSession: sessionRecord
+        )
     }
 
     private func commitTaskActionReturningId(_ action: AgentActionDraft) -> UUID? {
@@ -974,6 +1265,8 @@ final class AgentManager: ObservableObject {
         switch action.kind {
         case .inbox:
             result = commitInboxAction(action)
+        case .brain:
+            result = commitBrainAction(action)
         case .task:
             result = commitTaskAction(action)
         case .time:
@@ -1011,7 +1304,8 @@ final class AgentManager: ObservableObject {
             let msg = AgentChatMessage(
                 role: "assistant",
                 content: savedMessage(for: action),
-                autoSavedAction: undoRef
+                autoSavedAction: undoRef,
+                isActionResult: true
             )
             appendMessage(msg)
             emitTrace(
@@ -1092,12 +1386,22 @@ final class AgentManager: ObservableObject {
         }
     }
 
+    func cancelDBTSession() {
+        guard var dbt = session.dbtSession, dbt.status == "active" else { return }
+        dbt.status = "cancelled"
+        dbt.completedAt = currentISODateTime
+        session.dbtSession = dbt
+        appendMessage(AgentChatMessage(role: "assistant", content: "DBT 练习已暂停。我们回到普通对话。", isActionResult: true))
+    }
+
     func undoAutoSavedAction(messageId: UUID) {
         guard let idx = session.messages.firstIndex(where: { $0.id == messageId }),
               let ref = session.messages[idx].autoSavedAction else { return }
         switch ref.kind {
         case .inbox:
             if let turnId = ref.turnId { writer?.undoTurn(id: turnId) }
+        case .brain:
+            break
         case .task:
             if let taskId = ref.taskId { writer?.undoTask(id: taskId) }
         case .time:
@@ -1130,6 +1434,12 @@ final class AgentManager: ObservableObject {
         )
     }
 
+    func setMessageFeedback(messageId: UUID, feedback: String?) {
+        guard let idx = session.messages.firstIndex(where: { $0.id == messageId }) else { return }
+        session.messages[idx].feedback = feedback
+        saveCurrentThread()
+    }
+
     func clearChat() {
         let messagesToExtract = session.messages
         let extractedCount = currentThread()?.memoryExtractedCount ?? 0
@@ -1155,6 +1465,8 @@ final class AgentManager: ObservableObject {
 
     func createNewThread(saveOldForMemory: Bool = true) {
         if session.messages.isEmpty && currentThreadID != nil { return }
+        cancelCurrentRequest()
+        messageQueue.removeAll()
         forceCreateNewThread(saveOldForMemory: saveOldForMemory)
     }
 
@@ -1175,6 +1487,8 @@ final class AgentManager: ObservableObject {
 
     func selectThread(id: UUID) {
         guard id != currentThreadID else { return }
+        cancelCurrentRequest()
+        messageQueue.removeAll()
         extractMemoriesForCurrentThreadIfNeeded()
         let thread = loadThread(id: id) ?? AgentChatThread(id: id)
         currentThreadID = thread.id
@@ -1182,6 +1496,18 @@ final class AgentManager: ObservableObject {
         upsertIndex(for: thread)
         saveThreadIndex()
         defaults.set(thread.id.uuidString, forKey: keyCurrentThreadID)
+    }
+
+    @discardableResult
+    func renameThread(id: UUID, title: String) -> Bool {
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, var thread = loadThread(id: id) else { return false }
+        thread.title = clean
+        thread.titleGenerated = true
+        saveThread(thread)
+        upsertIndex(for: thread)
+        saveThreadIndex()
+        return true
     }
 
     @discardableResult
@@ -1272,15 +1598,17 @@ final class AgentManager: ObservableObject {
     }
 
     private func receiveResponse(_ response: AgentChatResponse, mergedActions: [AgentActionDraft]? = nil) {
+        let response = cleanStructuredLeak(from: response)
         isLoading = false
-        let pieces = [response.reply, response.followUpQuestion]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let content = pieces.joined(separator: "\n\n")
+        let actions = mergedActions ?? actionSuggestionsToMerge(from: response)
+        let content = assistantContent(
+            reply: stripLocalActionResultText(from: response.reply, actions: actions),
+            followUpQuestion: response.followUpQuestion
+        )
         if !content.isEmpty {
             session.messages.append(AgentChatMessage(role: "assistant", content: content))
         }
-        mergeActionSuggestions(mergedActions ?? actionSuggestionsToMerge(from: response))
+        mergeActionSuggestions(actions)
         saveCurrentThread()
     }
 
@@ -1298,7 +1626,9 @@ final class AgentManager: ObservableObject {
         sessionId: String?,
         threadId: String?,
         userProfile: String?,
-        trigger: String? = nil
+        trigger: String? = nil,
+        agentMode: String = "chat",
+        dbtSession: AgentDBTSessionState? = nil
     ) async throws -> AgentChatResponse {
         let stream = client.chatStream(
             input: input,
@@ -1310,7 +1640,9 @@ final class AgentManager: ObservableObject {
             sessionId: sessionId,
             threadId: threadId,
             userProfile: userProfile,
-            trigger: trigger
+            trigger: trigger,
+            agentMode: agentMode,
+            dbtSession: dbtSession
         )
 
         var finalResponse: AgentChatResponse?
@@ -1344,6 +1676,7 @@ final class AgentManager: ObservableObject {
                     followUpQuestion: event.followUpQuestion,
                     actionSuggestions: event.actionSuggestions ?? [],
                     toolCall: event.toolCall,
+                    dbtSession: event.dbtSession,
                     usage: event.usage
                 )
             case .error:
@@ -1354,11 +1687,11 @@ final class AgentManager: ObservableObject {
         guard let response = finalResponse else {
             // Stream ended without done event — use accumulated content
             let reply = await MainActor.run { self.streamingContent }
-            return AgentChatResponse(
+            return cleanStructuredLeak(from: AgentChatResponse(
                 reply: reply.isEmpty ? "我在。你可以继续说一点。" : reply
-            )
+            ))
         }
-        return response
+        return cleanStructuredLeak(from: response)
     }
 
     /// Called on MainActor after streaming completes — persists the message with reasoning.
@@ -1366,11 +1699,12 @@ final class AgentManager: ObservableObject {
         response: AgentChatResponse,
         mergedActions: [AgentActionDraft]
     ) {
+        let response = cleanStructuredLeak(from: response)
         isLoading = false
-        let pieces = [response.reply, response.followUpQuestion]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let content = pieces.joined(separator: "\n\n")
+        let content = assistantContent(
+            reply: stripLocalActionResultText(from: response.reply, actions: mergedActions),
+            followUpQuestion: response.followUpQuestion
+        )
         if !content.isEmpty {
             session.messages.append(AgentChatMessage(
                 role: "assistant",
@@ -1379,6 +1713,7 @@ final class AgentManager: ObservableObject {
                 reasoningTimeMs: reasoningTimeMs
             ))
         }
+        applyDBTSessionUpdate(response.dbtSession)
         mergeActionSuggestions(mergedActions)
         saveCurrentThread()
 
@@ -1386,13 +1721,132 @@ final class AgentManager: ObservableObject {
         streamingReasoning = ""
         streamingContent = ""
         reasoningTimeMs = nil
+        activeRequestToken = nil
+        currentRequestTask = nil
 
         processQueue()
+    }
+
+    private func stripLocalActionResultText(from reply: String, actions: [AgentActionDraft]) -> String {
+        guard !actions.isEmpty else { return reply }
+        let localResultPrefixes = [
+            "已创建", "已更新", "已删除", "已完成",
+            "Created ", "Updated ", "Deleted ", "Completed "
+        ]
+        return reply
+            .components(separatedBy: .newlines)
+            .filter { line in
+                let clean = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !localResultPrefixes.contains { clean.hasPrefix($0) }
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func assistantContent(reply: String, followUpQuestion: String?) -> String {
+        let cleanReply = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanQuestion = followUpQuestion?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !cleanQuestion.isEmpty else { return cleanReply }
+        guard !cleanReply.isEmpty else { return cleanQuestion }
+
+        let normalizedReply = normalizedQuestionText(cleanReply)
+        let normalizedQuestion = normalizedQuestionText(cleanQuestion)
+        if normalizedReply.contains(normalizedQuestion) {
+            return cleanReply
+        }
+        return [cleanReply, cleanQuestion].joined(separator: "\n\n")
+    }
+
+    private func normalizedQuestionText(_ text: String) -> String {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            .joined()
+    }
+
+    private func cleanStructuredLeak(from response: AgentChatResponse) -> AgentChatResponse {
+        let delimiter = "<<<JSON>>>"
+        guard let delimiterRange = response.reply.range(of: delimiter) else { return response }
+
+        let visibleReply = String(response.reply[..<delimiterRange.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let tail = String(response.reply[delimiterRange.upperBound...])
+        guard let jsonText = firstJSONObject(in: tail),
+              let data = jsonText.data(using: .utf8),
+              let structured = try? JSONDecoder().decode(AgentChatResponse.self, from: data)
+        else {
+            return AgentChatResponse(
+                reply: visibleReply.isEmpty ? response.reply.replacingOccurrences(of: delimiter, with: "").trimmingCharacters(in: .whitespacesAndNewlines) : visibleReply,
+                followUpQuestion: response.followUpQuestion,
+                actionSuggestions: response.actionSuggestions,
+                toolCall: response.toolCall,
+                dbtSession: response.dbtSession,
+                debug: response.debug,
+                rawBody: response.rawBody,
+                usage: response.usage
+            )
+        }
+
+        let followUpQuestion = response.followUpQuestion ?? structured.followUpQuestion
+        let shouldSuppressActions = followUpQuestion != nil || response.toolCall != nil || structured.toolCall != nil
+        let actionSuggestions = shouldSuppressActions
+            ? []
+            : (response.actionSuggestions.isEmpty ? structured.actionSuggestions : response.actionSuggestions)
+
+        return AgentChatResponse(
+            reply: visibleReply,
+            followUpQuestion: followUpQuestion,
+            actionSuggestions: actionSuggestions,
+            toolCall: response.toolCall ?? structured.toolCall,
+            dbtSession: response.dbtSession ?? structured.dbtSession,
+            debug: response.debug,
+            rawBody: response.rawBody,
+            usage: response.usage
+        )
+    }
+
+    private func firstJSONObject(in text: String) -> String? {
+        guard let startIndex = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var isInString = false
+        var isEscaped = false
+        var index = startIndex
+
+        while index < text.endIndex {
+            let character = text[index]
+            if isInString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    isInString = false
+                }
+            } else {
+                if character == "\"" {
+                    isInString = true
+                } else if character == "{" {
+                    depth += 1
+                } else if character == "}" {
+                    depth -= 1
+                    if depth == 0 {
+                        return String(text[startIndex...index])
+                    }
+                }
+            }
+            index = text.index(after: index)
+        }
+
+        return nil
     }
 
     private func appendMessage(_ message: AgentChatMessage) {
         session.messages.append(message)
         saveCurrentThread()
+    }
+
+    private func isCurrentRequest(_ token: UUID, threadID: UUID?) -> Bool {
+        activeRequestToken == token && currentThreadID == threadID
     }
 
     private func currentThread() -> AgentChatThread? {
@@ -1403,6 +1857,7 @@ final class AgentManager: ObservableObject {
         }
         thread?.messages = session.messages
         thread?.pendingActions = session.pendingActions
+        thread?.dbtSession = session.dbtSession
         return thread
     }
 
@@ -1554,7 +2009,16 @@ final class AgentManager: ObservableObject {
             moodScore: normalizedMood(action.mood),
             feelingTags: normalizedFeelings(action.feelings)
         ) else { return "内容为空，未保存" }
-        return writer.commitTurn(id: id)
+        let result = writer.commitTurn(id: id)
+        if result == nil, isDBTPractice(action) {
+            saveDBTSessionToBrain(action: action, sourceTurnId: id)
+        }
+        return result
+    }
+
+    private func commitBrainAction(_ action: AgentActionDraft) -> String? {
+        guard writer != nil else { return "内部错误" }
+        return commitBrainActionReturningId(action) == nil ? "内容为空，未保存" : nil
     }
 
     private func commitTaskAction(_ action: AgentActionDraft) -> String? {
@@ -1714,7 +2178,7 @@ final class AgentManager: ObservableObject {
     }
 
     private func inboxType(for action: AgentActionDraft) -> String {
-        let allowedTypes = ["想法", "感受", "感恩", "做梦"]
+        let allowedTypes = ["想法", "感受", "感恩", "做梦", "DBT练习"]
         if let inboxType = action.inboxType?.trimmingCharacters(in: .whitespacesAndNewlines),
            allowedTypes.contains(inboxType) {
             return inboxType
@@ -1800,10 +2264,308 @@ final class AgentManager: ObservableObject {
         return title.isEmpty ? L.newConversation : title
     }
 
+    private var currentISODateTime: String {
+        "\(AIParser.isoDate())T\(AIParser.isoTime())"
+    }
+
+    private func startDBTSession(skillId: String?) {
+        let cleanSkill = normalizedDBTSkillId(skillId)
+        session.dbtSession = AgentDBTSessionState(
+            sessionId: UUID().uuidString,
+            status: "active",
+            skillId: cleanSkill,
+            currentStepIndex: 0,
+            stepAnswers: [],
+            startedAt: currentISODateTime,
+            completedAt: nil,
+            sourceThreadId: currentThreadID?.uuidString,
+            summary: [],
+            skillIds: [cleanSkill],
+            emotionalShift: nil,
+            followUpActions: []
+        )
+        saveCurrentThread()
+    }
+
+    private func shouldStartDBTFromConfirmation(_ input: String) -> Bool {
+        guard session.dbtSession?.status != "active" else { return false }
+        let clean = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isDBTConsentPhrase(clean) else { return false }
+        guard let lastAssistant = session.messages.last(where: { $0.role == "assistant" })?.content else { return false }
+        let lower = lastAssistant.lowercased()
+        guard lower.contains("dbt") || lower.contains("coach") else { return false }
+        return lastAssistant.contains("要不要")
+            || lastAssistant.contains("切")
+            || lastAssistant.contains("试")
+            || lastAssistant.contains("练习")
+            || lower.contains("try")
+            || lower.contains("switch")
+    }
+
+    private func isDBTConsentPhrase(_ input: String) -> Bool {
+        let exactMatches: Set<String> = [
+            "可以", "可以的", "好", "好的", "行", "行的", "嗯", "嗯嗯", "来", "来吧",
+            "开始", "开始吧", "试试", "试一下", "用", "使用", "使用了", "切", "切吧",
+            "ok", "okay", "yes", "yep", "sure", "go ahead", "let's try", "try it"
+        ]
+        if exactMatches.contains(input) { return true }
+        return input.contains("可以")
+            || input.contains("试")
+            || input.contains("开始")
+            || input.contains("使用")
+            || input.contains("切过去")
+            || input.contains("切到")
+    }
+
+    private func suggestedDBTSkillFromLastAssistant() -> String? {
+        guard let lastAssistant = session.messages.last(where: { $0.role == "assistant" })?.content else { return nil }
+        let lower = lastAssistant.lowercased()
+        if lower.contains("check the facts") || lastAssistant.contains("检验事实") || lastAssistant.contains("事实") {
+            return "check_the_facts"
+        }
+        if lower.contains("opposite action") || lastAssistant.contains("相反行动") || lastAssistant.contains("反向行动") {
+            return "opposite_action"
+        }
+        if lower.contains("wise mind") || lastAssistant.contains("智慧心") {
+            return "wise_mind"
+        }
+        if lower.contains("tipp") {
+            return "tipp"
+        }
+        if lower.contains("stop") || lastAssistant.contains("暂停") {
+            return "stop"
+        }
+        if lower.contains("dear man") || lastAssistant.contains("人际") {
+            return "dear_man"
+        }
+        if lastAssistant.contains("行为链") || lastAssistant.contains("复盘") {
+            return "behavior_chain_analysis"
+        }
+        return nil
+    }
+
+    private func ensureDBTStarterResponse(_ response: AgentChatResponse) -> AgentChatResponse {
+        guard let dbt = session.dbtSession, dbt.status == "active", dbt.stepAnswers.isEmpty else {
+            return response
+        }
+        let reply = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        let question = response.followUpQuestion?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let alreadyGuiding = !question.isEmpty || reply.contains("？") || reply.contains("?")
+        guard !alreadyGuiding else { return response }
+
+        return AgentChatResponse(
+            reply: reply.isEmpty ? "好，我们先不急着解决，只把它拆小一点。" : reply,
+            followUpQuestion: firstDBTQuestion(for: dbt.skillId),
+            actionSuggestions: [],
+            toolCall: nil,
+            dbtSession: response.dbtSession ?? dbt,
+            debug: response.debug,
+            rawBody: response.rawBody,
+            usage: response.usage
+        )
+    }
+
+    private func firstDBTQuestion(for skillId: String) -> String {
+        switch normalizedDBTSkillId(skillId) {
+        case "check_the_facts":
+            return "我们先只看事实：刚才这件事里，确定发生了什么？先别写解释，只写能被摄像头拍到的部分。"
+        case "opposite_action":
+            return "先抓住这个情绪最想推你做的动作：它现在最想让你逃开、躺下、刷手机，还是做别的什么？"
+        case "wise_mind":
+            return "我们先分两边：理性脑现在怎么说，情绪脑现在怎么说？各写一句就好。"
+        case "tipp":
+            return "先判断强度：这个情绪现在从 0 到 10 大概是几分？身体哪里最明显？"
+        case "stop":
+            return "先按 STOP 的第一步：此刻你最想立刻做的冲动是什么？只说动作，不评价它。"
+        case "dear_man":
+            return "我们先定场景：你想对谁表达什么请求或边界？一句话就好。"
+        case "behavior_chain_analysis":
+            return "我们先找链条起点：这次反复出现的行为是什么？它发生前 5 分钟有什么触发？"
+        default:
+            return "先只说一个点：此刻最明显的感受是什么？它在身体哪里最强？"
+        }
+    }
+
+    private func applyDBTSessionUpdate(_ update: AgentDBTSessionState?) {
+        guard let update else { return }
+        if session.dbtSession == nil {
+            session.dbtSession = update
+            return
+        }
+        session.dbtSession = update
+    }
+
+    private func dbtContextSummary() -> String {
+        guard let dbt = session.dbtSession else { return "DBT session 尚未启动。" }
+        let skill = dbtSkillName(for: dbt.skillId)
+        let profile = writer?.userProfile.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let memorySummary = memories
+            .prefix(8)
+            .map { "- \($0.content)" }
+            .joined(separator: "\n")
+        let answers = dbt.stepAnswers
+            .map { "- 第\($0.stepIndex + 1)步：\($0.prompt)\n  用户回答：\($0.answer)" }
+            .joined(separator: "\n")
+        var sections = [
+            "当前模式：DBT Coach",
+            "练习状态：\(dbt.status)",
+            "当前技能：\(skill)（\(dbt.skillId)）",
+            "当前步骤：\(dbt.currentStepIndex + 1)",
+            answers.isEmpty ? "暂无步骤回答。" : "已记录步骤：\n\(answers)"
+        ]
+        if !profile.isEmpty {
+            sections.append("用户画像与偏好：\n\(profile)")
+        }
+        if !memorySummary.isEmpty {
+            sections.append("历史记忆：\n\(memorySummary)")
+        }
+        return sections.joined(separator: "\n\n")
+    }
+
+    private func normalizedDBTSkillId(_ id: String?) -> String {
+        let clean = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return dbtSkillNames[clean] == nil ? "validation" : clean
+    }
+
+    private var dbtSkillNames: [String: String] {
+        [
+            "check_the_facts": "Check the Facts",
+            "opposite_action": "Opposite Action",
+            "wise_mind": "Wise Mind",
+            "tipp": "TIPP",
+            "stop": "STOP",
+            "dear_man": "DEAR MAN",
+            "behavior_chain_analysis": "Behavior Chain Analysis",
+            "validation": "Validation"
+        ]
+    }
+
+    private func dbtSkillName(for skillId: String) -> String {
+        dbtSkillNames[skillId] ?? dbtSkillNames["validation"] ?? "Validation"
+    }
+
+    private func isDBTPractice(_ action: AgentActionDraft) -> Bool {
+        (action.kind == .inbox || action.kind == .brain) && action.inboxType == "DBT练习"
+    }
+
+    private func saveDBTSessionToBrain(action: AgentActionDraft, sourceTurnId: UUID) {
+        _ = commitBrainActionReturningId(action, sourceTurnId: sourceTurnId)
+    }
+
+    private func currentDBTTranscript() -> [BrainDBTTurn] {
+        session.messages
+            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map {
+                BrainDBTTurn(
+                    role: $0.role,
+                    content: $0.content,
+                    createdAt: $0.createdAt
+                )
+            }
+    }
+
+    private func dbtSummaryBullets(for action: AgentActionDraft) -> [String] {
+        let detail = action.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = detail.isEmpty ? title : detail
+        let trimSet = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "-•0123456789.、"))
+        let lines = base
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: trimSet) }
+            .filter { line in
+                !line.isEmpty
+                    && !line.contains("保留完整对话")
+                    && !line.contains("沉淀到第二大脑")
+                    && !line.contains("不只停留在当下")
+            }
+        if !lines.isEmpty {
+            return Array(lines.prefix(3))
+        }
+        return []
+    }
+
+    private func dbtSkills(for action: AgentActionDraft, skillIds: [String] = []) -> [BrainDBTSkill] {
+        let registrySkills = skillIds
+            .map { normalizedDBTSkillId($0) }
+            .filter { !$0.isEmpty }
+            .map { BrainDBTSkill(name: dbtSkillName(for: $0), note: dbtSkillNote(for: $0)) }
+        if !registrySkills.isEmpty { return registrySkills }
+
+        let combined = "\(action.title)\n\(action.detail)"
+        var skills: [BrainDBTSkill] = []
+        if combined.localizedCaseInsensitiveContains("check the facts") || combined.contains("事实") {
+            skills.append(BrainDBTSkill(name: "Check the facts", note: "把事实、解释和灾难化想象分开。"))
+        }
+        if combined.localizedCaseInsensitiveContains("opposite action") || combined.contains("反向行动") {
+            skills.append(BrainDBTSkill(name: "Opposite action", note: "在情绪驱动逃避时，选择一个足够小的相反动作。"))
+        }
+        if combined.localizedCaseInsensitiveContains("wise mind") || combined.contains("智慧心") {
+            skills.append(BrainDBTSkill(name: "Wise mind", note: "同时承认理性判断和情绪需要。"))
+        }
+        if skills.isEmpty {
+            skills = [
+                BrainDBTSkill(name: "Validate", note: "先承认感受有其来处，不急着否定自己。"),
+                BrainDBTSkill(name: "Wise mind", note: "在情绪和理性之间找一个可执行的小选择。")
+            ]
+        }
+        return skills
+    }
+
+    private func dbtSkillNote(for skillId: String) -> String {
+        switch normalizedDBTSkillId(skillId) {
+        case "check_the_facts": return "把事实、解释和灾难化想象分开。"
+        case "opposite_action": return "当情绪冲动不符合事实时，选择一个相反的小行动。"
+        case "wise_mind": return "同时承认理性判断和情绪需要。"
+        case "tipp": return "先用身体降温、运动和呼吸帮情绪急刹车。"
+        case "stop": return "暂停、退一步、观察，再选择有智慧的行动。"
+        case "dear_man": return "用清晰、稳定的方式表达需求和边界。"
+        case "behavior_chain_analysis": return "复盘触发点、想法、感受、行为和后果。"
+        default: return "先承认感受有其来处，不急着否定自己。"
+        }
+    }
+
+    private func dbtActions(for action: AgentActionDraft) -> [String] {
+        let combined = "\(action.title)\n\(action.detail)"
+        let markers = ["下一步", "后续行动", "我会", "我准备", "我打算", "行动：", "行动:"]
+        let trimSet = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "-•0123456789.、"))
+        let lines = combined
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: trimSet) }
+            .filter { line in
+                guard !line.isEmpty else { return false }
+                return markers.contains { line.hasPrefix($0) }
+            }
+        if !lines.isEmpty { return Array(lines.prefix(4)) }
+        return []
+    }
+
+    private func dbtEmotionalShift(for action: AgentActionDraft) -> String? {
+        let combined = "\(action.title)\n\(action.detail)"
+        return combined
+            .components(separatedBy: .newlines)
+            .first { $0.contains("→") || $0.contains("->") }
+            .map { excerpt($0, maxLength: 80) }
+    }
+
+    private func dbtBrainContent(summary: [String], action: AgentActionDraft) -> String {
+        let bullets = summary.map { "- \($0)" }.joined(separator: "\n")
+        let detail = action.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if bullets.isEmpty { return detail }
+        if detail.isEmpty { return bullets }
+        return "\(bullets)\n\n练习记录：\n\(detail)"
+    }
+
+    private func excerpt(_ text: String, maxLength: Int) -> String {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count > maxLength else { return clean }
+        return String(clean.prefix(maxLength)) + "..."
+    }
+
     private func savedMessage(for action: AgentActionDraft) -> String {
         let title = action.title.isEmpty ? action.detail : action.title
         switch action.kind {
         case .inbox: return L.savedInbox(title)
+        case .brain: return L.savedBrain(title)
         case .task: return L.savedTask(title)
         case .time: return L.savedTime(title)
         case .calendarEvent: return L.savedCalendar(title)
@@ -1887,6 +2649,7 @@ final class AgentManager: ObservableObject {
             title: localTitle(from: firstUser),
             messages: legacy.messages,
             pendingActions: legacy.pendingActions,
+            dbtSession: legacy.dbtSession,
             createdAt: legacy.messages.first?.createdAt ?? legacy.updatedAt,
             updatedAt: legacy.updatedAt,
             titleGenerated: false

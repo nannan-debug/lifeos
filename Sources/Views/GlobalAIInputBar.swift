@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GlobalAIInputBar: View {
     static let openComposerNotification = Notification.Name("LifeOSOpenGlobalAIComposer")
@@ -76,8 +77,11 @@ private struct AgentChatPanel: View {
     @State private var showHistory = false
     @State private var searchText = ""
     @State private var pendingDelete: AgentChatThreadIndexItem?
+    @State private var renamingThread: AgentChatThreadIndexItem?
+    @State private var renameDraft = ""
     @State private var recentlyDeletedThread: AgentChatThread?
     @State private var verticalDragOffset: CGFloat = 0
+    @State private var copiedMessageID: UUID?
     @State private var historyDragOffset: CGFloat = 0
 
     var body: some View {
@@ -139,10 +143,10 @@ private struct AgentChatPanel: View {
             get: { pendingDelete != nil },
             set: { if !$0 { pendingDelete = nil } }
         )) {
-            Button("明天再说", role: .cancel) {
+            Button(L.cancel, role: .cancel) {
                 pendingDelete = nil
             }
-            Button("删除", role: .destructive) {
+            Button(L.delete, role: .destructive) {
                 if let item = pendingDelete {
                     recentlyDeletedThread = store.deleteAgentThread(id: item.id)
                 }
@@ -150,6 +154,27 @@ private struct AgentChatPanel: View {
             }
         } message: {
             Text(L.deleteConversationHint)
+        }
+        .alert(L.renameConversation, isPresented: Binding(
+            get: { renamingThread != nil },
+            set: {
+                if !$0 {
+                    renamingThread = nil
+                    renameDraft = ""
+                }
+            }
+        )) {
+            TextField(L.conversationNamePlaceholder, text: $renameDraft)
+            Button(L.cancel, role: .cancel) {
+                renamingThread = nil
+                renameDraft = ""
+            }
+            Button(L.save) {
+                commitThreadRename()
+            }
+            .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text(L.renameConversationHint)
         }
     }
 
@@ -195,6 +220,11 @@ private struct AgentChatPanel: View {
                 }
             }
             .padding(.horizontal, 24)
+
+            if let dbt = store.activeDBTSession {
+                dbtCoachBanner(dbt)
+                    .padding(.horizontal, 24)
+            }
         }
         .padding(.bottom, 8)
         .contentShape(Rectangle())
@@ -202,7 +232,48 @@ private struct AgentChatPanel: View {
     }
 
     private var displayTitle: String {
-        store.agentSession.messages.isEmpty ? "LifeOS AI" : store.currentAgentThreadTitle
+        if store.activeDBTSession != nil { return "DBT Coach" }
+        return store.agentSession.messages.isEmpty ? "LifeOS AI" : store.currentAgentThreadTitle
+    }
+
+    private func dbtCoachBanner(_ session: AgentDBTSessionState) -> some View {
+        HStack(spacing: 8) {
+            Label(dbtSkillTitle(session.skillId), systemImage: "leaf")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CreamTheme.green)
+            Text("Step \(max(session.currentStepIndex + 1, 1))")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.black.opacity(0.045)))
+            Spacer()
+            Button("退出") {
+                store.cancelDBTSession()
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(CreamTheme.green.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(CreamTheme.green.opacity(0.16), lineWidth: 1))
+        )
+    }
+
+    private func dbtSkillTitle(_ id: String) -> String {
+        switch id {
+        case "check_the_facts": return "Check the Facts"
+        case "opposite_action": return "Opposite Action"
+        case "wise_mind": return "Wise Mind"
+        case "tipp": return "TIPP"
+        case "stop": return "STOP"
+        case "dear_man": return "DEAR MAN"
+        case "behavior_chain_analysis": return "Behavior Chain"
+        default: return "DBT Practice"
+        }
     }
 
     private var conversationArea: some View {
@@ -213,8 +284,8 @@ private struct AgentChatPanel: View {
                         emptyState
                             .padding(.top, 36)
                     } else {
-                        ForEach(store.agentSession.messages) { message in
-                            messageRow(message)
+                        ForEach(Array(store.agentSession.messages.enumerated()), id: \.element.id) { index, message in
+                            messageRow(message, at: index)
                                 .id(message.id)
                         }
                         if store.isAgentLoading || store.streamingPhase != .idle {
@@ -274,22 +345,39 @@ private struct AgentChatPanel: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func messageRow(_ message: AgentChatMessage) -> some View {
+    private func messageRow(_ message: AgentChatMessage, at index: Int) -> some View {
         HStack(alignment: .top) {
             if message.role == "user" {
                 Spacer(minLength: 46)
-                Text(message.content)
-                    .font(.callout)
-                    .foregroundStyle(CreamTheme.text)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 22)
-                            .fill(Color.black.opacity(0.045))
-                    )
-                    .frame(maxWidth: 285, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text(message.content)
+                        .font(.callout)
+                        .foregroundStyle(CreamTheme.text)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 22)
+                                .fill(Color.black.opacity(0.045))
+                        )
+                    messageActionBar(message, alignment: .trailing, includeFeedback: false)
+                }
+                .frame(maxWidth: 285, alignment: .trailing)
             } else if message.autoSavedAction != nil {
-                autoSavedRow(message)
+                VStack(alignment: .leading, spacing: 6) {
+                    autoSavedRow(message)
+                    if isLastAssistantMessageInRun(at: index) {
+                        assistantRunActionBar(endingAt: index, alignedWith: message)
+                    }
+                }
+            } else if isActionResultMessage(message) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(message.content)
+                        .font(.callout)
+                        .foregroundStyle(CreamTheme.text.opacity(0.82))
+                    if isLastAssistantMessageInRun(at: index) {
+                        assistantRunActionBar(endingAt: index, alignedWith: message)
+                    }
+                }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     if let reasoning = message.reasoningContent, !reasoning.isEmpty {
@@ -302,11 +390,150 @@ private struct AgentChatPanel: View {
                         .font(.callout)
                         .lineSpacing(4)
                         .foregroundStyle(CreamTheme.text.opacity(0.9))
+                    if isLastAssistantMessageInRun(at: index) {
+                        assistantRunActionBar(endingAt: index, alignedWith: message)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: 26)
             }
         }
+    }
+
+    private func isLastAssistantMessageInRun(at index: Int) -> Bool {
+        let messages = store.agentSession.messages
+        guard messages.indices.contains(index), messages[index].role != "user" else { return false }
+        let next = index + 1
+        return !messages.indices.contains(next) || messages[next].role == "user"
+    }
+
+    private func assistantRunFeedbackTarget(endingAt index: Int) -> AgentChatMessage? {
+        let messages = store.agentSession.messages
+        guard messages.indices.contains(index) else { return nil }
+        var cursor = index
+        while messages.indices.contains(cursor), messages[cursor].role != "user" {
+            let candidate = messages[cursor]
+            if candidate.autoSavedAction == nil, !isActionResultMessage(candidate) {
+                return candidate
+            }
+            guard cursor > messages.startIndex else { break }
+            cursor -= 1
+        }
+        return nil
+    }
+
+    private func assistantRunCopyText(endingAt index: Int) -> String {
+        let messages = store.agentSession.messages
+        guard messages.indices.contains(index) else { return "" }
+        var pieces: [String] = []
+        var cursor = index
+        while messages.indices.contains(cursor), messages[cursor].role != "user" {
+            let content = messages[cursor].content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !content.isEmpty {
+                pieces.append(content)
+            }
+            guard cursor > messages.startIndex else { break }
+            cursor -= 1
+        }
+        return pieces.reversed().joined(separator: "\n\n")
+    }
+
+    @ViewBuilder
+    private func assistantRunActionBar(endingAt index: Int, alignedWith message: AgentChatMessage) -> some View {
+        let feedbackTarget = assistantRunFeedbackTarget(endingAt: index)
+        messageActionBar(
+            message,
+            alignment: .leading,
+            includeFeedback: feedbackTarget.map { !$0.isError } ?? false,
+            copyText: assistantRunCopyText(endingAt: index),
+            feedbackTarget: feedbackTarget
+        )
+    }
+
+    private func isActionResultMessage(_ message: AgentChatMessage) -> Bool {
+        guard message.role == "assistant" else { return false }
+        if message.isActionResult == true { return true }
+        return [
+            "已创建", "已更新", "已删除", "已完成",
+            "Created ", "Updated ", "Deleted ", "Completed "
+        ].contains { message.content.hasPrefix($0) }
+    }
+
+    @ViewBuilder
+    private func messageActionBar(
+        _ message: AgentChatMessage,
+        alignment: Alignment,
+        includeFeedback: Bool,
+        copyText: String? = nil,
+        feedbackTarget: AgentChatMessage? = nil
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(timeText(message.createdAt))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+
+            Button {
+                copyMessage(message, text: copyText)
+            } label: {
+                Image(systemName: copiedMessageID == message.id ? "checkmark" : "doc.on.doc")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(copiedMessageID == message.id ? CreamTheme.green : .secondary)
+            .accessibilityLabel(copiedMessageID == message.id ? L.copied : L.copyMessage)
+
+            if includeFeedback {
+                let target = feedbackTarget ?? message
+                feedbackButton(target, value: "liked", icon: "hand.thumbsup")
+                feedbackButton(target, value: "disliked", icon: "hand.thumbsdown")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.58))
+                .overlay(Capsule().strokeBorder(Color.black.opacity(0.04), lineWidth: 0.5))
+        )
+        .frame(maxWidth: .infinity, alignment: alignment)
+    }
+
+    private func feedbackButton(_ message: AgentChatMessage, value: String, icon: String) -> some View {
+        let selected = message.feedback == value
+        return Button {
+            store.setAgentMessageFeedback(
+                messageId: message.id,
+                feedback: selected ? nil : value
+            )
+        } label: {
+            Image(systemName: selected ? "\(icon).fill" : icon)
+                .font(.caption2.weight(.semibold))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selected ? CreamTheme.green : .secondary)
+        .accessibilityLabel(value == "liked" ? L.likeMessage : L.dislikeMessage)
+    }
+
+    private func copyMessage(_ message: AgentChatMessage, text: String? = nil) {
+        UIPasteboard.general.string = text ?? message.content
+        withAnimation(.easeOut(duration: 0.12)) {
+            copiedMessageID = message.id
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            if copiedMessageID == message.id {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    copiedMessageID = nil
+                }
+            }
+        }
+    }
+
+    private func timeText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: L.localeId)
+        formatter.dateFormat = L.isEn ? "h:mm a" : "HH:mm"
+        return formatter.string(from: date)
     }
 
     private func markdownAttributed(_ text: String) -> AttributedString {
@@ -1044,17 +1271,41 @@ private struct AgentChatPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
-
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(item.id == store.currentAgentThreadID ? .white.opacity(0.78) : .clear)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 18))
+        .contextMenu {
             Button {
+                beginThreadRename(item)
+            } label: {
+                Label(L.rename, systemImage: "pencil")
+            }
+
+            Button(role: .destructive) {
                 pendingDelete = item
             } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary.opacity(0.72))
-                    .frame(width: 28, height: 28)
+                Label(L.delete, systemImage: "trash")
             }
-            .buttonStyle(.plain)
         }
+    }
+
+    private func beginThreadRename(_ item: AgentChatThreadIndexItem) {
+        renamingThread = item
+        renameDraft = item.title.isEmpty ? L.newConversation : item.title
+    }
+
+    private func commitThreadRename() {
+        guard let item = renamingThread else { return }
+        let clean = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        store.renameAgentThread(id: item.id, title: clean)
+        renamingThread = nil
+        renameDraft = ""
     }
 
     private func iconButton(_ systemName: String, action: @escaping () -> Void) -> some View {
@@ -1190,11 +1441,12 @@ private struct AgentChatPanel: View {
     }
 
     private func actionLabel(for action: AgentActionDraft) -> String {
-        if action.kind == .inbox && action.inboxType == "DBT练习" {
+        if (action.kind == .inbox || action.kind == .brain) && action.inboxType == "DBT练习" {
             return L.savePractice
         }
         switch action.kind {
         case .inbox: return L.suggestInbox
+        case .brain: return L.suggestBrain
         case .task: return L.suggestTask
         case .time: return L.suggestTime
         case .calendarEvent: return L.suggestCalendar
@@ -1209,11 +1461,12 @@ private struct AgentChatPanel: View {
     }
 
     private func actionIcon(for action: AgentActionDraft) -> String {
-        if action.kind == .inbox && action.inboxType == "DBT练习" {
+        if (action.kind == .inbox || action.kind == .brain) && action.inboxType == "DBT练习" {
             return "leaf"
         }
         switch action.kind {
         case .inbox: return "square.and.pencil"
+        case .brain: return "brain.head.profile"
         case .task: return "checklist"
         case .time: return "clock"
         case .calendarEvent: return "calendar.badge.plus"
@@ -1225,6 +1478,7 @@ private struct AgentChatPanel: View {
 
     private func actionButtonText(for action: AgentActionDraft) -> String {
         switch action.kind {
+        case .brain: return L.save
         case .editTask, .editTime, .editInbox: return L.confirmEdit
         case .deleteTask, .deleteTime, .deleteInbox: return L.confirmDelete
         case .completeTask: return L.confirm
@@ -1236,6 +1490,7 @@ private struct AgentChatPanel: View {
     private func actionTintColor(for action: AgentActionDraft) -> Color {
         switch action.kind {
         case .deleteTask, .deleteTime, .deleteInbox: return .red
+        case .brain: return CreamTheme.green
         case .calendarEvent: return .blue
         default: return CreamTheme.green
         }

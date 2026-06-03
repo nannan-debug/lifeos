@@ -120,7 +120,7 @@ struct ReviewSessionView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(CreamTheme.glassStrong)
-        .navigationTitle("Review")
+        .navigationTitle(L.reviewTitle)
         .navigationBarTitleDisplayMode(.inline)
         .creamBackground()
         .sheet(item: $deriveTodoFromTurn) { payload in
@@ -137,11 +137,11 @@ struct ReviewSessionView: View {
 
     private var statHeader: some View {
         HStack(spacing: 0) {
-            statCell(label: "待处理", value: pending, color: .primary)
+            statCell(label: L.reviewPendingShort, value: pending, color: .primary)
             Divider().frame(height: 32)
-            statCell(label: "已处理", value: archived, color: CreamTheme.green)
+            statCell(label: L.reviewArchivedShort, value: archived, color: CreamTheme.green)
             Divider().frame(height: 32)
-            statCell(label: "搁置", value: dismissed, color: .secondary)
+            statCell(label: L.reviewDismissedShort, value: dismissed, color: .secondary)
         }
         .padding(.vertical, 14)
         .background(
@@ -217,7 +217,7 @@ struct ReviewSessionView: View {
             Button {
                 store.updateTurnReviewStatus(id: turn.id, reviewStatus: "dismissed")
             } label: {
-                Label("搁置", systemImage: "xmark.circle")
+                Label(L.reviewDismissedShort, systemImage: "xmark.circle")
             }
             .tint(.gray)
         }
@@ -227,7 +227,7 @@ struct ReviewSessionView: View {
             Button {
                 deriveBrainFromTurn = DerivePayload(turn: turn)
             } label: {
-                Label("→ 第二大脑", systemImage: "brain.head.profile")
+                Label(L.deriveToBrain, systemImage: "brain.head.profile")
             }
             .tint(CreamTheme.green.opacity(0.85))
 
@@ -291,10 +291,10 @@ struct ReviewSessionView: View {
         VStack(spacing: 16) {
             MascotCatAssetView(stroke: CreamTheme.green)
                 .frame(width: 96, height: 96)
-            Text("队列已清空。")
+            Text(L.reviewQueueEmpty)
                 .font(.headline)
                 .foregroundStyle(CreamTheme.green)
-            Text("下周再见。")
+            Text(L.reviewQueueSeeYou)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
