@@ -3259,3 +3259,108 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         return userPairs.map { "\($0.key)=\($0.value)" }.joined(separator: " ; ")
     }
 }
+
+#if DEBUG
+extension AppStore {
+    var isTestPersona: Bool {
+        currentAuthUserId.hasPrefix("persona-")
+    }
+
+    static func debugDateKey(for date: Date) -> String {
+        dateKeyFormatter.string(from: date)
+    }
+
+    func debugDisableSystemIntegrationsForPersona() {
+        setICloudSyncEnabled(false)
+        isHealthSleepSyncEnabled = false
+        isHealthWorkoutSyncEnabled = false
+        isWakeDreamReminderEnabled = false
+        defaults.set(false, forKey: healthSleepSyncEnabledKey)
+        defaults.set(false, forKey: healthWorkoutSyncEnabledKey)
+        WakeDreamReminderService.setEnabled(false)
+        defaults.set(false, forKey: DailyStateReminderService.enabledKey)
+        DailyStateReminderService.cancel()
+    }
+
+    func debugSetChecks(dateKey: String, states: [String: Bool]) {
+        var map = defaults.dictionary(forKey: keyChecks) as? [String: [String: Bool]] ?? [:]
+        map[dateKey] = states
+        defaults.set(map, forKey: keyChecks)
+        loadForSelectedDate()
+        publishCheckWidgetSnapshot()
+        syncICloudAfterLocalChange()
+    }
+
+    func debugSetDailyCheckEntries(_ entries: [(title: String, tag: String)]) {
+        defaults.set(encodeCheckEntries(entries), forKey: keyDailyFields)
+        defaults.set(true, forKey: keyDailyInitialized)
+        let groups = entries.map(\.tag).filter { !$0.isEmpty }.reduce(into: [String]()) { result, tag in
+            if !result.contains(tag) {
+                result.append(tag)
+            }
+        }
+        defaults.set(groups.joined(separator: ","), forKey: keyDailyGroups)
+        reloadFieldConfig()
+        loadForSelectedDate()
+        publishCheckWidgetSnapshot()
+        syncICloudAfterLocalChange()
+    }
+
+    func debugInsertTimeEntry(
+        name: String,
+        start: String,
+        end: String,
+        category: String,
+        dateKey: String,
+        extra: [String: String] = [:]
+    ) {
+        insertTimeEntry(
+            TimeEntry(name: name, start: start, end: end, category: category, extra: extra),
+            dateKey: dateKey
+        )
+        loadTimeForDate()
+        syncICloudAfterLocalChange()
+    }
+
+    func debugInsertTurn(
+        rawText: String,
+        recognizedType: String,
+        targetBucket: String,
+        confidence: Double,
+        payload: [String: String],
+        status: String,
+        moodScore: Int?,
+        feelingTags: [String],
+        createdAt: Date
+    ) {
+        turns.insert(
+            ConversationTurn(
+                id: UUID(),
+                createdAt: createdAt,
+                rawText: rawText,
+                recognizedType: recognizedType,
+                targetBucket: targetBucket,
+                confidence: max(0, min(1, confidence)),
+                status: status,
+                payload: payload,
+                fixHint: "",
+                moodScore: moodScore,
+                feelingTags: feelingTags,
+                reviewStatus: "pending"
+            ),
+            at: 0
+        )
+        saveTurns()
+        syncICloudAfterLocalChange()
+    }
+
+    func debugSeedAgentContext(
+        userProfile: String,
+        memories: [AgentMemory],
+        threads: [AgentChatThread]
+    ) {
+        self.userProfile = userProfile
+        agent.debugReplaceThreads(threads, memories: memories)
+    }
+}
+#endif

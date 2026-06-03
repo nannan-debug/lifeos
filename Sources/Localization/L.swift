@@ -132,6 +132,53 @@ enum L {
     static var aiDebugSubtitle: String { s("导出猫猫对话请求与返回", "Export Arya chat requests & responses") }
     static var agentMemory: String { s("Agent 记忆", "Agent Memory") }
     static var memoryCount: String { s("条记忆", "memories") }
+#if DEBUG
+    static var testPersonaTitle: String { s("测试角色", "Test Personas") }
+    static var testPersonaSettingsSubtitle: String { s("仅用于模拟器 Debug 测试", "Debug simulator testing only") }
+    static func testPersonaCurrent(_ id: String) -> String { s("当前：\(id)", "Current: \(id)") }
+    static var testPersonaSectionTitle: String { s("选择角色", "Choose a Persona") }
+    static var testPersonaSafetyTitle: String { s("模拟器安全测试", "Simulator-safe testing") }
+    static var testPersonaSafetyBody: String {
+        s(
+            "切换角色会关闭 iCloud、健康同步和提醒。请只在模拟器里使用，不要在真机个人数据环境里跑测试角色。",
+            "Switching personas turns off iCloud, Health, and reminders. Use this in the simulator, not on a personal device with real data."
+        )
+    }
+    static var testPersonaActive: String { s("使用中", "Active") }
+    static var testPersonaSwitch: String { s("切换", "Switch") }
+    static var testPersonaReset: String { s("重置数据", "Reset Data") }
+    static var testPersonaResetCurrent: String { s("重置当前测试角色", "Reset Current Persona") }
+    static var testPersonaResetConfirmTitle: String { s("重置这个测试角色？", "Reset this test persona?") }
+    static var testPersonaResetConfirmBody: String {
+        s(
+            "会删除这个测试角色下你新增的随手记、待办、时间记录、第二大脑和猫猫对话，并恢复到种子数据。",
+            "This deletes captures, todos, time entries, Brain cards, and Arya chats added under this test persona, then restores seed data."
+        )
+    }
+    static var testPersonaResetConfirmAction: String { s("确认重置", "Reset Persona") }
+    static var testPersonaReturnReal: String { s("返回真实账户", "Return to Real Account") }
+    static var testPersonaDataPersistenceHint: String {
+        s(
+            "切换角色会保留各自新增的数据；只有手动重置才会清空当前测试角色。",
+            "Switching preserves each persona's added data. Only a manual reset clears the current persona."
+        )
+    }
+    static var testPersonaFooter: String {
+        s(
+            "返回真实账户后会恢复原来的 userId，并刷新小组件快照。",
+            "Returning restores the original userId and refreshes the widget snapshot."
+        )
+    }
+    static var testPersonaICloudDisabled: String {
+        s(
+            "测试角色模式下 iCloud 同步已锁定关闭，避免污染真实数据。",
+            "iCloud sync is locked off for test personas to protect real data."
+        )
+    }
+    static func testPersonaSwitched(_ name: String) -> String { s("已切换到 \(name)，种子数据已准备好。", "Switched to \(name). Seed data is ready.") }
+    static func testPersonaResetDone(_ name: String) -> String { s("\(name) 的测试数据已重置。", "\(name)'s test data has been reset.") }
+    static var testPersonaReturned: String { s("已返回真实账户。", "Returned to the real account.") }
+#endif
     static var clearAllData: String { s("清空所有数据", "Clear All Data") }
     static var clearAllConfirm: String { s("将永久删除本设备上的所有记录，是否继续？", "Permanently delete all local data. Continue?") }
     static var confirmClear: String { s("确认清空", "Confirm Clear") }

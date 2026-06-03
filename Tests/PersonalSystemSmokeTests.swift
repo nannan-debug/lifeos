@@ -24,6 +24,77 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(store.checkItems.count, 0)
     }
 
+#if DEBUG
+    func testTestPersonaSeederSeedsDataWithoutLeakingToAnotherUser() {
+        let defaults = UserDefaults.standard
+        let originalUserId = defaults.string(forKey: "auth.userId")
+        let realUserId = "dev-real-\(UUID().uuidString)"
+
+        defer {
+            for persona in TestPersonaSeeder.personas {
+                defaults.set(persona.id, forKey: "auth.userId")
+                AppStore().wipeCurrentUserData()
+                TestPersonaSeeder.markUnseeded(persona)
+            }
+            if let originalUserId {
+                defaults.set(originalUserId, forKey: "auth.userId")
+            } else {
+                defaults.removeObject(forKey: "auth.userId")
+            }
+        }
+
+        defaults.set(false, forKey: "icloud.sync.enabled")
+        var profiles = Set<String>()
+
+        for persona in TestPersonaSeeder.personas {
+            defaults.set(persona.id, forKey: "auth.userId")
+            let store = AppStore()
+            store.wipeCurrentUserData()
+            TestPersonaSeeder.markUnseeded(persona)
+
+            TestPersonaSeeder.seed(persona, into: store)
+            TestPersonaSeeder.markSeeded(persona)
+            store.selectedDate = Self.date("2026-06-03")
+
+            XCTAssertTrue(store.isTestPersona)
+            XCTAssertEqual(store.selectedDateKey, "2026-06-03")
+            XCTAssertGreaterThanOrEqual(store.dailyCheckEntries.count, 4)
+            XCTAssertFalse(store.checkItems.isEmpty)
+            XCTAssertGreaterThanOrEqual(store.tasks.count, 3)
+            XCTAssertGreaterThanOrEqual(store.timeEntries.count, 2)
+            XCTAssertGreaterThanOrEqual(store.turns.count, 3)
+            XCTAssertGreaterThanOrEqual(store.agentThreadIndex.count, 2)
+            XCTAssertGreaterThanOrEqual(store.agentMemories.count, 3)
+            XCTAssertTrue(store.agentSession.messages.contains { $0.role == "assistant" })
+            XCTAssertFalse(store.userProfile.isEmpty)
+            XCTAssertTrue(store.userProfile.contains("猫猫"))
+            profiles.insert(store.userProfile)
+        }
+
+        XCTAssertEqual(profiles.count, TestPersonaSeeder.personas.count)
+
+        defaults.set(realUserId, forKey: "auth.userId")
+        let store = AppStore()
+        store.reloadForCurrentUser()
+
+        XCTAssertFalse(store.isTestPersona)
+        XCTAssertTrue(store.tasks.isEmpty)
+        XCTAssertTrue(store.turns.isEmpty)
+        XCTAssertTrue(store.brainCards.isEmpty)
+        XCTAssertTrue(store.agentThreadIndex.isEmpty || store.agentSession.messages.isEmpty)
+        XCTAssertTrue(store.userProfile.isEmpty)
+    }
+#endif
+
+    private static func date(_ key: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 3600)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: key) ?? Date()
+    }
+
     func testCheckWidgetSnapshotPrioritizesPendingItems() {
         let snapshot = CheckWidgetSnapshot(
             dateKey: "2026-05-17",
@@ -629,6 +700,62 @@ final class PersonalSystemSmokeTests: XCTestCase {
         )
 
         XCTAssertTrue(store.agentActionSuggestionsToMerge(from: response).isEmpty)
+    }
+
+    func testCompletedDBTBrainActionIsAllowedWhenFollowUpIsPresent() {
+        let store = AppStore()
+        let action = AgentActionDraft(
+            kind: .brain,
+            inboxType: "DBT练习",
+            title: "TIPP 练习：身体发沉时的呼吸",
+            detail: "用户完成了呼吸和脚底放松练习。",
+            date: "2026-06-03",
+            confidence: 0.9,
+            reason: "DBT Coach 完成练习"
+        )
+        let response = AgentChatResponse(
+            reply: "好，到这里就已经是完整的练习了。我帮你存一下。",
+            followUpQuestion: "下次要不要继续？",
+            actionSuggestions: [action],
+            dbtSession: AgentDBTSessionState(status: "completed", skillId: "tipp")
+        )
+
+        XCTAssertEqual(store.agentActionSuggestionsToMerge(from: response), [action])
+    }
+
+    func testAgentSynthesizesBrainSaveWhenDBTCompletionActionIsMissing() {
+        let uid = "agent-dbt-completion-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        let response = AgentChatResponse(
+            reply: """
+            好，到这里就已经是完整的练习了。
+
+            我把这次练习帮你简单存一下，下次如果再遇到身体发沉、脑子不想动，随时翻出来就能用。
+            """,
+            actionSuggestions: []
+        )
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.wipeCurrentUserData()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+        store.agent.session.dbtSession = AgentDBTSessionState(
+            status: "active",
+            skillId: "tipp",
+            currentStepIndex: 2,
+            startedAt: "2026-06-03T18:10",
+            sourceThreadId: UUID().uuidString,
+            skillIds: ["tipp"]
+        )
+
+        store.submitAgentText("就这里吧")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertEqual(store.agent.session.dbtSession?.status, "completed")
+        XCTAssertEqual(store.brainCards.count, 1)
+        XCTAssertEqual(store.brainCards.first?.kind, "dbtSession")
+        XCTAssertTrue(store.agentSession.messages.contains { $0.autoSavedAction?.kind == .brain })
     }
 
     func testAgentChatDebugLogCodableRoundtrip() throws {
@@ -1632,6 +1759,34 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(store.agentSession.messages.first?.role, "user")
     }
 
+    func testAgentDoesNotDuplicateCoveredFollowUpQuestion() {
+        let uid = "agent-followup-dedupe-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        let response = AgentChatResponse(
+            reply: """
+            好，回来了。
+
+            【第 1 步】
+            就刚才那半小时，只讲事实——他什么时候开始哭的？哭了多久？你做了什么？
+            """,
+            followUpQuestion: "刚才那半小时，他什么时候开始哭的？哭了多久？你做了什么？",
+            actionSuggestions: []
+        )
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("可以的，帮我切换吧")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        let assistant = store.agentSession.messages.last { $0.role == "assistant" }?.content ?? ""
+        XCTAssertEqual(assistant.components(separatedBy: "什么时候开始哭").count - 1, 1)
+        XCTAssertEqual(assistant.components(separatedBy: "哭了多久").count - 1, 1)
+        XCTAssertEqual(assistant.components(separatedBy: "你做了什么").count - 1, 1)
+    }
+
     func testAgentHandlesMalformedActions() {
         let uid = "agent-malformed-\(UUID().uuidString)"
         cleanupAgentThreadFiles(uid)
@@ -1702,7 +1857,9 @@ private final class MockAIClient: AIClient {
         traceId: String?,
         sessionId: String?,
         threadId: String?,
-        userProfile: String?
+        userProfile: String?,
+        agentMode: String?,
+        dbtSession: AgentDBTSessionState?
     ) async throws -> AgentChatResponse {
         switch result {
         case .success(let response): return response
@@ -1741,7 +1898,9 @@ private final class MockAIClient: AIClient {
         sessionId: String?,
         threadId: String?,
         userProfile: String?,
-        trigger: String?
+        trigger: String?,
+        agentMode: String?,
+        dbtSession: AgentDBTSessionState?
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             switch result {
@@ -1753,6 +1912,7 @@ private final class MockAIClient: AIClient {
                     followUpQuestion: response.followUpQuestion,
                     actionSuggestions: response.actionSuggestions,
                     toolCall: response.toolCall,
+                    dbtSession: response.dbtSession,
                     usage: response.usage,
                     reasoningTimeMs: nil,
                     message: nil

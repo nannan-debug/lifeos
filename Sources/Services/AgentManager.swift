@@ -840,7 +840,15 @@ final class AgentManager: ObservableObject {
         let isAskingFollowUp = response.followUpQuestion?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty == false
-        return isAskingFollowUp ? [] : response.actionSuggestions
+        let suggestions = response.actionSuggestions.isEmpty
+            ? synthesizedDBTCompletionActions(from: response)
+            : response.actionSuggestions
+        guard isAskingFollowUp else { return suggestions }
+        return suggestions.filter { shouldAllowActionWhileAskingFollowUp($0, response: response) }
+    }
+
+    private func shouldAllowActionWhileAskingFollowUp(_ action: AgentActionDraft, response: AgentChatResponse) -> Bool {
+        isCompletedDBTResponse(response) && isDBTPractice(action)
     }
 
     func mergeActionSuggestions(_ suggestions: [AgentActionDraft]) {
@@ -991,7 +999,7 @@ final class AgentManager: ObservableObject {
         let input = lastUserInput
 
         // 1. 标题忠实性：title 关键词应出现在用户输入中
-        if !a.isMutation && !input.isEmpty && !a.title.isEmpty {
+        if !a.isMutation && !isDBTPractice(a) && !input.isEmpty && !a.title.isEmpty {
             let keywords = a.title.components(separatedBy: .whitespaces)
                 .flatMap { $0.map { String($0) } }  // 拆成单字
                 .filter { $0.count >= 2 }
@@ -1608,6 +1616,8 @@ final class AgentManager: ObservableObject {
         if !content.isEmpty {
             session.messages.append(AgentChatMessage(role: "assistant", content: content))
         }
+        applyDBTSessionUpdate(response.dbtSession)
+        completeDBTSessionIfNeeded(response: response, actions: actions)
         mergeActionSuggestions(actions)
         saveCurrentThread()
     }
@@ -1714,6 +1724,7 @@ final class AgentManager: ObservableObject {
             ))
         }
         applyDBTSessionUpdate(response.dbtSession)
+        completeDBTSessionIfNeeded(response: response, actions: mergedActions)
         mergeActionSuggestions(mergedActions)
         saveCurrentThread()
 
@@ -1751,10 +1762,26 @@ final class AgentManager: ObservableObject {
 
         let normalizedReply = normalizedQuestionText(cleanReply)
         let normalizedQuestion = normalizedQuestionText(cleanQuestion)
-        if normalizedReply.contains(normalizedQuestion) {
+        if normalizedReply.contains(normalizedQuestion)
+            || followUpQuestionAlreadyCovered(reply: cleanReply, question: cleanQuestion) {
             return cleanReply
         }
         return [cleanReply, cleanQuestion].joined(separator: "\n\n")
+    }
+
+    private func followUpQuestionAlreadyCovered(reply: String, question: String) -> Bool {
+        let normalizedReply = normalizedQuestionText(reply)
+        let fragments = question
+            .components(separatedBy: CharacterSet(charactersIn: "，,。！？!?；;：:\n"))
+            .map { normalizedQuestionText($0) }
+            .filter { $0.count >= 3 }
+
+        guard fragments.count >= 2 else { return false }
+
+        let matched = fragments.filter { normalizedReply.contains($0) }
+        let totalLength = fragments.reduce(0) { $0 + $1.count }
+        let matchedLength = matched.reduce(0) { $0 + $1.count }
+        return matched.count >= 2 && Double(matchedLength) / Double(max(totalLength, 1)) >= 0.7
     }
 
     private func normalizedQuestionText(_ text: String) -> String {
@@ -2374,6 +2401,63 @@ final class AgentManager: ObservableObject {
         session.dbtSession = update
     }
 
+    private func completeDBTSessionIfNeeded(response: AgentChatResponse, actions: [AgentActionDraft]) {
+        guard var dbt = session.dbtSession, dbt.status == "active" else { return }
+        guard isCompletedDBTResponse(response) || actions.contains(where: isDBTPractice) else { return }
+        dbt.status = "completed"
+        dbt.completedAt = currentISODateTime
+        if dbt.sourceThreadId == nil {
+            dbt.sourceThreadId = currentThreadID?.uuidString
+        }
+        session.dbtSession = dbt
+    }
+
+    private func synthesizedDBTCompletionActions(from response: AgentChatResponse) -> [AgentActionDraft] {
+        guard let dbt = session.dbtSession, dbt.status == "active" else { return [] }
+        guard isCompletedDBTResponse(response) else { return [] }
+        let reply = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = "DBT 会话：\(dbtSkillName(for: dbt.skillId)) 小练习"
+        let detail = reply.isEmpty ? "用户完成了一次 DBT 小练习。" : reply
+        return [
+            AgentActionDraft(
+                kind: .brain,
+                inboxType: "DBT练习",
+                title: title,
+                detail: detail,
+                date: AIParser.isoDate(),
+                confidence: 0.9,
+                reason: "DBT Coach 回复表示练习已完成并需要保存，客户端补齐第二大脑记录。"
+            )
+        ]
+    }
+
+    private func isCompletedDBTResponse(_ response: AgentChatResponse) -> Bool {
+        if response.dbtSession?.status == "completed" { return true }
+        let text = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        let completionMarkers = [
+            "完整的练习",
+            "完整小练习",
+            "练习完成",
+            "已经完成",
+            "到这里就够了",
+            "到这里就已经",
+            "这次练习"
+        ]
+        let saveMarkers = [
+            "帮你简单存",
+            "帮你存",
+            "存一下",
+            "保存",
+            "收起来",
+            "翻出来就能用",
+            "下次如果再遇到"
+        ]
+        let hasCompletion = completionMarkers.contains { text.localizedCaseInsensitiveContains($0) }
+        let hasSaveIntent = saveMarkers.contains { text.localizedCaseInsensitiveContains($0) }
+        return hasCompletion && hasSaveIntent
+    }
+
     private func dbtContextSummary() -> String {
         guard let dbt = session.dbtSession else { return "DBT session 尚未启动。" }
         let skill = dbtSkillName(for: dbt.skillId)
@@ -2817,3 +2901,34 @@ private extension JSONEncoder {
         return encoder
     }
 }
+
+#if DEBUG
+extension AgentManager {
+    func debugReplaceThreads(_ threads: [AgentChatThread], memories seededMemories: [AgentMemory]) {
+        ensureThreadDirectory()
+        for item in threadIndex {
+            deleteThreadFile(id: item.id)
+        }
+
+        threadIndex = []
+        for thread in threads {
+            saveThread(thread)
+            upsertIndex(for: thread)
+        }
+        saveThreadIndex()
+
+        if let current = threads.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+            currentThreadID = current.id
+            session = current.session
+            defaults.set(current.id.uuidString, forKey: keyCurrentThreadID)
+        } else {
+            currentThreadID = nil
+            session = AgentChatSession()
+            defaults.removeObject(forKey: keyCurrentThreadID)
+        }
+
+        memories = Array(seededMemories.prefix(Self.maxMemories))
+        saveMemories()
+    }
+}
+#endif

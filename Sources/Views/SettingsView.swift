@@ -108,6 +108,36 @@ struct SettingsView: View {
                     }
                 }
 
+#if DEBUG
+                Section(L.testPersonaTitle) {
+                    NavigationLink {
+                        TestPersonaSwitcherView()
+                            .environmentObject(store)
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.orange.opacity(0.12))
+                                Image(systemName: "person.3.sequence")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.orange)
+                            }
+                            .frame(width: 36, height: 36)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(L.testPersonaTitle)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(CreamTheme.text)
+                                Text(store.isTestPersona ? L.testPersonaCurrent(store.currentAuthUserId) : L.testPersonaSettingsSubtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+#endif
+
                 Section {
                     Button(L.clearAllData, role: .destructive) {
                         showDeleteConfirm = true
@@ -175,8 +205,17 @@ struct SettingsView: View {
                 }
             }
             .tint(CreamTheme.green)
+#if DEBUG
+            .disabled(store.isTestPersona)
+#endif
         } header: {
             Text(L.syncSection)
+        } footer: {
+#if DEBUG
+            if store.isTestPersona {
+                Text(L.testPersonaICloudDisabled)
+            }
+#endif
         }
     }
 
