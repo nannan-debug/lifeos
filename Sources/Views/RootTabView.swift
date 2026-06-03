@@ -79,6 +79,8 @@ struct RootTabView: View {
                     store.selectedDate = date
                 }
                 selectedTab = .time
+            case .review:
+                selectedTab = .review
             }
         }
     }

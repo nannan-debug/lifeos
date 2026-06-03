@@ -48,6 +48,7 @@
 		872CB671FC91EAC997FFBCAB /* cat-lying.png in Resources */ = {isa = PBXBuildFile; fileRef = D3B2AC351391A95EB5626845 /* cat-lying.png */; };
 		8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */; };
 		892A76B6DCDC71F8653AD002 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A91D26AC13B0637910C124F /* UsageTracker.swift */; };
+		992143D2E8B7975DC7F7FF51 /* TestPersonaSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 024BF41E19C1550E79DC6C84 /* TestPersonaSwitcherView.swift */; };
 		A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E49D2D37FD2539D75275B /* Secrets.swift */; };
 		ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36385E1762B561F298163F27 /* TodayView.swift */; };
 		C19ACFF8ABFFB35B452B3C49 /* PersonalSystemSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */; };
@@ -61,6 +62,7 @@
 		EECA22D6609959135391624F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4740978737F177B45D684422 /* SettingsView.swift */; };
 		F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */; };
 		F6896693D277FD78E861D75F /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3838D574A4224A4001BCEB /* RootTabView.swift */; };
+		F96D53CFE677E0A9F36B5135 /* TestPersonaSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECFFE8F6B2AA9F984128F1DD /* TestPersonaSeeder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +97,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		024BF41E19C1550E79DC6C84 /* TestPersonaSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestPersonaSwitcherView.swift; sourceTree = "<group>"; };
 		0601F16A417B711B5E5DA4FE /* TodoEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoEditorSheet.swift; sourceTree = "<group>"; };
 		062E74E97D913D30DBA54BC9 /* BrainCardWallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainCardWallView.swift; sourceTree = "<group>"; };
 		0C3838D574A4224A4001BCEB /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
@@ -151,6 +154,7 @@
 		E43793AFBE40A0207A015C59 /* GlobalAIInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalAIInputBar.swift; sourceTree = "<group>"; };
 		E54B4D126C777329D7686D7D /* AIConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConsentSheet.swift; sourceTree = "<group>"; };
 		E8EE8416A7C860820E996F38 /* CloudKitSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitSchema.swift; sourceTree = "<group>"; };
+		ECFFE8F6B2AA9F984128F1DD /* TestPersonaSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestPersonaSeeder.swift; sourceTree = "<group>"; };
 		F8C51C9E4D24CBEE1F6DE475 /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
 		F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */ = {isa = PBXFileReference; path = "cat-lay.svg"; sourceTree = "<group>"; };
 		FDE767D0A1D80C1C80C61325 /* L.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L.swift; sourceTree = "<group>"; };
@@ -244,6 +248,15 @@
 			);
 			sourceTree = "<group>";
 		};
+		ACB384427E69C36C88F366E5 /* Debug */ = {
+			isa = PBXGroup;
+			children = (
+				ECFFE8F6B2AA9F984128F1DD /* TestPersonaSeeder.swift */,
+				024BF41E19C1550E79DC6C84 /* TestPersonaSwitcherView.swift */,
+			);
+			path = Debug;
+			sourceTree = "<group>";
+		};
 		BEEF81A6D436ABA5D0A07EE7 /* CheckWidget */ = {
 			isa = PBXGroup;
 			children = (
@@ -261,6 +274,7 @@
 			isa = PBXGroup;
 			children = (
 				6CA902177BB6AC6791D4C562 /* App */,
+				ACB384427E69C36C88F366E5 /* Debug */,
 				0E0867D59F75D4DD55B45AFB /* Localization */,
 				F9BE08755323B70F4DA3CD99 /* Models */,
 				1D4D04C4520C793DD37BF0BE /* Services */,
@@ -484,6 +498,8 @@
 				A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */,
 				EECA22D6609959135391624F /* SettingsView.swift in Sources */,
 				389E8685ABC1255281C3AC53 /* TaskIntentDetector.swift in Sources */,
+				F96D53CFE677E0A9F36B5135 /* TestPersonaSeeder.swift in Sources */,
+				992143D2E8B7975DC7F7FF51 /* TestPersonaSwitcherView.swift in Sources */,
 				19D3943266C325922D29C221 /* TimeView.swift in Sources */,
 				ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */,
 				7E5752949C7D7F2ED2126343 /* TodoEditorSheet.swift in Sources */,
