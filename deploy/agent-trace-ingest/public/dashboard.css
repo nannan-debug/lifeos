@@ -649,6 +649,64 @@ select:focus {
   font-size: 13px;
 }
 
+.growth-start-panel,
+.publish-empty {
+  display: grid;
+  gap: 18px;
+  min-height: 280px;
+  padding: 32px;
+  border: 1px dashed rgba(61, 94, 71, 0.22);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(233, 245, 236, 0.72), rgba(255, 255, 255, 0.72));
+}
+
+.growth-start-panel {
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 420px);
+  align-items: center;
+}
+
+.growth-start-copy span,
+.publish-empty span {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.growth-start-copy h3 {
+  margin: 6px 0 8px;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.growth-start-copy p,
+.publish-empty p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.growth-start-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.growth-start-actions .ghost-button,
+.growth-start-actions .copy-button {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 15px;
+}
+
+.publish-empty {
+  min-height: 190px;
+  align-content: center;
+}
+
 .retry-link {
   display: inline;
   margin-left: 8px;
@@ -1125,6 +1183,10 @@ select:focus {
 @media (max-width: 1180px) {
   .filters,
   .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .growth-start-panel {
     grid-template-columns: 1fr;
   }
 
