@@ -9,7 +9,7 @@ struct CreamCalendarOverlay: View {
     var markerForDate: (Date) -> CreamCalendarMarker
 
     private let calendar = Calendar.current
-    private let weekSymbols = ["日", "一", "二", "三", "四", "五", "六"]
+    private var weekSymbols: [String] { L.weekSymbols }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -186,8 +186,8 @@ struct CreamCalendarOverlay: View {
 
     private func monthTitle(_ date: Date) -> String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "yyyy年M月"
+        f.locale = Locale(identifier: L.localeId)
+        f.dateFormat = L.isEn ? "MMM yyyy" : "yyyy年M月"
         return f.string(from: date)
     }
 

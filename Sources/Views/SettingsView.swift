@@ -144,6 +144,12 @@ struct SettingsView: View {
             .tint(CreamTheme.green)
             .scrollContentBackground(.hidden)
             .background(CreamTheme.glassStrong)
+            .onAppear {
+                store.refreshLocalizedSettingsStatusText()
+            }
+            .onChange(of: appLanguage) { _ in
+                store.refreshLocalizedSettingsStatusText()
+            }
         }
         .creamBackground()
     }
@@ -584,23 +590,23 @@ private struct AgentDebugLogDetailView: View {
 
     var body: some View {
         List {
-            detailSection("输入", rows: [log.input])
-            detailSection("请求上下文", rows: [
+            detailSection(L.debugInput, rows: [log.input])
+            detailSection(L.debugRequestContext, rows: [
                 "currentDate=\(log.currentDate)",
                 "currentTime=\(log.currentTime)"
             ])
-            detailSection("猫猫人格", rows: [log.personaSummary.isEmpty ? "无" : log.personaSummary])
-            detailSection("用户信息", rows: [log.userSummary.isEmpty ? "无" : log.userSummary])
-            detailSection("聊天历史", rows: emptyFallback(log.messagesSummary))
-            detailSection("LifeOS 上下文", rows: [log.contextSummary.isEmpty ? "无" : log.contextSummary])
-            detailSection("回复", rows: [log.reply])
-            detailSection("追问", rows: [log.followUpQuestion.isEmpty ? "无" : log.followUpQuestion])
-            detailSection("AI 建议", rows: emptyFallback(log.actionSuggestionsSummary))
-            detailSection("进入卡片队列", rows: emptyFallback(log.mergedActionSummary))
+            detailSection(L.debugPersona, rows: [log.personaSummary.isEmpty ? L.noneValue : log.personaSummary])
+            detailSection(L.debugUserInfo, rows: [log.userSummary.isEmpty ? L.noneValue : log.userSummary])
+            detailSection(L.debugChatHistory, rows: emptyFallback(log.messagesSummary))
+            detailSection(L.debugLifeOSContext, rows: [log.contextSummary.isEmpty ? L.noneValue : log.contextSummary])
+            detailSection(L.debugReply, rows: [log.reply])
+            detailSection(L.debugFollowUp, rows: [log.followUpQuestion.isEmpty ? L.noneValue : log.followUpQuestion])
+            detailSection(L.debugAISuggestions, rows: emptyFallback(log.actionSuggestionsSummary))
+            detailSection(L.debugMergedQueue, rows: emptyFallback(log.mergedActionSummary))
             if !log.errorMessage.isEmpty {
-                detailSection("错误", rows: [log.errorMessage])
+                detailSection(L.debugError, rows: [log.errorMessage])
             }
-            detailSection("Raw JSON", rows: [log.rawResponse.isEmpty ? "无" : log.rawResponse])
+            detailSection("Raw JSON", rows: [log.rawResponse.isEmpty ? L.noneValue : log.rawResponse])
         }
         .navigationTitle(log.createdAt.formatted(date: .abbreviated, time: .shortened))
         .navigationBarTitleDisplayMode(.inline)
@@ -636,7 +642,7 @@ private struct AgentDebugLogDetailView: View {
     }
 
     private func emptyFallback(_ rows: [String]) -> [String] {
-        rows.isEmpty ? ["无"] : rows
+        rows.isEmpty ? [L.noneValue] : rows
     }
 }
 
@@ -697,22 +703,22 @@ private enum AgentDebugLogMarkdownExporter {
         \(log.input)
 
         \(childH) Agent Persona
-        \(log.personaSummary.isEmpty ? "无" : log.personaSummary)
+        \(log.personaSummary.isEmpty ? L.noneValue : log.personaSummary)
 
         \(childH) User Summary
-        \(log.userSummary.isEmpty ? "无" : log.userSummary)
+        \(log.userSummary.isEmpty ? L.noneValue : log.userSummary)
 
         \(childH) Messages Sent
         \(joined(log.messagesSummary))
 
         \(childH) Context Summary
-        \(log.contextSummary.isEmpty ? "无" : log.contextSummary)
+        \(log.contextSummary.isEmpty ? L.noneValue : log.contextSummary)
 
         \(childH) Reply
         \(log.reply)
 
         \(childH) Follow-up Question
-        \(log.followUpQuestion.isEmpty ? "无" : log.followUpQuestion)
+        \(log.followUpQuestion.isEmpty ? L.noneValue : log.followUpQuestion)
 
         \(childH) AI Action Suggestions
         \(joined(log.actionSuggestionsSummary))
@@ -721,16 +727,16 @@ private enum AgentDebugLogMarkdownExporter {
         \(joined(log.mergedActionSummary))
 
         \(childH) Error
-        \(log.errorMessage.isEmpty ? "无" : log.errorMessage)
+        \(log.errorMessage.isEmpty ? L.noneValue : log.errorMessage)
 
         \(childH) Raw JSON
         ```json
-        \(log.rawResponse.isEmpty ? "无" : log.rawResponse)
+        \(log.rawResponse.isEmpty ? L.noneValue : log.rawResponse)
         ```
         """
     }
 
     private static func joined(_ rows: [String]) -> String {
-        rows.isEmpty ? "无" : rows.map { "- \($0)" }.joined(separator: "\n")
+        rows.isEmpty ? L.noneValue : rows.map { "- \($0)" }.joined(separator: "\n")
     }
 }

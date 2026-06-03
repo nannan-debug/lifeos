@@ -1245,10 +1245,10 @@ private struct RadialRangePicker: View {
                         .foregroundStyle(.secondary)
                 }
 
-                handle(center: center, radius: radius, minute: startMinutes, title: "开始")
+                handle(center: center, radius: radius, minute: startMinutes, title: L.dialStart)
                     .gesture(dragGesture(for: .start, center: center))
 
-                handle(center: center, radius: radius, minute: endMinutes, title: "结束")
+                handle(center: center, radius: radius, minute: endMinutes, title: L.dialEnd)
                     .gesture(dragGesture(for: .end, center: center))
 
                 hourLabel("24/00", at: center, radius: radius + 18, minute: 0)
