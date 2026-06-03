@@ -1262,15 +1262,37 @@ final class AgentManager: ObservableObject {
         }
 
         let result: String?
+        var actionRef: AutoSavedActionRef? = nil
         switch action.kind {
         case .inbox:
-            result = commitInboxAction(action)
+            if let turnId = commitInboxActionReturningId(action) {
+                actionRef = AutoSavedActionRef(kind: .inbox, title: action.title, turnId: turnId)
+                if isDBTPractice(action) { saveDBTSessionToBrain(action: action, sourceTurnId: turnId) }
+                result = nil
+            } else {
+                result = "内容为空，未保存"
+            }
         case .brain:
-            result = commitBrainAction(action)
+            if commitBrainActionReturningId(action) != nil {
+                actionRef = AutoSavedActionRef(kind: .brain, title: action.title)
+                result = nil
+            } else {
+                result = "内容为空，未保存"
+            }
         case .task:
-            result = commitTaskAction(action)
+            if let taskId = commitTaskActionReturningId(action) {
+                actionRef = AutoSavedActionRef(kind: .task, title: action.title, taskId: taskId)
+                result = nil
+            } else {
+                result = "待办标题为空"
+            }
         case .time:
-            result = commitTimeAction(action)
+            if let turnId = commitTimeActionReturningId(action) {
+                actionRef = AutoSavedActionRef(kind: .time, title: action.title, turnId: turnId)
+                result = nil
+            } else {
+                result = "时间记录缺少开始/结束时间"
+            }
         case .calendarEvent:
             result = commitCalendarEvent(action)
         case .editTask:
@@ -1291,20 +1313,20 @@ final class AgentManager: ObservableObject {
 
         if result == nil {
             session.pendingActions.removeAll { $0.id == id }
-            // 撤销支持
-            var undoRef: AutoSavedActionRef? = nil
-            if (action.kind == .deleteTask || action.kind == .deleteTime || action.kind == .deleteInbox),
-               let snapshot = lastDeletedSnapshot {
-                undoRef = AutoSavedActionRef(kind: action.kind, title: action.title, deletedRecord: snapshot)
-                lastDeletedSnapshot = nil
-            } else if action.kind == .calendarEvent, let eventId = lastCalendarEventId {
-                undoRef = AutoSavedActionRef(kind: .calendarEvent, title: action.title, calendarEventId: eventId)
-                lastCalendarEventId = nil
+            if actionRef == nil {
+                if (action.kind == .deleteTask || action.kind == .deleteTime || action.kind == .deleteInbox),
+                   let snapshot = lastDeletedSnapshot {
+                    actionRef = AutoSavedActionRef(kind: action.kind, title: action.title, deletedRecord: snapshot)
+                    lastDeletedSnapshot = nil
+                } else if action.kind == .calendarEvent, let eventId = lastCalendarEventId {
+                    actionRef = AutoSavedActionRef(kind: .calendarEvent, title: action.title, calendarEventId: eventId)
+                    lastCalendarEventId = nil
+                }
             }
             let msg = AgentChatMessage(
                 role: "assistant",
                 content: savedMessage(for: action),
-                autoSavedAction: undoRef,
+                autoSavedAction: actionRef,
                 isActionResult: true
             )
             appendMessage(msg)
