@@ -300,6 +300,33 @@ export function createTraceServer(options = {}) {
     action_dismissed: "取消建议",
     action_auto_undo: "撤销保存",
   };
+  const USAGE_LABELS = {
+    usage_app_open: "打开 App",
+    usage_tab_switch: "切换 Tab",
+    usage_turn_created: "新随手记",
+    usage_task_created: "新待办",
+    usage_task_completed: "完成待办",
+    usage_time_created: "新时间记录",
+    usage_check_toggled: "打卡",
+    usage_ai_chat_sent: "Arya 对话",
+    usage_calendar_created: "新日历事件",
+    usage_review_opened: "打开复盘",
+    usage_braincard_viewed: "查看第二大脑",
+    usage_export: "导出",
+  };
+
+  function usageTitle(events) {
+    const ev = events.find((e) => e.eventName === "usage_batch");
+    if (!ev) return "";
+    const items = Object.entries(ev.payload || {})
+      .map(([key, value]) => [USAGE_LABELS[key] || key, Number(value) || 0])
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([label, count]) => `${label} ${count}`);
+    return items.length ? `使用统计：${items.join("、")}` : "使用统计";
+  }
+
   function iosActionTitle(events) {
     const ev = events.find((e) => IOS_EVENT_LABELS[e.eventName]);
     if (!ev) return "";
@@ -330,7 +357,7 @@ export function createTraceServer(options = {}) {
       sources: [...new Set(sorted.map((event) => event.source).filter(Boolean))],
       hasError: Boolean(errorEvent),
       status: errorEvent ? "error" : "ok",
-      title: inputEvent?.payload?.input || responseEvent?.payload?.reply || modeTitle(sorted) || iosActionTitle(sorted) || traceId,
+      title: inputEvent?.payload?.input || responseEvent?.payload?.reply || usageTitle(sorted) || modeTitle(sorted) || iosActionTitle(sorted) || traceId,
       lastEventName: last.eventName || "",
       latencyMs: totalLatency || null,
       usage,
@@ -393,6 +420,7 @@ export function createTraceServer(options = {}) {
     const allEvents = await listEvents(query);
     const source = String(query.get("source") || "").trim();
     const search = String(query.get("q") || "").trim().toLowerCase();
+    const kind = String(query.get("kind") || "all").trim();
     const errorsOnly = query.get("errorsOnly") === "1";
     const hasFilters = Boolean((source && source !== "all") || search || errorsOnly);
     let matchingEvents = allEvents;
@@ -414,13 +442,21 @@ export function createTraceServer(options = {}) {
       list.push(event);
       traceMap.set(event.traceId, list);
     }
-    const traces = [...traceMap.entries()]
+    const filteredTraceEntries = [...traceMap.entries()].filter(([traceId, traceEvents]) => {
+      const isUsageTrace = traceId.startsWith("usage-")
+        || traceEvents.some((event) => event.eventName === "usage_batch");
+      if (kind === "ai") return !isUsageTrace;
+      if (kind === "usage") return isUsageTrace;
+      return true;
+    });
+    const traces = filteredTraceEntries
       .map(([traceId, traceEvents]) => summarizeTrace(traceId, traceEvents))
       .sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
     if (query.get("summaryOnly") === "1") {
       return { events: [], traces };
     }
-    return { events, traces };
+    const visibleTraceIds = new Set(filteredTraceEntries.map(([traceId]) => traceId));
+    return { events: events.filter((event) => visibleTraceIds.has(event.traceId)), traces };
   }
 
   // ── 静态文件缓存 ──

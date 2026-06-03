@@ -191,6 +191,50 @@ select:focus {
   text-align: right;
 }
 
+.view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 14px 44px rgba(25, 41, 29, 0.06);
+}
+
+.view-tab {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  border: 1px solid transparent;
+  border-radius: 17px;
+  padding: 10px 14px;
+  color: var(--muted);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s, color 0.16s, box-shadow 0.16s;
+}
+
+.view-tab span {
+  color: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.view-tab small {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.view-tab.active {
+  color: var(--ink);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 10px 28px rgba(25, 41, 29, 0.08);
+}
+
 .ghost-button,
 .copy-button,
 .search-button {
@@ -208,6 +252,10 @@ select:focus {
   gap: 10px;
   padding: 12px 16px;
   border-radius: 20px;
+}
+
+.app[data-view="usage"] .trace-filter {
+  display: none;
 }
 
 .filter-date { width: 155px; flex-shrink: 0; }
@@ -489,6 +537,91 @@ select:focus {
   word-break: break-word;
 }
 
+.readable-view {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.readable-view:empty {
+  display: none;
+}
+
+.readable-section {
+  display: grid;
+  gap: 10px;
+}
+
+.readable-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.readable-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.readable-fields.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.readable-field,
+.message-row,
+.action-row {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.readable-field span,
+.message-row span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.readable-field p,
+.message-row p,
+.action-row p {
+  margin: 0;
+  color: #24342a;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-list,
+.action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.message-row.user {
+  border-color: rgba(55, 164, 95, 0.28);
+  background: rgba(235, 249, 239, 0.74);
+}
+
+.message-row.assistant {
+  border-color: rgba(36, 52, 42, 0.12);
+}
+
+.action-row strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
 .json-key {
   color: #287548;
   font-weight: 500;
@@ -530,28 +663,30 @@ select:focus {
   border-color: var(--green);
 }
 
-/* ── Usage Analytics Panel ── */
+/* ── Usage Analytics Page ── */
 
-.usage-panel {
-  margin: 0 16px 12px;
-  padding: 20px 24px;
+.usage-page {
+  min-height: calc(100vh - 250px);
+  padding: 24px;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 26px;
   background: var(--panel);
-  box-shadow: var(--shadow);
+  box-shadow: 0 16px 50px rgba(25, 41, 29, 0.08);
+  backdrop-filter: blur(20px);
 }
 
 .usage-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .usage-header h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.18;
+  font-weight: 700;
 }
 
 .usage-summary {
@@ -562,15 +697,15 @@ select:focus {
 }
 
 .usage-card {
-  padding: 16px;
+  padding: 20px 18px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.68);
-  text-align: center;
+  text-align: left;
 }
 
 .usage-card-value {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
   color: var(--green);
 }
@@ -586,6 +721,15 @@ select:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
+}
+
+.usage-features,
+.usage-users {
+  min-height: 360px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.58);
 }
 
 .usage-features h3,
@@ -669,14 +813,25 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .topbar,
+  .filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
+
   .trace-items,
   .timeline,
   .detail-panel {
     max-height: none;
   }
 
+  .view-tabs,
   .usage-summary {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 
   .usage-body {
