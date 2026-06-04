@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 import { createReadStream, createWriteStream } from "node:fs";
+import { execFile } from "node:child_process";
 
 const DEFAULT_PORT = 8787;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -27,6 +28,9 @@ const GROWTH_TYPES = {
   published: "published",
   weekly: "analytics/weekly",
 };
+
+const XHS_CLI = process.env.XHS_CLI_PATH || "/home/ubuntu/.local/bin/xhs";
+const XHS_IMAGE_DIR_NAME = "xhs-images";
 
 export function createTraceServer(options = {}) {
   const traceDir = options.traceDir || process.env.TRACE_DIR || "/var/lib/lifeos-traces";
@@ -619,6 +623,79 @@ export function createTraceServer(options = {}) {
     }
   }
 
+  function runXhsCli(args, timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      const proc = execFile(XHS_CLI, args, { timeout: timeoutMs, maxBuffer: 5 * 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) return reject(new Error(stderr || err.message));
+        try { resolve(JSON.parse(stdout)); } catch { reject(new Error("xhs CLI returned invalid JSON")); }
+      });
+    });
+  }
+
+  async function downloadImage(url, destPath) {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Referer": "https://www.xiaohongshu.com/" },
+    });
+    if (!res.ok) throw new Error(`Image download failed: ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    await fs.writeFile(destPath, buf);
+    return buf.length;
+  }
+
+  async function fetchXhsNote(urlOrId) {
+    const noteIdMatch = urlOrId.match(/(?:explore\/|discovery\/item\/)([a-f0-9]{24})/);
+    const noteId = noteIdMatch ? noteIdMatch[1] : urlOrId.replace(/[^a-f0-9]/g, "");
+    if (!noteId || noteId.length !== 24) throw new Error("invalid_note_id");
+
+    const xsecMatch = urlOrId.match(/xsec_token=([^&]+)/);
+    const args = ["read", noteId, "--json"];
+    if (xsecMatch) args.push("--xsec-token", decodeURIComponent(xsecMatch[1]));
+
+    const result = await runXhsCli(args);
+    let note = result.data || {};
+    // xhs CLI may return data in items[0].note_card format
+    if (note.items && note.items[0]?.note_card) {
+      note = note.items[0].note_card;
+    }
+    if (!note.title && !note.desc && !note.display_title) throw new Error("note_not_found");
+
+    const imageDir = path.join(growthDir, XHS_IMAGE_DIR_NAME, noteId);
+    await fs.mkdir(imageDir, { recursive: true });
+
+    const images = [];
+    let imageList = note.image_list || note.images || [];
+    if (!imageList.length && note.cover) imageList = [note.cover];
+    for (let i = 0; i < imageList.length; i++) {
+      const img = imageList[i];
+      const imgUrl = img.url || img.url_default
+        || (img.info_list && img.info_list.find(x => x.image_scene === "WB_DFT")?.url)
+        || (img.url_default) || "";
+      if (!imgUrl) continue;
+      const ext = imgUrl.includes("webp") ? "webp" : "jpg";
+      const filename = `${i + 1}.${ext}`;
+      try {
+        await downloadImage(imgUrl, path.join(imageDir, filename));
+        images.push({ index: i + 1, filename, localPath: `${XHS_IMAGE_DIR_NAME}/${noteId}/${filename}` });
+      } catch { /* skip failed images */ }
+    }
+
+    const tags = (note.tag_list || note.tags || []).map(t => t.name || t).filter(Boolean);
+    return {
+      noteId,
+      title: note.title || note.display_title || "",
+      desc: note.desc || note.description || "",
+      author: note.user?.nickname || note.user?.nick_name || "",
+      authorId: note.user?.user_id || "",
+      likes: note.interact_info?.liked_count || note.liked_count || "0",
+      collects: note.interact_info?.collected_count || note.collected_count || "0",
+      comments: note.interact_info?.comment_count || note.comment_count || "0",
+      shares: note.interact_info?.shared_count || note.shared_count || "0",
+      tags,
+      images,
+      url: `https://www.xiaohongshu.com/explore/${noteId}`,
+    };
+  }
+
   async function saveGrowthContent(input = {}) {
     const type = String(input.type || "");
     const title = String(input.title || input.data?.title || "未命名");
@@ -737,6 +814,7 @@ export function createTraceServer(options = {}) {
         await writeJSON(res, 200, { ok: true, cacheSize: dayCache.size });
         return;
       }
+
 
       if (url.pathname === "/dashboard" || url.pathname === "/dashboard/") {
         await serveStatic(res, path.join(publicDir, "dashboard.html"), "text/html; charset=utf-8");
@@ -888,6 +966,50 @@ export function createTraceServer(options = {}) {
         }
         const config = await loadGrowthConfig();
         await writeJSON(res, 200, { ok: true, ...config });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/dashboard/api/growth/fetch-xhs") {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        try {
+          const body = await readJSONBody(req);
+          const urlOrId = String(body?.url || "").trim();
+          if (!urlOrId) {
+            await writeJSON(res, 400, { error: "missing_url" });
+            return;
+          }
+          const note = await fetchXhsNote(urlOrId);
+          await writeJSON(res, 200, { ok: true, ...note });
+        } catch (error) {
+          const status = error.message === "invalid_note_id" ? 400 : 502;
+          await writeJSON(res, status, { error: error.message });
+        }
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname.startsWith("/dashboard/api/growth/images/")) {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const imgPath = url.pathname.replace("/dashboard/api/growth/images/", "");
+        const resolved = path.resolve(path.join(growthDir, XHS_IMAGE_DIR_NAME, imgPath));
+        if (!resolved.startsWith(path.resolve(path.join(growthDir, XHS_IMAGE_DIR_NAME)))) {
+          await writeJSON(res, 403, { error: "forbidden" });
+          return;
+        }
+        try {
+          const data = await fs.readFile(resolved);
+          const ext = path.extname(resolved).slice(1);
+          const mime = { webp: "image/webp", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" }[ext] || "application/octet-stream";
+          res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=86400" });
+          res.end(data);
+        } catch {
+          await writeJSON(res, 404, { error: "image_not_found" });
+        }
         return;
       }
 

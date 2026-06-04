@@ -178,6 +178,16 @@
           <button class="ghost-button" id="contentModalClose" type="button">✕</button>
         </div>
         <form id="contentModalForm" class="content-modal-form">
+          <div class="content-modal-row content-modal-url-row" id="cmUrlRow" hidden>
+            <label>
+              <span>小红书链接</span>
+              <div class="cm-url-group">
+                <input id="cmUrl" type="text" placeholder="粘贴小红书帖子链接...">
+                <button class="copy-button" type="button" id="cmFetchBtn">获取</button>
+              </div>
+            </label>
+            <div id="cmFetchStatus" class="cm-fetch-status"></div>
+          </div>
           <div class="content-modal-row">
             <label>
               <span>标题</span>
@@ -234,6 +244,10 @@
               <textarea id="cmBody" rows="14"></textarea>
             </label>
           </div>
+          <div class="content-modal-row" id="cmImagesRow" hidden>
+            <span class="cm-images-label">参考图片</span>
+            <div id="cmImages" class="cm-images"></div>
+          </div>
           <div class="content-modal-actions">
             <button class="copy-button" type="submit" id="cmSave">保存</button>
             <button class="ghost-button" type="button" id="cmCancel">取消</button>
@@ -243,6 +257,6 @@
       </div>
     </div>
   </main>
-  <script src="/dashboard/dashboard.js?v=20260604a"></script>
+  <script src="/dashboard/dashboard.js?v=20260604c"></script>
 </body>
 </html>
