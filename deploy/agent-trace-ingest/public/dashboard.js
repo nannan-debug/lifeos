@@ -767,8 +767,7 @@ async function loadGrowth(silent = false) {
     renderGrowth(data);
     setRefreshState("Growth 已更新");
   } catch (error) {
-    $("growthSummary").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
-    $("growthFlow").innerHTML = "";
+    $("growthFlow").innerHTML = `<div class="empty-state">加载失败：${escapeHTML(error.message)}</div>`;
     $("growthToday").innerHTML = "";
     $("growthDrafts").innerHTML = "";
     $("growthReferences").innerHTML = "";
@@ -785,25 +784,6 @@ function renderGrowth(data) {
   $("growthLedgerCount").textContent = String(allRows.length);
   $("growthDraftCount").textContent = String(data.drafts?.length || 0);
   $("growthReferenceCount").textContent = String(data.references?.length || 0);
-
-  $("growthSummary").innerHTML = `
-    <div class="usage-card compact">
-      <div class="usage-card-value">${data.counts?.references || 0}</div>
-      <div class="usage-card-label">参考帖</div>
-    </div>
-    <div class="usage-card compact">
-      <div class="usage-card-value">${data.counts?.topics || 0}</div>
-      <div class="usage-card-label">选题</div>
-    </div>
-    <div class="usage-card compact">
-      <div class="usage-card-value">${data.counts?.readyDrafts || 0}</div>
-      <div class="usage-card-label">Ready 草稿</div>
-    </div>
-    <div class="usage-card compact">
-      <div class="usage-card-value">${data.counts?.needsReview || 0}</div>
-      <div class="usage-card-label">待复盘</div>
-    </div>
-  `;
 
   renderGrowthToday(data);
 
