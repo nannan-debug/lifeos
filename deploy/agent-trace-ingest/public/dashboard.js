@@ -779,7 +779,7 @@ async function loadGrowth(silent = false) {
 
 function renderGrowth(data) {
   if (!data) return;
-  $("growthRoot").textContent = data.root || "growth dir";
+
   const allRows = growthLedgerRows(data);
   $("growthLedgerCount").textContent = String(allRows.length);
   $("growthDraftCount").textContent = String(data.drafts?.length || 0);
