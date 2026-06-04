@@ -7,7 +7,7 @@
 
 ## 0. 当前结论
 
-**LifeOS 1.11.0 (build 15) 已通过审核并上架；1.12.0 (build 16) 正在准备发版 PR，尚未 Archive / Upload / Submit。**
+**LifeOS 1.12.0 (build 16) 已通过审核并上架 App Store。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架
@@ -21,9 +21,9 @@
 - ✅ `1.7.0 (build 11)` — 2026-05-20 上架
 - ✅ `1.8.0 (build 12)` — 2026-05-21 上架
 - ✅ `1.11.0 (build 15)` — 2026-05-26 上架（中英文双语支持 + AI 语言匹配）
-- 🟡 `1.12.0 (build 16)` — 2026-06-04 准备发版 PR；待 Archive 上传 App Store Connect
+- ✅ `1.12.0 (build 16)` — 2026-06-04 上架（DBT 修复 + Agent 体验优化）
 - ✅ App ID：`6763877227`
-- ✅ App Store Connect 状态：1.0.0 ~ 1.11.0 均 Ready for Distribution
+- ✅ App Store Connect 状态：1.0.0 ~ 1.12.0 均 Ready for Distribution
 
 **注：1.9.0 (build 13) 和 1.10.0 (build 14) 已合入 main 但未单独发版上架，功能随 1.11.0 一起发布。**
 
@@ -42,9 +42,8 @@
 | 主语言 | 简体中文（zh-Hans），应用内支持中英文切换 |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
-| 已上架营销版本 | `1.11.0` (build 15) |
-| 当前提审版本 | `1.12.0` (build 16) 准备中，尚未提交审核 |
-| 当前 main 状态 | `1.11.0 (build 15)` 已上架；本发版 PR 将把 `[Unreleased]` 归档为 `1.12.0 (build 16)` |
+| 已上架营销版本 | `1.12.0` (build 16) |
+| 当前 main 状态 | `1.12.0 (build 16)` 已上架 App Store |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：

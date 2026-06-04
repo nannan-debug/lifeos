@@ -227,18 +227,21 @@ async function requestJSON(url, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, {
-        ...options,
+      const fetchOpts = {
+        method: options.method || "GET",
+        credentials: "same-origin",
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(options.headers || {}),
         },
-      });
+      };
+      if (options.body) fetchOpts.body = options.body;
+      const response = await fetch(url, fetchOpts);
       clearTimeout(timer);
 
       if (response.status === 401) {
-        handleSessionExpired();
+        if (!options._noSessionRedirect) handleSessionExpired();
         throw new Error("会话已过期，请重新登录");
       }
 
@@ -260,6 +263,7 @@ async function requestJSON(url, options = {}) {
 }
 
 function handleSessionExpired() {
+  $("contentModal").hidden = true;
   $("loginPanel").hidden = false;
   $("appPanel").hidden = true;
   $("loginMessage").textContent = "会话已过期，请重新登录。";
@@ -587,11 +591,11 @@ async function login(event) {
         user: $("loginUser").value,
         password: $("loginPassword").value,
       }),
-      _retries: 1,
+      _retries: 3,
     });
     await loadSession();
   } catch (error) {
-    $("loginMessage").textContent = error.message === "invalid_credentials" ? "账户或密码不对。" : error.message;
+    $("loginMessage").textContent = error.message === "invalid_credentials" ? "账户或密码不对。" : error.message === "Failed to fetch" ? "网络连接失败，请检查网络后重试。" : error.message;
   }
 }
 
@@ -1049,6 +1053,13 @@ function openContentModal(mode, opts = {}) {
   $("cmDelete").hidden = mode !== "edit";
   $("cmType").disabled = mode === "edit";
   $("cmDate").value = todayKey();
+  $("cmFetchStatus").textContent = "";
+  $("cmFetchStatus").className = "cm-fetch-status";
+  $("cmImages").innerHTML = "";
+  $("cmImagesRow").hidden = true;
+
+  const isRef = (opts.type || "drafts") === "references";
+  $("cmUrlRow").hidden = !(mode === "create" && isRef);
 
   const pillars = state.growthConfig?.pillars || [];
   $("cmPillar").innerHTML = `<option value="">—</option>${pillars.map((p) => `<option value="${escapeHTML(p)}">${escapeHTML(p)}</option>`).join("")}`;
@@ -1065,7 +1076,7 @@ function openContentModal(mode, opts = {}) {
   }
 
   modal.hidden = false;
-  $("cmTitle").focus();
+  if (isRef && mode === "create") { $("cmUrl").focus(); } else { $("cmTitle").focus(); }
 }
 
 function closeContentModal() {
@@ -1073,10 +1084,79 @@ function closeContentModal() {
   state.contentModal = { mode: null, type: null, id: null };
 }
 
+async function fetchXhsNote() {
+  const url = $("cmUrl").value.trim();
+  if (!url) return;
+  const statusEl = $("cmFetchStatus");
+  const btn = $("cmFetchBtn");
+  btn.disabled = true;
+  statusEl.textContent = "正在获取帖子内容...";
+  statusEl.className = "cm-fetch-status loading";
+  try {
+    const result = await requestJSON("/dashboard/api/growth/fetch-xhs", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+      _retries: 1,
+      _timeout: 35000,
+      _noSessionRedirect: true,
+    });
+    $("cmTitle").value = result.title || "";
+    $("cmStatus").value = "saved";
+
+    const tags = result.tags || [];
+    $("cmTags").value = tags.slice(0, 5).join(", ");
+
+    const lines = [];
+    lines.push(`## Hook`);
+    lines.push(``);
+    lines.push(`> ${(result.desc || "").slice(0, 120)}`);
+    lines.push(``);
+    lines.push(`## 数据`);
+    lines.push(``);
+    lines.push(`- 点赞: ${result.likes} | 收藏: ${result.collects} | 评论: ${result.comments} | 分享: ${result.shares}`);
+    lines.push(`- 作者: ${result.author} (${result.authorId})`);
+    lines.push(``);
+    lines.push(`## 原文摘要`);
+    lines.push(``);
+    lines.push(result.desc || "");
+    lines.push(``);
+    lines.push(`## 结构观察`);
+    lines.push(``);
+    lines.push(`## 视觉参考`);
+    lines.push(``);
+    if (result.images?.length) {
+      for (const img of result.images) {
+        lines.push(`![图${img.index}](/dashboard/api/growth/images/${img.localPath})`);
+      }
+    }
+    lines.push(``);
+    lines.push(`## 可借鉴点`);
+    lines.push(``);
+    lines.push(`---`);
+    lines.push(`原文链接: ${result.url}`);
+    $("cmBody").value = lines.join("\n");
+
+    if (result.images?.length) {
+      $("cmImagesRow").hidden = false;
+      $("cmImages").innerHTML = result.images.map((img) =>
+        `<img src="/dashboard/api/growth/images/${img.localPath}" alt="图${img.index}" onclick="window.open(this.src,'_blank')">`
+      ).join("");
+    }
+
+    statusEl.textContent = `已获取: ${result.title} (${result.images?.length || 0} 张图片)`;
+    statusEl.className = "cm-fetch-status ok";
+  } catch (error) {
+    statusEl.textContent = `获取失败: ${error.message}`;
+    statusEl.className = "cm-fetch-status error";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function openEditModal(type, id) {
   openContentModal("edit", { type, id });
   try {
-    const item = await requestJSON(`/dashboard/api/growth/content?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`, { _retries: 1 });
+    const item = await requestJSON(`/dashboard/api/growth/content?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`, { _retries: 1, _noSessionRedirect: true });
     $("cmTitle").value = item.data?.title || "";
     $("cmType").value = type;
     $("cmStatus").value = item.data?.status || "";
@@ -1085,9 +1165,20 @@ async function openEditModal(type, id) {
     $("cmKeywords").value = (item.data?.keywords || []).join(", ");
     $("cmTags").value = (item.data?.tags || []).join(", ");
     $("cmBody").value = item.body || "";
+    // Extract image refs from body and show preview
+    const imgMatches = (item.body || "").matchAll(/!\[.*?\]\((\/dashboard\/api\/growth\/images\/[^)]+)\)/g);
+    const imgSrcs = [...imgMatches].map((m) => m[1]);
+    if (imgSrcs.length) {
+      $("cmImagesRow").hidden = false;
+      $("cmImages").innerHTML = imgSrcs.map((src, i) =>
+        `<img src="${escapeHTML(src)}" alt="图${i + 1}" onclick="window.open(this.src,'_blank')">`
+      ).join("");
+    }
   } catch (error) {
     closeContentModal();
-    alert(`加载失败：${error.message}`);
+    if (!error.message.includes("会话已过期")) {
+      alert(`加载失败：${error.message}`);
+    }
   }
 }
 
@@ -1239,6 +1330,8 @@ function bindEvents() {
   $("contentModalClose").addEventListener("click", closeContentModal);
   $("cmCancel").addEventListener("click", closeContentModal);
   $("cmDelete").addEventListener("click", deleteContentItem);
+  $("cmFetchBtn").addEventListener("click", fetchXhsNote);
+  $("cmUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fetchXhsNote(); } });
   $("contentModal").addEventListener("click", (event) => {
     if (event.target === $("contentModal")) closeContentModal();
   });

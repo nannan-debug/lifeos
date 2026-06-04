@@ -145,6 +145,9 @@ select:focus {
   max-width: 1480px;
   margin: 0 auto;
 }
+.app[hidden] {
+  display: none;
+}
 
 .topbar,
 .filters,
@@ -1453,6 +1456,53 @@ select:focus {
 
 .content-modal-delete:hover {
   background: rgba(204, 68, 68, 0.08);
+}
+
+.cm-url-group {
+  display: flex;
+  gap: 8px;
+}
+.cm-url-group input {
+  flex: 1;
+}
+.cm-url-group button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.cm-fetch-status {
+  font-size: 12px;
+  margin-top: 4px;
+  min-height: 18px;
+}
+.cm-fetch-status.loading { color: var(--accent); }
+.cm-fetch-status.error { color: #c44; }
+.cm-fetch-status.ok { color: var(--accent); }
+
+.cm-images-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.cm-images {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cm-images img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.cm-images img:hover {
+  transform: scale(1.05);
 }
 
 /* ── Growth: Publish empty state ── */
