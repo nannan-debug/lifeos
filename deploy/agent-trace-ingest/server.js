@@ -675,7 +675,7 @@ export function createTraceServer(options = {}) {
       const filename = `${i + 1}.${ext}`;
       try {
         await downloadImage(imgUrl, path.join(imageDir, filename));
-        images.push({ index: i + 1, filename, localPath: `${XHS_IMAGE_DIR_NAME}/${noteId}/${filename}` });
+        images.push({ index: i + 1, filename, localPath: `${noteId}/${filename}` });
       } catch { /* skip failed images */ }
     }
 
