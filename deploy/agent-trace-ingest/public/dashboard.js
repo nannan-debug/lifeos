@@ -1165,6 +1165,15 @@ async function openEditModal(type, id) {
     $("cmKeywords").value = (item.data?.keywords || []).join(", ");
     $("cmTags").value = (item.data?.tags || []).join(", ");
     $("cmBody").value = item.body || "";
+    // Extract image refs from body and show preview
+    const imgMatches = (item.body || "").matchAll(/!\[.*?\]\((\/dashboard\/api\/growth\/images\/[^)]+)\)/g);
+    const imgSrcs = [...imgMatches].map((m) => m[1]);
+    if (imgSrcs.length) {
+      $("cmImagesRow").hidden = false;
+      $("cmImages").innerHTML = imgSrcs.map((src, i) =>
+        `<img src="${escapeHTML(src)}" alt="图${i + 1}" onclick="window.open(this.src,'_blank')">`
+      ).join("");
+    }
   } catch (error) {
     closeContentModal();
     if (!error.message.includes("会话已过期")) {

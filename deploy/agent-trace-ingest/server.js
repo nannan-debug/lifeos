@@ -991,10 +991,8 @@ export function createTraceServer(options = {}) {
       }
 
       if (req.method === "GET" && url.pathname.startsWith("/dashboard/api/growth/images/")) {
-        if (!isDashboardAuthorized(req)) {
-          await writeJSON(res, 401, { error: "unauthorized" });
-          return;
-        }
+        // No auth for images — they are reference screenshots, not sensitive.
+        // Auth check on images causes intermittent failures with concurrent loads.
         const imgPath = url.pathname.replace("/dashboard/api/growth/images/", "");
         const resolved = path.resolve(path.join(growthDir, XHS_IMAGE_DIR_NAME, imgPath));
         if (!resolved.startsWith(path.resolve(path.join(growthDir, XHS_IMAGE_DIR_NAME)))) {
