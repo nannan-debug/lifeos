@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LifeOS Dashboard</title>
-  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260603a">
+  <link rel="stylesheet" href="/dashboard/dashboard.css?v=20260604f">
 </head>
 <body>
   <main class="shell">
@@ -134,8 +134,8 @@
           </div>
           <div class="growth-header-actions">
             <button class="ghost-button" type="button" data-growth-action="reference">录参考帖</button>
-            <button class="ghost-button" type="button" data-growth-action="topic">建选题</button>
-            <button class="copy-button" type="button" data-growth-action="draft">写今日草稿</button>
+            <button class="ghost-button" type="button" data-growth-action="ai-suggest">AI 选题</button>
+            <button class="copy-button" type="button" data-growth-action="draft">开始创作</button>
           </div>
         </div>
         <div id="growthToday" class="growth-today"></div>
@@ -204,7 +204,7 @@
               </select>
             </label>
             <label>
-              <span>状态</span>
+              <span>状态 <i class="cm-tip" data-tip="内容进度：idea 灵感 → saved 已存 → selected 选中 → drafting 撰写中 → ready 待发 → published 已发 → reviewed 已复盘">?</i></span>
               <select id="cmStatus">
                 <option value="idea">idea</option>
                 <option value="saved">saved</option>
@@ -218,7 +218,7 @@
           </div>
           <div class="content-modal-row content-modal-row-2col">
             <label>
-              <span>支柱</span>
+              <span>支柱 <i class="cm-tip" data-tip="你的内容方向分类，如「效率工具」「生活方式」「职场成长」，在配置文件中定义">?</i></span>
               <select id="cmPillar"><option value="">—</option></select>
             </label>
             <label>
@@ -228,11 +228,11 @@
           </div>
           <div class="content-modal-row content-modal-row-2col">
             <label>
-              <span>关键词</span>
+              <span>关键词 <i class="cm-tip" data-tip="从标题/正文自动提取的话题词，用于搜索筛选和 SEO 参考，可手动编辑">?</i></span>
               <input id="cmKeywords" type="text" placeholder="逗号分隔">
             </label>
             <label>
-              <span>标签</span>
+              <span>标签 <i class="cm-tip" data-tip="小红书帖子的 #hashtag，粘贴链接时自动获取，也可手动添加">?</i></span>
               <input id="cmTags" type="text" placeholder="逗号分隔">
             </label>
           </div>
@@ -254,7 +254,17 @@
         </form>
       </div>
     </div>
+    <div class="content-modal-overlay" id="suggestModal" hidden>
+      <div class="content-modal suggest-modal">
+        <div class="content-modal-header">
+          <h3>AI 选题建议</h3>
+          <button class="ghost-button" id="suggestModalClose" type="button">✕</button>
+        </div>
+        <p id="suggestStatus" class="cm-fetch-status"></p>
+        <div id="suggestGrid" class="suggest-grid"></div>
+      </div>
+    </div>
   </main>
-  <script src="/dashboard/dashboard.js?v=20260604c"></script>
+  <script src="/dashboard/dashboard.js?v=20260604f"></script>
 </body>
 </html>

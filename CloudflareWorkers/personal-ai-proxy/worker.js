@@ -1323,6 +1323,51 @@ ${transcript}`;
     return jsonOk({ result: memories });
   }
 
+  if (task === "generate_growth_topics") {
+    const references = (body.references || "").trim();
+    const config = body.config || {};
+    if (!references) return jsonError(400, "empty_references");
+
+    const pillars = (config.pillars || []).join("、");
+    const prompt = `你是一位小红书内容策划专家。根据以下参考帖子素材库，生成 10 个适合发布的选题建议。
+
+要求：
+1. 每个选题包含 title（标题，15字以内，有钩子感）、angle（切入角度，一句话说明怎么写）、suggestedTags（2-3个标签）
+2. 选题要覆盖不同角度：痛点共鸣、实用教程、个人故事、产品种草、观点输出
+3. 选题要贴合素材库的风格和领域，但不是简单复制
+4. 标题要像小红书爆款：有数字、有反转、有好奇心缺口
+${pillars ? `5. 内容支柱方向：${pillars}` : ""}
+
+只返回 JSON：{"topics":[{"title":"...","angle":"...","suggestedTags":["...",".."]}]}
+
+素材库摘要：
+${references}`;
+
+    const messages = [
+      { role: "system", content: "你是小红书内容策划专家。只输出 JSON，不要解释。" },
+      { role: "user", content: prompt },
+    ];
+    trace("prompt_built", {
+      model: provider.model,
+      provider: "deepseek",
+      temperature: 0.7,
+      maxTokens: 2000,
+      payload: { task, referenceCount: references.split("\n\n").length, messages },
+    });
+    const parsed = await callAIJSON(provider, apiKey, messages, 0.7, 2000, 0, trace);
+    if (parsed.errorResponse) return parsed.errorResponse;
+    const topics = Array.isArray(parsed.topics)
+      ? parsed.topics.filter(t => t && t.title).slice(0, 12)
+      : [];
+    trace("response_decoded", {
+      model: provider.model,
+      provider: "deepseek",
+      usage: parsed.__usage || null,
+      payload: { task, result: topics, rawModelOutput: parsed.__rawModelOutput || "" },
+    });
+    return jsonOk({ result: topics });
+  }
+
   return jsonError(400, "unknown_task", { task });
 }
 

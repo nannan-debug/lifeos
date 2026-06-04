@@ -14,6 +14,7 @@ const state = {
   growthConfig: null,
   growthFilters: { stage: "all", status: "all", pillar: "all", search: "" },
   contentModal: { mode: null, type: null, id: null },
+  suggestedTopics: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -264,6 +265,7 @@ async function requestJSON(url, options = {}) {
 
 function handleSessionExpired() {
   $("contentModal").hidden = true;
+  $("suggestModal").hidden = true;
   $("loginPanel").hidden = false;
   $("appPanel").hidden = true;
   $("loginMessage").textContent = "会话已过期，请重新登录。";
@@ -736,8 +738,8 @@ function renderUsage(data) {
 }
 
 // -- Growth Ops --
-const STAGE_MAP = { references: "调研", topics: "选题", drafts: "生产", published: "发布", weekly: "复盘" };
-const TYPE_FOR_STAGE = { "调研": "references", "选题": "topics", "生产": "drafts", "发布": "published", "复盘": "weekly" };
+const STAGE_MAP = { references: "调研", topics: "创作", drafts: "创作", published: "发布", weekly: "复盘" };
+const TYPE_FOR_STAGE = { "调研": "references", "创作": "drafts", "发布": "published", "复盘": "weekly" };
 const STATUS_ORDER = ["idea", "saved", "selected", "drafting", "ready", "published", "reviewed"];
 const DEFAULT_BODIES = {
   references: "## Hook\n\n\n## 结构观察\n\n\n## 视觉参考\n\n\n## 可借鉴点\n\n",
@@ -789,8 +791,7 @@ function renderGrowth(data) {
 
   const stages = [
     ["调研", data.counts?.references || 0, "沉淀参考帖、hook、结构、视觉"],
-    ["选题", data.counts?.topics || 0, "从素材库和产品动态挑主题"],
-    ["生产", data.counts?.drafts || 0, "文案、封面、发布检查"],
+    ["创作", (data.counts?.topics || 0) + (data.counts?.drafts || 0), "选题构思 → 文案撰写 → 发布检查"],
     ["发布", data.counts?.published || 0, "手动复制到小红书"],
     ["复盘", data.weekly?.length || 0, "记录数据，调整下周策略"],
   ];
@@ -820,14 +821,14 @@ function renderGrowthToday(data) {
   const actions = [];
   for (const item of (data.drafts || [])) {
     if (item.data?.status === "ready") {
-      actions.push({ priority: 1, label: "可发布", title: item.data.title || item.id, stage: "生产", type: "drafts", id: item.id, action: "发布", actionType: "copy" });
+      actions.push({ priority: 1, label: "可发布", title: item.data.title || item.id, stage: "创作", type: "drafts", id: item.id, action: "发布", actionType: "copy" });
     } else if (item.data?.status === "drafting") {
-      actions.push({ priority: 2, label: "继续写", title: item.data.title || item.id, stage: "生产", type: "drafts", id: item.id, action: "编辑", actionType: "edit" });
+      actions.push({ priority: 2, label: "继续写", title: item.data.title || item.id, stage: "创作", type: "drafts", id: item.id, action: "编辑", actionType: "edit" });
     }
   }
   for (const item of (data.topics || [])) {
     if (item.data?.status === "selected") {
-      actions.push({ priority: 3, label: "待写稿", title: item.data.title || item.id, stage: "选题", type: "topics", id: item.id, action: "写草稿", actionType: "create-draft" });
+      actions.push({ priority: 3, label: "待写稿", title: item.data.title || item.id, stage: "创作", type: "topics", id: item.id, action: "写草稿", actionType: "create-draft" });
     }
   }
   for (const item of (data.published || [])) {
@@ -859,8 +860,7 @@ function renderGrowthFilters() {
     <select data-gf="stage">
       <option value="all" ${f.stage === "all" ? "selected" : ""}>全部阶段</option>
       <option value="调研" ${f.stage === "调研" ? "selected" : ""}>调研</option>
-      <option value="选题" ${f.stage === "选题" ? "selected" : ""}>选题</option>
-      <option value="生产" ${f.stage === "生产" ? "selected" : ""}>生产</option>
+      <option value="创作" ${f.stage === "创作" ? "selected" : ""}>创作</option>
       <option value="发布" ${f.stage === "发布" ? "selected" : ""}>发布</option>
       <option value="复盘" ${f.stage === "复盘" ? "selected" : ""}>复盘</option>
     </select>
@@ -908,8 +908,8 @@ function growthLedgerRows(data) {
   });
   return [
     ...(data.references || []).map((item) => mapItem("调研", "references", item)),
-    ...(data.topics || []).map((item) => mapItem("选题", "topics", item)),
-    ...(data.drafts || []).map((item) => mapItem("生产", "drafts", item)),
+    ...(data.topics || []).map((item) => mapItem("创作", "topics", item)),
+    ...(data.drafts || []).map((item) => mapItem("创作", "drafts", item)),
     ...(data.published || []).map((item) => mapItem("发布", "published", item)),
     ...(data.weekly || []).map((item) => mapItem("复盘", "weekly", item)),
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -1064,6 +1064,60 @@ function closeContentModal() {
   state.contentModal = { mode: null, type: null, id: null };
 }
 
+// -- AI Suggest Panel --
+async function openSuggestPanel() {
+  $("suggestModal").hidden = false;
+  $("suggestStatus").textContent = "正在分析素材库，生成选题建议...";
+  $("suggestStatus").className = "cm-fetch-status loading";
+  $("suggestGrid").innerHTML = "";
+  try {
+    const result = await requestJSON("/dashboard/api/growth/suggest-topics", {
+      method: "POST",
+      _retries: 1,
+      _timeout: 45000,
+    });
+    const topics = result.topics || [];
+    if (!topics.length) {
+      $("suggestStatus").textContent = "未生成建议，请确认素材库有参考帖。";
+      $("suggestStatus").className = "cm-fetch-status error";
+      return;
+    }
+    $("suggestStatus").textContent = `生成了 ${topics.length} 个选题，点击选用：`;
+    $("suggestStatus").className = "cm-fetch-status ok";
+    state.suggestedTopics = topics;
+    $("suggestGrid").innerHTML = topics.map((t, i) => `
+      <article class="suggest-card" data-suggest-index="${i}">
+        <strong>${escapeHTML(t.title || "")}</strong>
+        <p>${escapeHTML(t.angle || "")}</p>
+        <div class="keyword-line">
+          ${(t.suggestedTags || []).map(tag => `<span>${escapeHTML(tag)}</span>`).join("")}
+        </div>
+      </article>
+    `).join("");
+  } catch (error) {
+    $("suggestStatus").textContent = `生成失败：${error.message}`;
+    $("suggestStatus").className = "cm-fetch-status error";
+  }
+}
+
+function closeSuggestPanel() {
+  $("suggestModal").hidden = true;
+}
+
+function handleSuggestPick(event) {
+  const card = event.target.closest(".suggest-card");
+  if (!card) return;
+  const index = Number(card.dataset.suggestIndex);
+  const topic = state.suggestedTopics?.[index];
+  if (!topic) return;
+  closeSuggestPanel();
+  openContentModal("create", { type: "drafts" });
+  $("cmTitle").value = topic.title || "";
+  $("cmTags").value = (topic.suggestedTags || []).join(", ");
+  $("cmStatus").value = "drafting";
+  $("cmBody").value = `## 角度\n\n${topic.angle || ""}\n\n## 正文\n\n先写一个真实场景。\n\n## 发布检查\n\n- 标题含关键词\n- 发布前人工审核\n`;
+}
+
 async function fetchXhsNote() {
   const url = $("cmUrl").value.trim();
   if (!url) return;
@@ -1085,6 +1139,17 @@ async function fetchXhsNote() {
 
     const tags = result.tags || [];
     $("cmTags").value = tags.slice(0, 5).join(", ");
+
+    // Auto-extract keywords from title + desc (not tags, to avoid duplication)
+    const tagSet = new Set(tags.map(t => t.toLowerCase()));
+    const title = result.title || "";
+    const desc = result.desc || "";
+    const kwCandidates = (title + "," + desc.slice(0, 80))
+      .split(/[，,、|！!？?\s.。：:；;~\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length >= 2 && s.length <= 12 && !tagSet.has(s.toLowerCase()));
+    const kwUniq = [...new Set(kwCandidates)].slice(0, 4);
+    $("cmKeywords").value = kwUniq.join(", ");
 
     const lines = [];
     lines.push(`## Hook`);
@@ -1241,7 +1306,8 @@ function handleGrowthAction(event) {
   const button = event.target.closest("[data-growth-action]");
   if (!button) return;
   const action = button.dataset.growthAction;
-  const typeMap = { reference: "references", topic: "topics", draft: "drafts" };
+  if (action === "ai-suggest") { openSuggestPanel(); return; }
+  const typeMap = { reference: "references", draft: "drafts" };
   openContentModal("create", { type: typeMap[action] || "drafts" });
 }
 
@@ -1315,6 +1381,11 @@ function bindEvents() {
   $("contentModal").addEventListener("click", (event) => {
     if (event.target === $("contentModal")) closeContentModal();
   });
+  $("suggestModalClose").addEventListener("click", closeSuggestPanel);
+  $("suggestModal").addEventListener("click", (event) => {
+    if (event.target === $("suggestModal")) closeSuggestPanel();
+  });
+  $("suggestGrid").addEventListener("click", handleSuggestPick);
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });

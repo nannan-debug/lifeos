@@ -969,6 +969,49 @@ export function createTraceServer(options = {}) {
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/dashboard/api/growth/suggest-topics") {
+        if (!isDashboardAuthorized(req)) {
+          await writeJSON(res, 401, { error: "unauthorized" });
+          return;
+        }
+        try {
+          const references = await listGrowthContent("references");
+          if (!references.length) {
+            await writeJSON(res, 400, { error: "no_references", message: "请先录入至少一条参考帖" });
+            return;
+          }
+          const context = references.slice(0, 20).map((ref, i) => {
+            const tags = [...(ref.data?.keywords || []), ...(ref.data?.tags || [])].join(", ");
+            return `${i + 1}. 「${ref.data?.title || ref.id}」${tags ? ` [${tags}]` : ""}\n   ${ref.excerpt || ""}`;
+          }).join("\n\n");
+
+          const config = await loadGrowthConfig();
+          const aiUrl = process.env.AI_PROXY_URL || "https://ai.dogdada.com";
+          const aiSecret = process.env.AI_CLIENT_SECRET || "";
+
+          const aiRes = await fetch(aiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Client-Secret": aiSecret,
+            },
+            body: JSON.stringify({
+              mode: "utility",
+              task: "generate_growth_topics",
+              references: context,
+              config: { pillars: config.pillars || [] },
+            }),
+          });
+          const aiData = await aiRes.json();
+          if (!aiRes.ok) throw new Error(aiData.error || "ai_request_failed");
+          await writeJSON(res, 200, { ok: true, topics: aiData.result || [] });
+        } catch (error) {
+          console.error(`[suggest-topics] ${error.message}`);
+          await writeJSON(res, 502, { error: "suggest_failed", message: error.message });
+        }
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/dashboard/api/growth/fetch-xhs") {
         if (!isDashboardAuthorized(req)) {
           await writeJSON(res, 401, { error: "unauthorized" });
