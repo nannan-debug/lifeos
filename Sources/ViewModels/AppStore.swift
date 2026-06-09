@@ -131,7 +131,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         "fields.daily",
         "fields.daily.initialized",
         "fields.daily.groups",
-        "ps.inbox"
+        "ps.inbox",
+        "ps.agent.catName",
+        "ps.agent.catStyle"
     ]
 
     /// 当前设备的本地稳定 ID。对用户不可见，仅用于继续兼容既有本机分库。
@@ -156,6 +158,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
     private var keyUserProfile: String { scopedKey("ps.agent.userProfile") }
     private var keyOnboardingCompleted: String { scopedKey("ps.onboarding.completed") }
+    private var keyCatName: String { scopedKey("ps.agent.catName") }
+    private var keyCatStyle: String { scopedKey("ps.agent.catStyle") }
 
     // 兼容旧版本（未按用户隔离）
     private let legacyKeyDailyFields = "fields.daily"
@@ -404,6 +408,8 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     func wipeCurrentUserData() {
         [keyChecks, keyTime, keyTasks, keyTurns, keyBrain, keyAIFailures, keyDailyFields, keyDailyInitialized, keyDailyGroups].forEach { defaults.removeObject(forKey: $0) }
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
+        defaults.removeObject(forKey: keyCatName)
+        defaults.removeObject(forKey: keyCatStyle)
         checkItems = []
         timeEntries = []
         tasks = []
@@ -2130,6 +2136,21 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var userProfile: String {
         get { defaults.string(forKey: keyUserProfile) ?? "" }
         set { defaults.set(newValue, forKey: keyUserProfile) }
+    }
+
+    var catName: String {
+        get { defaults.string(forKey: keyCatName) ?? "" }
+        set { defaults.set(newValue, forKey: keyCatName) }
+    }
+
+    var catStyle: String {
+        get { defaults.string(forKey: keyCatStyle) ?? "" }
+        set { defaults.set(newValue, forKey: keyCatStyle) }
+    }
+
+    var resolvedCatName: String {
+        let name = catName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Arya猫" : name
     }
 
     var isOnboardingCompleted: Bool {

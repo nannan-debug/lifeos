@@ -51,7 +51,8 @@ enum AIParser {
         threadId: String? = nil,
         userProfile: String? = nil,
         agentMode: String? = nil,
-        dbtSession: AgentDBTSessionState? = nil
+        dbtSession: AgentDBTSessionState? = nil,
+        agentPersona: [String: String]? = nil
     ) async throws -> AgentChatResponse {
         var body: [String: Any] = [
             "mode": "chat",
@@ -74,6 +75,9 @@ enum AIParser {
            let data = try? JSONEncoder().encode(dbtSession),
            let object = try? JSONSerialization.jsonObject(with: data) {
             body["dbtSession"] = object
+        }
+        if let agentPersona, !agentPersona.isEmpty {
+            body["agentPersona"] = agentPersona
         }
         let data = try await postWorker(body: body)
         do {
@@ -206,7 +210,8 @@ enum AIParser {
         userProfile: String? = nil,
         trigger: String? = nil,
         agentMode: String? = nil,
-        dbtSession: AgentDBTSessionState? = nil
+        dbtSession: AgentDBTSessionState? = nil,
+        agentPersona: [String: String]? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
@@ -236,6 +241,9 @@ enum AIParser {
                        let data = try? JSONEncoder().encode(dbtSession),
                        let object = try? JSONSerialization.jsonObject(with: data) {
                         body["dbtSession"] = object
+                    }
+                    if let agentPersona, !agentPersona.isEmpty {
+                        body["agentPersona"] = agentPersona
                     }
 
                     var req = URLRequest(url: workerURL)
