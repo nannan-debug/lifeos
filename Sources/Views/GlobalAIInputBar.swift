@@ -221,10 +221,6 @@ private struct AgentChatPanel: View {
             }
             .padding(.horizontal, 24)
 
-            if let dbt = store.activeDBTSession {
-                dbtCoachBanner(dbt)
-                    .padding(.horizontal, 24)
-            }
         }
         .padding(.bottom, 8)
         .contentShape(Rectangle())
@@ -232,35 +228,7 @@ private struct AgentChatPanel: View {
     }
 
     private var displayTitle: String {
-        if store.activeDBTSession != nil { return L.dbtCoachTitle }
         return store.agentSession.messages.isEmpty ? "LifeOS AI" : store.currentAgentThreadTitle
-    }
-
-    private func dbtCoachBanner(_ session: AgentDBTSessionState) -> some View {
-        HStack(spacing: 8) {
-            Label(L.dbtSkillName(session.skillId), systemImage: "leaf")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CreamTheme.green)
-            Text(L.dbtStep(max(session.currentStepIndex + 1, 1)))
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.black.opacity(0.045)))
-            Spacer()
-            Button(L.dbtExit) {
-                store.cancelDBTSession()
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(CreamTheme.green.opacity(0.08))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(CreamTheme.green.opacity(0.16), lineWidth: 1))
-        )
     }
 
     private var conversationArea: some View {

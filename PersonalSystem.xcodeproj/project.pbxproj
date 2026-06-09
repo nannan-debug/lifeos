@@ -58,6 +58,7 @@
 		D2B9D8ACBF20D82EF04311DE /* CloudKitRecordMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C45A2425F0D3BFF4F46BC72 /* CloudKitRecordMapper.swift */; };
 		E7196BB0A6712E14D720A0BB /* AgentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45D49338D8DBCBCD4802B149 /* AgentManager.swift */; };
 		E7F784C38996BCF7DA31FB2E /* AppUpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A7B3CD2A7235F4D92054C7 /* AppUpdateService.swift */; };
+		E99915B058A3D37A6AA48BBB /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1546B1AE5317818DA72B859 /* OnboardingView.swift */; };
 		EAC6CB4E9EA74CDC6963C466 /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 646272612209A465FCA9BFF4 /* CalendarService.swift */; };
 		EECA22D6609959135391624F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4740978737F177B45D684422 /* SettingsView.swift */; };
 		F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */; };
@@ -155,6 +156,7 @@
 		E54B4D126C777329D7686D7D /* AIConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConsentSheet.swift; sourceTree = "<group>"; };
 		E8EE8416A7C860820E996F38 /* CloudKitSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitSchema.swift; sourceTree = "<group>"; };
 		ECFFE8F6B2AA9F984128F1DD /* TestPersonaSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestPersonaSeeder.swift; sourceTree = "<group>"; };
+		F1546B1AE5317818DA72B859 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		F8C51C9E4D24CBEE1F6DE475 /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
 		F8D56BA5433165AC6E4FEA7B /* cat-lay.svg */ = {isa = PBXFileReference; path = "cat-lay.svg"; sourceTree = "<group>"; };
 		FDE767D0A1D80C1C80C61325 /* L.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L.swift; sourceTree = "<group>"; };
@@ -295,6 +297,7 @@
 				499F1731265F2DDA1F0395B4 /* CreamTheme.swift */,
 				ADC4BEB4F2A2472C71401985 /* ExportView.swift */,
 				E43793AFBE40A0207A015C59 /* GlobalAIInputBar.swift */,
+				F1546B1AE5317818DA72B859 /* OnboardingView.swift */,
 				8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */,
 				8A1C212C5B39C02449173866 /* ReviewSessionView.swift */,
 				0C3838D574A4224A4001BCEB /* RootTabView.swift */,
@@ -491,6 +494,7 @@
 				4BDA897777AD35EB6687F781 /* HealthKitSyncService.swift in Sources */,
 				557C4F5307109669D8DC1B9D /* L.swift in Sources */,
 				804DE916BEB4C5A27FB0BDE4 /* Models.swift in Sources */,
+				E99915B058A3D37A6AA48BBB /* OnboardingView.swift in Sources */,
 				1282ACB00F9A6EEB2F100955 /* PersonalSystemApp.swift in Sources */,
 				F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */,
 				5D44142D106F280B67EE7F4E /* ReviewSessionView.swift in Sources */,
