@@ -14,7 +14,9 @@ struct PersonalSystemApp: App {
 private struct SplashRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
+    @StateObject private var store = AppStore()
     @State private var showingSplash = true
+    @State private var showingOnboarding = false
     @State private var updateInfo: AppUpdateInfo?
     @State private var didCheckUpdateThisSession = false
 
@@ -24,13 +26,23 @@ private struct SplashRootView: View {
                 RuntimeSplashView()
                     .transition(.opacity)
                     .task {
+                        store.ensureLocalIdentity()
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
                         withAnimation(.easeOut(duration: 0.28)) {
+                            showingOnboarding = store.shouldShowOnboarding
                             showingSplash = false
                         }
                     }
+            } else if showingOnboarding {
+                OnboardingView {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        showingOnboarding = false
+                    }
+                }
+                .environmentObject(store)
             } else {
                 RootTabView()
+                    .environmentObject(store)
             }
         }
         .dynamicTypeSize(.xSmall)

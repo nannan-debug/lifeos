@@ -83,9 +83,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var streamingReasoning: String { agent.streamingReasoning }
     var streamingContent: String { agent.streamingContent }
     var agentReasoningTimeMs: Int? { agent.reasoningTimeMs }
-    var activeDBTSession: AgentDBTSessionState? {
-        agent.session.dbtSession?.status == "active" ? agent.session.dbtSession : nil
-    }
     func addAgentMemory(content: String) { agent.addMemory(content: content) }
     func removeAgentMemory(id: UUID) { agent.removeMemory(id: id) }
     var agentMessageQueue: [AgentManager.QueuedMessage] { agent.messageQueue }
@@ -158,6 +155,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private var keyDailyInitialized: String { scopedKey("fields.daily.initialized") }
     private var keyDailyGroups: String { scopedKey("fields.daily.groups") }
     private var keyUserProfile: String { scopedKey("ps.agent.userProfile") }
+    private var keyOnboardingCompleted: String { scopedKey("ps.onboarding.completed") }
 
     // 兼容旧版本（未按用户隔离）
     private let legacyKeyDailyFields = "fields.daily"
@@ -2134,6 +2132,15 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         set { defaults.set(newValue, forKey: keyUserProfile) }
     }
 
+    var isOnboardingCompleted: Bool {
+        get { defaults.bool(forKey: keyOnboardingCompleted) }
+        set { defaults.set(newValue, forKey: keyOnboardingCompleted) }
+    }
+
+    var shouldShowOnboarding: Bool {
+        !isOnboardingCompleted && userProfile.isEmpty
+    }
+
     func submitNudge() {
         agent.createNewThread(saveOldForMemory: true)
         let profile = userProfile.isEmpty ? nil : userProfile
@@ -2223,10 +2230,6 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
     func dismissAllPendingAgentActions() {
         agent.dismissAllPendingActions()
-    }
-
-    func cancelDBTSession() {
-        agent.cancelDBTSession()
     }
 
     var agentExecutionState: ExecutionState {

@@ -3,7 +3,7 @@ import Foundation
 
 struct RootTabView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var store = AppStore()
+    @EnvironmentObject var store: AppStore
 
     private enum Tab: Hashable { case today, time, capture, review, settings }
     @State private var selectedTab: Tab = .today
@@ -48,7 +48,6 @@ struct RootTabView: View {
             }
         }
         .onAppear {
-            store.ensureLocalIdentity()
             openCaptureFromReminderIfNeeded()
             store.refreshAfterAppBecameActive()
         }

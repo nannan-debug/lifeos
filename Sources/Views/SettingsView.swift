@@ -24,6 +24,16 @@ struct SettingsView: View {
                     editableProfileRow(title: L.nickname, value: displayNickname, field: .nickname)
                 }
 
+                Section(L.aboutMeSection) {
+                    editableProfileRow(
+                        title: L.aboutMe,
+                        value: store.userProfile.isEmpty
+                            ? L.aboutMeEmpty
+                            : String(store.userProfile.prefix(40)) + (store.userProfile.count > 40 ? "…" : ""),
+                        field: .aboutMe
+                    )
+                }
+
                 Section(L.languageSection) {
                     Picker(L.languageSection, selection: $appLanguage) {
                         Text("中文").tag("zh")
@@ -427,9 +437,14 @@ struct SettingsView: View {
     private func editProfileSheet(_ field: ProfileField) -> some View {
         NavigationStack {
             Form {
-                TextField(field.title, text: $draftValue)
+                if field.isMultiline {
+                    TextEditor(text: $draftValue)
+                        .frame(minHeight: 120)
+                } else {
+                    TextField(field.title, text: $draftValue)
+                }
             }
-            .navigationTitle(L.editNickname)
+            .navigationTitle(field == .aboutMe ? L.editAboutMe : L.editNickname)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L.cancel) { editingField = nil }
@@ -439,7 +454,7 @@ struct SettingsView: View {
                         saveDraftValue(for: field)
                         editingField = nil
                     }
-                    .disabled(draftValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(field != .aboutMe && draftValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -448,6 +463,7 @@ struct SettingsView: View {
     private func rawValue(for field: ProfileField) -> String {
         switch field {
         case .nickname: return displayNickname
+        case .aboutMe: return store.userProfile
         }
     }
 
@@ -456,6 +472,8 @@ struct SettingsView: View {
         switch field {
         case .nickname:
             user = clean.isEmpty ? user : clean
+        case .aboutMe:
+            store.userProfile = clean
         }
     }
 
@@ -469,13 +487,19 @@ struct SettingsView: View {
 
 private enum ProfileField: String, Identifiable {
     case nickname
+    case aboutMe
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .nickname: return L.nickname
+        case .aboutMe: return L.aboutMe
         }
+    }
+
+    var isMultiline: Bool {
+        self == .aboutMe
     }
 }
 

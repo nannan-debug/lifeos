@@ -260,9 +260,6 @@ enum L {
 
     // MARK: - DBT Coach
 
-    static var dbtCoachTitle: String { s("DBT 教练", "DBT Coach") }
-    static func dbtStep(_ n: Int) -> String { s("第 \(n) 步", "Step \(n)") }
-    static var dbtExit: String { s("退出", "Exit") }
     static var dbtPractice: String { s("DBT 练习", "DBT Practice") }
     static func dbtSkillName(_ id: String) -> String {
         switch id {
@@ -274,52 +271,6 @@ enum L {
         case "dear_man": return "DEAR MAN"
         case "behavior_chain_analysis": return s("行为链分析", "Behavior Chain")
         default: return s("DBT 练习", "DBT Practice")
-        }
-    }
-    static var dbtSwitchingFallback: String { s("好，我们现在切到 DBT 教练。", "OK, let's switch to DBT Coach.") }
-    static var dbtDefaultOpener: String { s("好，我们先不急着解决，只把它拆小一点。", "OK, let's not rush to solve it — just break it down a little.") }
-    static func dbtFirstQuestion(_ skillId: String) -> String {
-        switch skillId {
-        case "check_the_facts":
-            return s(
-                "我们先只看事实：刚才这件事里，确定发生了什么？先别写解释，只写能被摄像头拍到的部分。",
-                "Let's start with the facts: what actually happened? Just the part a camera could capture — no interpretations yet."
-            )
-        case "opposite_action":
-            return s(
-                "先抓住这个情绪最想推你做的动作：它现在最想让你逃开、躺下、刷手机，还是做别的什么？",
-                "What action is this emotion pushing you to do right now? Withdraw, lie down, scroll your phone, or something else?"
-            )
-        case "wise_mind":
-            return s(
-                "我们先分两边：理性脑现在怎么说，情绪脑现在怎么说？各写一句就好。",
-                "Let's hear both sides: what does the rational mind say, and what does the emotional mind say? One sentence each."
-            )
-        case "tipp":
-            return s(
-                "先判断强度：这个情绪现在从 0 到 10 大概是几分？身体哪里最明显？",
-                "Let's gauge the intensity: from 0 to 10, where does this emotion sit right now? Where do you feel it most in your body?"
-            )
-        case "stop":
-            return s(
-                "先按 STOP 的第一步：此刻你最想立刻做的冲动是什么？只说动作，不评价它。",
-                "First step of STOP: what's the urge you most want to act on right now? Just name the action, no judgment."
-            )
-        case "dear_man":
-            return s(
-                "我们先定场景：你想对谁表达什么请求或边界？一句话就好。",
-                "Let's set the scene: who do you want to talk to, and what request or boundary? One sentence is enough."
-            )
-        case "behavior_chain_analysis":
-            return s(
-                "我们先找链条起点：这次反复出现的行为是什么？它发生前 5 分钟有什么触发？",
-                "Let's find where the chain starts: what's the behavior that keeps happening? What triggered it 5 minutes before?"
-            )
-        default:
-            return s(
-                "先只说一个点：此刻最明显的感受是什么？它在身体哪里最强？",
-                "Start with one thing: what's the strongest feeling right now? Where do you feel it most in your body?"
-            )
         }
     }
 
@@ -547,6 +498,30 @@ enum L {
         let name = title.isEmpty ? newConversation : title
         return s("已移除「\(name)」", "Removed \"\(name)\"")
     }
+
+    // MARK: - Onboarding
+
+    static var onboardingWelcome: String { s("嘿，我是 Arya猫 👋", "Hey, I'm Arya 👋") }
+    static var onboardingWelcomeSub: String { s("你在 LifeOS 里的猫猫搭档", "Your cat companion in LifeOS") }
+    static var onboardingNamePrompt: String { s("怎么称呼你？", "What should I call you?") }
+    static var onboardingNamePlaceholder: String { s("你的名字（可以跳过）", "Your name (optional)") }
+    static var onboardingWorkPrompt: String { s("你平时做什么？", "What do you do?") }
+    static var onboardingWorkPlaceholder: String { s("比如：产品经理、学生、自由职业…", "e.g. PM, Student, Freelancer…") }
+    static var onboardingGoalPrompt: String { s("你想用 LifeOS 做什么？", "What do you want from LifeOS?") }
+    static var onboardingSkip: String { s("跳过", "Skip") }
+    static var onboardingNext: String { s("继续", "Next") }
+    static var onboardingDone: String { s("开始使用", "Let's go") }
+    static var onboardingGoalRecord: String { s("记录生活", "Record life") }
+    static var onboardingGoalTime: String { s("管理时间", "Manage time") }
+    static var onboardingGoalHabits: String { s("养成习惯", "Build habits") }
+    static var onboardingGoalFeelings: String { s("梳理情绪", "Process feelings") }
+
+    // MARK: - About Me (Settings)
+
+    static var aboutMeSection: String { s("关于我", "About Me") }
+    static var aboutMe: String { s("个人简介", "Profile") }
+    static var aboutMeEmpty: String { s("还没有填写，帮 Arya猫更了解你", "Not set — helps Arya know you better") }
+    static var editAboutMe: String { s("编辑个人简介", "Edit Profile") }
 
     // MARK: - Daily Quotes
 

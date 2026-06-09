@@ -1352,8 +1352,19 @@ function bindEvents() {
 
 bindEvents();
 
-loadSession().catch((error) => {
-  $("loginPanel").hidden = false;
-  $("appPanel").hidden = true;
-  $("loginMessage").textContent = `连接失败：${error.message}`;
-});
+// Show login panel as fallback if loadSession takes too long
+const _showFallback = setTimeout(() => {
+  if ($("loginPanel").hidden && $("appPanel").hidden) {
+    $("loginPanel").hidden = false;
+    $("loginMessage").textContent = "连接中…如果长时间空白请刷新页面。";
+  }
+}, 3000);
+
+loadSession()
+  .then(() => clearTimeout(_showFallback))
+  .catch((error) => {
+    clearTimeout(_showFallback);
+    $("loginPanel").hidden = false;
+    $("appPanel").hidden = true;
+    $("loginMessage").textContent = `连接失败：${error.message}`;
+  });
