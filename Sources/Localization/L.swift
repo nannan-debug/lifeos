@@ -209,6 +209,17 @@ enum L {
     static var noMemories: String { s("还没有记忆", "No memories yet") }
     static var autoExtracted: String { s("自动提取", "Auto") }
     static var manuallyAdded: String { s("手动添加", "Manual") }
+    static var memoryScopeProfile: String { s("长期画像", "Profile") }
+    static var memoryScopePreference: String { s("互动偏好", "Preference") }
+    static var memoryScopeState: String { s("近期状态", "Recent State") }
+    static var memoryScopePlan: String { s("近期计划", "Plan") }
+    static var memoryStatusArchived: String { s("已归档", "Archived") }
+    static var memoryStatusRejected: String { s("已忽略", "Rejected") }
+    static var memoryStatusActive: String { s("使用中", "Active") }
+    static var memoryStatusLabel: String { s("状态", "Status") }
+    static var editMemory: String { s("编辑记忆", "Edit Memory") }
+    static var makeLongTerm: String { s("设为长期", "Make Long-term") }
+    static var expireMemory: String { s("设为过期", "Expire") }
 
     // MARK: - Agent Debug
 
@@ -531,7 +542,47 @@ enum L {
     static var catPersonaSection: String { s("猫猫人设", "Cat Persona") }
     static var catNameLabel: String { s("名字", "Name") }
     static var catStyleLabel: String { s("说话风格", "Speaking Style") }
+    static var catRoleLabel: String { s("陪伴角色", "Companion Role") }
+    static var catProactivityLabel: String { s("主动性", "Proactivity") }
+    static var catMemoryPreferenceLabel: String { s("记忆偏好", "Memory Preference") }
+    static var catInstructionsLabel: String { s("高级指令", "Advanced Instructions") }
+    static var editCatInstructions: String { s("编辑高级指令", "Edit Advanced Instructions") }
+    static var catInstructionsEmpty: String { s("设置猫猫的工作原则", "Set how your companion should think and work") }
+    static var useInstructionTemplate: String { s("填入模板", "Use Template") }
+    static var catInstructionsTemplate: String {
+        s(
+            """
+            你是我的创业陪伴型 AI。你的默认立场和目标，是帮助我成长为更优秀的创业者：结果导向、现实校准、长期主义、高标准执行。
+
+            当我讨论商业、职业、成长、产品、决策和执行时，请默认参考高净值创业者、优秀创始人、职业投资人和高绩效管理者的行为标准，而不是普通舒适区标准。
+
+            你的建议必须尽量来自真实世界逻辑：真实案例、商业常识、数据、可验证经验或明确推理。不要编造案例、数据或权威来源；不确定时直接说不确定。
+
+            回答时默认结论前置，以结果为导向。请指出关键取舍、现实约束、风险和下一步行动。为了找到更优解，你可以主动向我提问。
+            """,
+            """
+            You are my entrepreneurship companion AI. Your default stance is to help me become a stronger founder: outcome-oriented, reality-calibrated, long-term, and high-standard in execution.
+
+            When we discuss business, career, growth, product, decisions, or execution, use the standards of high-net-worth entrepreneurs, strong founders, professional investors, and high-performance operators rather than comfort-zone defaults.
+
+            Ground advice in real-world logic: real cases, business common sense, data, verifiable experience, or explicit reasoning. Do not invent cases, data, or authorities; say when you are unsure.
+
+            Lead with conclusions and be outcome-oriented. Name tradeoffs, constraints, risks, and next actions. Ask me key questions when that helps find a better answer.
+            """
+        )
+    }
     static var editCatName: String { s("修改猫猫名字", "Edit Cat Name") }
+    static var roleQuiet: String { s("安静陪伴", "Quiet Companion") }
+    static var roleAction: String { s("行动搭子", "Action Buddy") }
+    static var roleAdvisor: String { s("冷静参谋", "Calm Advisor") }
+    static var roleWittyFriend: String { s("轻松吐槽朋友", "Witty Friend") }
+    static var proactivityReplyOnly: String { s("只回应", "Reply Only") }
+    static var proactivityOccasional: String { s("偶尔接回", "Occasional Recall") }
+    static var proactivityActive: String { s("主动关心", "Gentle Check-ins") }
+    static var memoryPreferenceBalanced: String { s("平衡记忆", "Balanced") }
+    static var memoryPreferencePrivate: String { s("少记私人细节", "Less Private Detail") }
+    static var memoryPreferencePlans: String { s("多记计划", "Plans") }
+    static var memoryPreferencePreferences: String { s("多记偏好", "Preferences") }
 
     // MARK: - About Me (Settings)
 

@@ -488,6 +488,37 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertFalse(summary.contains("想法 8"))
     }
 
+    func testAgentContextBuilderFiltersExpiredLayeredMemories() {
+        let now = Date()
+        let summary = AgentOrchestrator.makeContextSummary(
+            input: "我今天想继续准备面试",
+            turns: [],
+            tasks: [],
+            timeEntries: [],
+            checks: [],
+            memories: [
+                AgentMemory(content: "用户喜欢简洁直接的回答", category: "preference", createdAt: now, lastUsedAt: now, source: "user", scope: "preference"),
+                AgentMemory(content: "用户下周有面试", category: "fact", createdAt: now, lastUsedAt: now, source: "auto", scope: "plan", expiresAt: now.addingTimeInterval(-60)),
+                AgentMemory(content: "用户最近在学习 AI Agent", category: "summary", createdAt: now, lastUsedAt: now, source: "auto", scope: "state", expiresAt: now.addingTimeInterval(60 * 60 * 24))
+            ]
+        )
+
+        XCTAssertTrue(summary.contains("互动偏好记忆"))
+        XCTAssertTrue(summary.contains("近期状态记忆"))
+        XCTAssertTrue(summary.contains("用户最近在学习 AI Agent"))
+        XCTAssertFalse(summary.contains("用户下周有面试"))
+    }
+
+    func testLegacyAgentMemoryDecodesWithLayerDefaults() throws {
+        let json = #"{"content":"用户喜欢简洁回答","category":"preference","source":"auto"}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AgentMemory.self, from: json)
+
+        XCTAssertEqual(decoded.content, "用户喜欢简洁回答")
+        XCTAssertEqual(decoded.scope, "preference")
+        XCTAssertEqual(decoded.status, "active")
+        XCTAssertNil(decoded.expiresAt)
+    }
+
     func testAgentChatSessionPersistsAcrossReload() throws {
         let defaults = UserDefaults.standard
         let uid = "agent-test-\(UUID().uuidString)"

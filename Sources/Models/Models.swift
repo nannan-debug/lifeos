@@ -365,6 +365,96 @@ struct AgentMemory: Identifiable, Codable, Equatable {
     var createdAt: Date = Date()
     var lastUsedAt: Date = Date()
     var source: String = "auto" // auto / user
+    var scope: String = "state" // profile / preference / state / plan
+    var expiresAt: Date? = nil
+    var confidence: Double = 0.7
+    var sourceThreadId: UUID? = nil
+    var lastConfirmedAt: Date? = nil
+    var status: String = "active" // active / archived / rejected
+
+    init(
+        id: UUID = UUID(),
+        content: String,
+        category: String,
+        createdAt: Date = Date(),
+        lastUsedAt: Date = Date(),
+        source: String = "auto",
+        scope: String = "state",
+        expiresAt: Date? = nil,
+        confidence: Double = 0.7,
+        sourceThreadId: UUID? = nil,
+        lastConfirmedAt: Date? = nil,
+        status: String = "active"
+    ) {
+        self.id = id
+        self.content = content
+        self.category = category
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+        self.source = source
+        self.scope = AgentMemory.normalizedScope(scope, category: category)
+        self.expiresAt = expiresAt
+        self.confidence = confidence
+        self.sourceThreadId = sourceThreadId
+        self.lastConfirmedAt = lastConfirmedAt
+        self.status = status
+    }
+
+    var isActive: Bool { status == "active" }
+
+    func isExpired(referenceDate: Date = Date()) -> Bool {
+        guard let expiresAt else { return false }
+        return expiresAt < referenceDate
+    }
+
+    var isStableScope: Bool {
+        scope == "profile" || scope == "preference"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, content, category, createdAt, lastUsedAt, source, scope, expiresAt, confidence, sourceThreadId, lastConfirmedAt, status
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        content = try c.decode(String.self, forKey: .content)
+        category = try c.decodeIfPresent(String.self, forKey: .category) ?? "fact"
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        lastUsedAt = try c.decodeIfPresent(Date.self, forKey: .lastUsedAt) ?? createdAt
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? "auto"
+        scope = AgentMemory.normalizedScope(try c.decodeIfPresent(String.self, forKey: .scope), category: category)
+        expiresAt = try c.decodeIfPresent(Date.self, forKey: .expiresAt)
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence) ?? 0.7
+        sourceThreadId = try c.decodeIfPresent(UUID.self, forKey: .sourceThreadId)
+        lastConfirmedAt = try c.decodeIfPresent(Date.self, forKey: .lastConfirmedAt)
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? "active"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(content, forKey: .content)
+        try c.encode(category, forKey: .category)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(lastUsedAt, forKey: .lastUsedAt)
+        try c.encode(source, forKey: .source)
+        try c.encode(scope, forKey: .scope)
+        try c.encodeIfPresent(expiresAt, forKey: .expiresAt)
+        try c.encode(confidence, forKey: .confidence)
+        try c.encodeIfPresent(sourceThreadId, forKey: .sourceThreadId)
+        try c.encodeIfPresent(lastConfirmedAt, forKey: .lastConfirmedAt)
+        try c.encode(status, forKey: .status)
+    }
+
+    static func normalizedScope(_ raw: String?, category: String) -> String {
+        switch raw ?? "" {
+        case "profile", "preference", "state", "plan":
+            return raw ?? "state"
+        default:
+            return category == "preference" ? "preference" : "state"
+        }
+    }
 }
 
 struct AgentToolCall: Codable, Equatable {

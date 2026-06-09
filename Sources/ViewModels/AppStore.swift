@@ -83,8 +83,11 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var streamingReasoning: String { agent.streamingReasoning }
     var streamingContent: String { agent.streamingContent }
     var agentReasoningTimeMs: Int? { agent.reasoningTimeMs }
-    func addAgentMemory(content: String) { agent.addMemory(content: content) }
+    func addAgentMemory(content: String, scope: String = "state") { agent.addMemory(content: content, scope: scope) }
     func removeAgentMemory(id: UUID) { agent.removeMemory(id: id) }
+    func updateAgentMemory(id: UUID, content: String, scope: String, status: String) { agent.updateMemory(id: id, content: content, scope: scope, status: status) }
+    func confirmAgentMemoryAsLongTerm(id: UUID) { agent.confirmMemoryAsLongTerm(id: id) }
+    func expireAgentMemory(id: UUID) { agent.expireMemory(id: id) }
     var agentMessageQueue: [AgentManager.QueuedMessage] { agent.messageQueue }
     func cancelAgentRequest() { agent.cancelCurrentRequest() }
     func enqueueAgentMessage(_ text: String) { agent.enqueueMessage(text) }
@@ -133,7 +136,11 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         "fields.daily.groups",
         "ps.inbox",
         "ps.agent.catName",
-        "ps.agent.catStyle"
+        "ps.agent.catStyle",
+        "ps.agent.catRole",
+        "ps.agent.catProactivity",
+        "ps.agent.catMemoryPreference",
+        "ps.agent.catInstructions"
     ]
 
     /// 当前设备的本地稳定 ID。对用户不可见，仅用于继续兼容既有本机分库。
@@ -160,6 +167,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     private var keyOnboardingCompleted: String { scopedKey("ps.onboarding.completed") }
     private var keyCatName: String { scopedKey("ps.agent.catName") }
     private var keyCatStyle: String { scopedKey("ps.agent.catStyle") }
+    private var keyCatRole: String { scopedKey("ps.agent.catRole") }
+    private var keyCatProactivity: String { scopedKey("ps.agent.catProactivity") }
+    private var keyCatMemoryPreference: String { scopedKey("ps.agent.catMemoryPreference") }
+    private var keyCatInstructions: String { scopedKey("ps.agent.catInstructions") }
 
     // 兼容旧版本（未按用户隔离）
     private let legacyKeyDailyFields = "fields.daily"
@@ -410,6 +421,10 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         defaults.removeObject(forKey: scopedKey("ps.inbox"))
         defaults.removeObject(forKey: keyCatName)
         defaults.removeObject(forKey: keyCatStyle)
+        defaults.removeObject(forKey: keyCatRole)
+        defaults.removeObject(forKey: keyCatProactivity)
+        defaults.removeObject(forKey: keyCatMemoryPreference)
+        defaults.removeObject(forKey: keyCatInstructions)
         checkItems = []
         timeEntries = []
         tasks = []
@@ -2146,6 +2161,26 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     var catStyle: String {
         get { defaults.string(forKey: keyCatStyle) ?? "" }
         set { defaults.set(newValue, forKey: keyCatStyle) }
+    }
+
+    var catRole: String {
+        get { defaults.string(forKey: keyCatRole) ?? "" }
+        set { defaults.set(newValue, forKey: keyCatRole) }
+    }
+
+    var catProactivity: String {
+        get { defaults.string(forKey: keyCatProactivity) ?? "" }
+        set { defaults.set(newValue, forKey: keyCatProactivity) }
+    }
+
+    var catMemoryPreference: String {
+        get { defaults.string(forKey: keyCatMemoryPreference) ?? "" }
+        set { defaults.set(newValue, forKey: keyCatMemoryPreference) }
+    }
+
+    var catInstructions: String {
+        get { defaults.string(forKey: keyCatInstructions) ?? "" }
+        set { defaults.set(newValue, forKey: keyCatInstructions) }
     }
 
     var resolvedCatName: String {

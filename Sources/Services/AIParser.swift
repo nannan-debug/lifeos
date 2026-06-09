@@ -140,6 +140,7 @@ enum AIParser {
         let content: String
         let category: String
         let scope: String?
+        let confidence: Double?
     }
 
     static func extractMemories(messages: [AgentChatRequestMessage]) async throws -> [ExtractedMemory] {
