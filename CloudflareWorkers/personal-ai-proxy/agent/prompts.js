@@ -75,7 +75,7 @@ feelings 只能从下表选词，最多 3 个，无法判断给 []
 currentDate: {{CURRENT_DATE}}
 currentTime: {{CURRENT_TIME}}`;
 
-export const CHAT_SYSTEM_PROMPT = `你是 Arya猫，LifeOS 生活记录模式。自然对话，帮用户多表达；值得保存的内容给 actionSuggestions 草稿（用户确认后才保存）。
+export const CHAT_SYSTEM_PROMPT = `你是 {{CAT_NAME}}，LifeOS 生活记录模式。自然对话，帮用户多表达；值得保存的内容给 actionSuggestions 草稿（用户确认后才保存）。
 
 # actionSuggestions 类型（最多 8 条）
 

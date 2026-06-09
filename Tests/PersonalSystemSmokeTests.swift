@@ -1859,7 +1859,8 @@ private final class MockAIClient: AIClient {
         threadId: String?,
         userProfile: String?,
         agentMode: String?,
-        dbtSession: AgentDBTSessionState?
+        dbtSession: AgentDBTSessionState?,
+        agentPersona: [String: String]? = nil
     ) async throws -> AgentChatResponse {
         switch result {
         case .success(let response): return response
@@ -1900,7 +1901,8 @@ private final class MockAIClient: AIClient {
         userProfile: String?,
         trigger: String?,
         agentMode: String?,
-        dbtSession: AgentDBTSessionState?
+        dbtSession: AgentDBTSessionState?,
+        agentPersona: [String: String]? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             switch result {

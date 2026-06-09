@@ -153,7 +153,7 @@ private struct AgentChatPanel: View {
                 pendingDelete = nil
             }
         } message: {
-            Text(L.deleteConversationHint)
+            Text(L.deleteConversationHint(store.resolvedCatName))
         }
         .alert(L.renameConversation, isPresented: Binding(
             get: { renamingThread != nil },
@@ -616,7 +616,7 @@ private struct AgentChatPanel: View {
                 ProgressView()
                     .scaleEffect(0.75)
                     .tint(CreamTheme.green)
-                Text(L.aiThinking)
+                Text(L.aiThinking(store.resolvedCatName))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -636,7 +636,7 @@ private struct AgentChatPanel: View {
                 ProgressView()
                     .scaleEffect(0.6)
                     .tint(CreamTheme.green)
-                Text(L.aiThinkingShort)
+                Text(L.aiThinkingShort(store.resolvedCatName))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .opacity(pulseOpacity)
@@ -772,7 +772,7 @@ private struct AgentChatPanel: View {
             HStack {
                 Image(systemName: "list.bullet.clipboard")
                     .foregroundStyle(CreamTheme.green)
-                Text(L.aryaPlan)
+                Text(L.aryaPlan(store.resolvedCatName))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CreamTheme.text)
                 Spacer()

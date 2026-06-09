@@ -28,10 +28,30 @@ struct SettingsView: View {
                     editableProfileRow(
                         title: L.aboutMe,
                         value: store.userProfile.isEmpty
-                            ? L.aboutMeEmpty
+                            ? L.aboutMeEmpty(store.resolvedCatName)
                             : String(store.userProfile.prefix(40)) + (store.userProfile.count > 40 ? "…" : ""),
                         field: .aboutMe
                     )
+                }
+
+                Section(L.catPersonaSection) {
+                    editableProfileRow(
+                        title: L.catNameLabel,
+                        value: store.resolvedCatName,
+                        field: .catName
+                    )
+
+                    NavigationLink {
+                        CatStylePickerView()
+                            .environmentObject(store)
+                    } label: {
+                        HStack {
+                            Text(L.catStyleLabel)
+                            Spacer()
+                            Text(store.catStyle.isEmpty ? L.styleDirect : displayStyle(store.catStyle))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Section(L.languageSection) {
@@ -444,7 +464,7 @@ struct SettingsView: View {
                     TextField(field.title, text: $draftValue)
                 }
             }
-            .navigationTitle(field == .aboutMe ? L.editAboutMe : L.editNickname)
+            .navigationTitle(field == .aboutMe ? L.editAboutMe : field == .catName ? L.editCatName : L.editNickname)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L.cancel) { editingField = nil }
@@ -454,7 +474,7 @@ struct SettingsView: View {
                         saveDraftValue(for: field)
                         editingField = nil
                     }
-                    .disabled(field != .aboutMe && draftValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(field == .nickname && draftValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -464,6 +484,7 @@ struct SettingsView: View {
         switch field {
         case .nickname: return displayNickname
         case .aboutMe: return store.userProfile
+        case .catName: return store.catName
         }
     }
 
@@ -474,6 +495,18 @@ struct SettingsView: View {
             user = clean.isEmpty ? user : clean
         case .aboutMe:
             store.userProfile = clean
+        case .catName:
+            store.catName = clean
+        }
+    }
+
+    private func displayStyle(_ key: String) -> String {
+        switch key {
+        case "温柔体贴": return L.styleWarm
+        case "简洁直接": return L.styleDirect
+        case "幽默毒舌": return L.styleWitty
+        case "知性冷静": return L.styleCalm
+        default: return key
         }
     }
 
@@ -488,6 +521,7 @@ struct SettingsView: View {
 private enum ProfileField: String, Identifiable {
     case nickname
     case aboutMe
+    case catName
 
     var id: String { rawValue }
 
@@ -495,11 +529,57 @@ private enum ProfileField: String, Identifiable {
         switch self {
         case .nickname: return L.nickname
         case .aboutMe: return L.aboutMe
+        case .catName: return L.catNameLabel
         }
     }
 
     var isMultiline: Bool {
         self == .aboutMe
+    }
+}
+
+private struct CatStylePickerView: View {
+    @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+
+    private let styles: [(label: String, key: String, desc: String)] = [
+        (L.styleWarm, "温柔体贴", L.isEn ? "Patient, empathetic, soft tone" : "温柔耐心、关心感受、语气柔软"),
+        (L.styleDirect, "简洁直接", L.isEn ? "Concise, opinionated, no fluff" : "结论前置、有判断、少废话"),
+        (L.styleWitty, "幽默毒舌", L.isEn ? "Sharp, witty, a bit sarcastic" : "犀利调侃、话少但靠谱"),
+        (L.styleCalm, "知性冷静", L.isEn ? "Analytical, calm, structured" : "理性分析、条理清晰、不带情绪"),
+    ]
+
+    var body: some View {
+        List {
+            ForEach(styles, id: \.key) { style in
+                Button {
+                    store.catStyle = style.key
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(style.label)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(CreamTheme.text)
+                            Text(style.desc)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if (store.catStyle.isEmpty ? "简洁直接" : store.catStyle) == style.key {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(CreamTheme.green)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(L.catStyleLabel)
+        .navigationBarTitleDisplayMode(.inline)
+        .listStyle(.insetGrouped)
+        .tint(CreamTheme.green)
+        .scrollContentBackground(.hidden)
+        .background(CreamTheme.glassStrong)
     }
 }
 

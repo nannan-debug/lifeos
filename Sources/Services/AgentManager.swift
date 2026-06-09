@@ -4,6 +4,8 @@ import UIKit
 protocol AgentDataWriter: AnyObject {
     var selectedDateKey: String { get }
     var userProfile: String { get set }
+    var catName: String { get }
+    var catStyle: String { get }
     func addTurnDraft(rawText: String, recognizedType: String, targetBucket: String, confidence: Double, payload: [String: String], status: String, fixHint: String, moodScore: Int?, feelingTags: [String]) -> UUID?
     func commitTurn(id: UUID) -> String?
     func addTask(title: String, detail: String, status: String, priority: String, dueDate: String, date: String?, completedAt: Date?, isAllDay: Bool, startTime: String, endTime: String, location: String, sourceNoteId: UUID?, sourceExcerpt: String) -> UUID?
@@ -181,6 +183,8 @@ final class AgentManager: ObservableObject {
             ]
         )
 
+        let persona = buildAgentPersona()
+
         currentRequestTask = Task { [weak self] in
             guard let self else { return }
             let bgTaskId = await UIApplication.shared.beginBackgroundTask(withName: "AgentChat") {}
@@ -210,11 +214,11 @@ final class AgentManager: ObservableObject {
                         threadId: threadID,
                         userProfile: userProfile,
                         agentMode: "chat",
-                        dbtSession: self.session.dbtSession
+                        dbtSession: self.session.dbtSession,
+                        agentPersona: persona
                     )
                 } catch {
                     if Self.isNetworkLostError(error) {
-                        // 流式断线（后台切出等），用非流式重试一次
                         await MainActor.run {
                             guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
                             self.streamingPhase = .reasoning
@@ -232,7 +236,8 @@ final class AgentManager: ObservableObject {
                             threadId: threadID,
                             userProfile: userProfile,
                             agentMode: "chat",
-                            dbtSession: self.session.dbtSession
+                            dbtSession: self.session.dbtSession,
+                            agentPersona: persona
                         )
                         await MainActor.run {
                             guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
@@ -305,7 +310,8 @@ final class AgentManager: ObservableObject {
                         threadId: threadID,
                         userProfile: userProfile,
                         agentMode: "chat",
-                        dbtSession: nil
+                        dbtSession: nil,
+                        agentPersona: persona
                     )
                     await MainActor.run {
                         guard self.isCurrentRequest(requestToken, threadID: requestThreadID) else { return }
@@ -496,7 +502,8 @@ final class AgentManager: ObservableObject {
                     sessionId: self.userSuffix,
                     threadId: threadID,
                     userProfile: userProfile,
-                    trigger: "scheduledNudge"
+                    trigger: "scheduledNudge",
+                    agentPersona: self.buildAgentPersona()
                 )
 
                 await MainActor.run {
@@ -1429,6 +1436,18 @@ final class AgentManager: ObservableObject {
         saveCurrentThread()
     }
 
+    // MARK: - Persona
+
+    private func buildAgentPersona() -> [String: String]? {
+        let name = writer?.catName ?? ""
+        let style = writer?.catStyle ?? ""
+        guard !name.isEmpty || !style.isEmpty else { return nil }
+        var p: [String: String] = [:]
+        if !name.isEmpty { p["catName"] = name }
+        if !style.isEmpty { p["style"] = style }
+        return p
+    }
+
     // MARK: - Streaming helpers
 
     /// Consume a streaming response, updating published state on MainActor.
@@ -1445,7 +1464,8 @@ final class AgentManager: ObservableObject {
         userProfile: String?,
         trigger: String? = nil,
         agentMode: String = "chat",
-        dbtSession: AgentDBTSessionState? = nil
+        dbtSession: AgentDBTSessionState? = nil,
+        agentPersona: [String: String]? = nil
     ) async throws -> AgentChatResponse {
         let stream = client.chatStream(
             input: input,
@@ -1459,7 +1479,8 @@ final class AgentManager: ObservableObject {
             userProfile: userProfile,
             trigger: trigger,
             agentMode: agentMode,
-            dbtSession: dbtSession
+            dbtSession: dbtSession,
+            agentPersona: agentPersona
         )
 
         var finalResponse: AgentChatResponse?

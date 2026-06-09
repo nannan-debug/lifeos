@@ -236,10 +236,10 @@ enum L {
 
     static var aiEmptyHint: String { s("可以快速记一件事，也可以慢慢聊清楚。", "Jot something down or start a conversation.") }
     static var aiInputPlaceholder: String { s("问问、快速记录或聊聊今天...", "Ask, capture, or chat about today...") }
-    static var aiThinking: String { s("猫猫在想怎么接这句话...", "Arya is thinking...") }
-    static var aiThinkingShort: String { s("猫猫在想...", "Thinking...") }
+    static func aiThinking(_ name: String) -> String { s("\(name)在想怎么接这句话...", "\(name) is thinking...") }
+    static func aiThinkingShort(_ name: String) -> String { s("\(name)在想...", "Thinking...") }
     static var thinkingProcess: String { s("思考过程", "Thinking") }
-    static var aryaPlan: String { s("Arya 的计划", "Arya's Plan") }
+    static func aryaPlan(_ name: String) -> String { s("\(name) 的计划", "\(name)'s Plan") }
     static var startExecution: String { s("开始执行", "Execute") }
     static var nOfMCompleted: String { s("已完成", "completed") }
     static var conversationTitle: String { s("对话", "Conversations") }
@@ -249,7 +249,7 @@ enum L {
     static var renameConversationHint: String { s("改名只会影响对话历史里的显示名称。", "This only changes the name shown in conversation history.") }
     static var conversationNamePlaceholder: String { s("对话名称", "Conversation name") }
     static var deleteConversation: String { s("删除这段对话？", "Delete this conversation?") }
-    static var deleteConversationHint: String { s("这只会删除这段猫猫对话，不会影响已经保存到随手记、待办或时间里的内容。", "This only deletes the chat. Saved captures, todos, and time entries are not affected.") }
+    static func deleteConversationHint(_ name: String) -> String { s("这只会删除这段\(name)对话，不会影响已经保存到随手记、待办或时间里的内容。", "This only deletes the \(name) chat. Saved captures, todos, and time entries are not affected.") }
     static var view: String { s("查看", "View") }
     static var undo: String { s("撤销", "Undo") }
     static var savePractice: String { s("保存练习记录", "Save practice") }
@@ -501,8 +501,8 @@ enum L {
 
     // MARK: - Onboarding
 
-    static var onboardingWelcome: String { s("嘿，我是 Arya猫 👋", "Hey, I'm Arya 👋") }
-    static var onboardingWelcomeSub: String { s("你在 LifeOS 里的猫猫搭档", "Your cat companion in LifeOS") }
+    static func onboardingWelcome(_ name: String) -> String { s("嘿，我是 \(name) 👋", "Hey, I'm \(name) 👋") }
+    static func onboardingWelcomeSub(_ name: String) -> String { s("你在 LifeOS 里的猫猫搭档", "Your cat companion in LifeOS") }
     static var onboardingNamePrompt: String { s("怎么称呼你？", "What should I call you?") }
     static var onboardingNamePlaceholder: String { s("你的名字（可以跳过）", "Your name (optional)") }
     static var onboardingWorkPrompt: String { s("你平时做什么？", "What do you do?") }
@@ -516,11 +516,28 @@ enum L {
     static var onboardingGoalHabits: String { s("养成习惯", "Build habits") }
     static var onboardingGoalFeelings: String { s("梳理情绪", "Process feelings") }
 
+    // MARK: - Onboarding: Cat Persona
+
+    static var onboardingCatNamePrompt: String { s("给你的猫猫起个名字", "Name your cat companion") }
+    static var onboardingCatNamePlaceholder: String { s("Arya猫", "Arya") }
+    static var onboardingStylePrompt: String { s("选择 TA 的说话风格", "Choose their speaking style") }
+    static var styleWarm: String { s("温柔体贴", "Warm & Caring") }
+    static var styleDirect: String { s("简洁直接", "Concise & Direct") }
+    static var styleWitty: String { s("幽默毒舌", "Witty & Sarcastic") }
+    static var styleCalm: String { s("知性冷静", "Intellectual & Calm") }
+
+    // MARK: - Cat Persona (Settings)
+
+    static var catPersonaSection: String { s("猫猫人设", "Cat Persona") }
+    static var catNameLabel: String { s("名字", "Name") }
+    static var catStyleLabel: String { s("说话风格", "Speaking Style") }
+    static var editCatName: String { s("修改猫猫名字", "Edit Cat Name") }
+
     // MARK: - About Me (Settings)
 
     static var aboutMeSection: String { s("关于我", "About Me") }
     static var aboutMe: String { s("个人简介", "Profile") }
-    static var aboutMeEmpty: String { s("还没有填写，帮 Arya猫更了解你", "Not set — helps Arya know you better") }
+    static func aboutMeEmpty(_ name: String) -> String { s("还没有填写，帮 \(name)更了解你", "Not set — helps \(name) know you better") }
     static var editAboutMe: String { s("编辑个人简介", "Edit Profile") }
 
     // MARK: - Daily Quotes

@@ -8,8 +8,10 @@ struct OnboardingView: View {
     @State private var name = ""
     @State private var work = ""
     @State private var selectedGoals: Set<String> = []
+    @State private var catNameDraft = ""
+    @State private var selectedStyle = "简洁直接"
 
-    private let totalPages = 3
+    private let totalPages = 4
 
     var body: some View {
         ZStack {
@@ -32,7 +34,8 @@ struct OnboardingView: View {
                 TabView(selection: $currentPage) {
                     namePage.tag(0)
                     workPage.tag(1)
-                    goalPage.tag(2)
+                    catPersonaPage.tag(2)
+                    goalPage.tag(3)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.easeInOut(duration: 0.3), value: currentPage)
@@ -56,11 +59,11 @@ struct OnboardingView: View {
                 .scaledToFit()
                 .frame(width: 160, height: 188)
 
-            Text(L.onboardingWelcome)
+            Text(L.onboardingWelcome(store.resolvedCatName))
                 .font(.title.weight(.bold))
                 .foregroundStyle(CreamTheme.text)
 
-            Text(L.onboardingWelcomeSub)
+            Text(L.onboardingWelcomeSub(store.resolvedCatName))
                 .font(.body)
                 .foregroundStyle(CreamTheme.text.opacity(0.6))
 
@@ -110,7 +113,59 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Page 3: Goals
+    // MARK: - Page 3: Cat Persona
+
+    private let styleOptions: [(label: String, key: String)] = [
+        (L.styleWarm, "温柔体贴"),
+        (L.styleDirect, "简洁直接"),
+        (L.styleWitty, "幽默毒舌"),
+        (L.styleCalm, "知性冷静"),
+    ]
+
+    private var catPersonaPage: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image("LaunchCatFlower")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 120, height: 141)
+
+            Text(L.onboardingCatNamePrompt)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(CreamTheme.text)
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(L.onboardingCatNamePlaceholder, text: $catNameDraft)
+                    .textFieldStyle(.plain)
+                    .padding(14)
+                    .background(CreamTheme.glassStrong)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .padding(.horizontal, 32)
+
+            Text(L.onboardingStylePrompt)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(CreamTheme.text.opacity(0.6))
+                .padding(.top, 8)
+
+            FlowLayout(spacing: 10) {
+                ForEach(styleOptions, id: \.key) { option in
+                    GoalChip(
+                        title: option.label,
+                        isSelected: selectedStyle == option.key,
+                        action: { selectedStyle = option.key }
+                    )
+                }
+            }
+            .padding(.horizontal, 32)
+
+            Spacer()
+            Spacer()
+        }
+    }
+
+    // MARK: - Page 4: Goals
 
     private var goalPage: some View {
         VStack(spacing: 24) {
@@ -218,6 +273,12 @@ struct OnboardingView: View {
         if !parts.isEmpty {
             store.userProfile = parts.joined(separator: "\n")
         }
+
+        let trimmedCatName = catNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCatName.isEmpty {
+            store.catName = trimmedCatName
+        }
+        store.catStyle = selectedStyle
 
         store.isOnboardingCompleted = true
         onComplete()

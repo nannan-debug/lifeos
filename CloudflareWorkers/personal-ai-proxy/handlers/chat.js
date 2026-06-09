@@ -1,4 +1,4 @@
-import { AGENT_PERSONA, USER_PROFILE, CHAT_POLICY } from "../agent/persona.js";
+import { AGENT_PERSONA, USER_PROFILE, CHAT_POLICY, buildPersonaBlock } from "../agent/persona.js";
 import { CHAT_SYSTEM_PROMPT } from "../agent/prompts.js";
 import { buildDBTSkillBlock, normalizeDBTSession, reconcileDBTSessionProgress } from "../skills/dbt-emotional-care/index.js";
 import { callAIJSON, compactMessageContent, extractFirstJSONObject, STREAM_JSON_DELIMITER } from "../lib/ai-client.js";
@@ -44,9 +44,13 @@ function buildSystemPrompt(body, incomingDBTSession) {
   const hasToolResult = contextSummary.includes("数据查询结果：");
   const effectiveContext = (history.length === 0 || hasToolResult) ? (contextSummary || "无") : "（已在首轮提供）";
 
+  const personaBlock = body.agentPersona ? buildPersonaBlock(body.agentPersona) : AGENT_PERSONA;
+  const catName = body.agentPersona?.catName || "Arya猫";
+
   const dbtSkillBlock = buildDBTSkillBlock(incomingDBTSession, currentDate);
   const systemPrompt = CHAT_SYSTEM_PROMPT
-    .replace("{{AGENT_PERSONA}}", AGENT_PERSONA)
+    .replace("{{CAT_NAME}}", catName)
+    .replace("{{AGENT_PERSONA}}", personaBlock)
     .replace("{{USER_PROFILE}}", userProfileText)
     .replace("{{CHAT_POLICY}}", CHAT_POLICY)
     .replace("{{DBT_SKILL_BLOCK}}", dbtSkillBlock)
