@@ -6,6 +6,10 @@ protocol AgentDataWriter: AnyObject {
     var userProfile: String { get set }
     var catName: String { get }
     var catStyle: String { get }
+    var catRole: String { get }
+    var catProactivity: String { get }
+    var catMemoryPreference: String { get }
+    var catInstructions: String { get }
     func addTurnDraft(rawText: String, recognizedType: String, targetBucket: String, confidence: Double, payload: [String: String], status: String, fixHint: String, moodScore: Int?, feelingTags: [String]) -> UUID?
     func commitTurn(id: UUID) -> String?
     func addTask(title: String, detail: String, status: String, priority: String, dueDate: String, date: String?, completedAt: Date?, isAllDay: Bool, startTime: String, endTime: String, location: String, sourceNoteId: UUID?, sourceExcerpt: String) -> UUID?
@@ -144,6 +148,9 @@ final class AgentManager: ObservableObject {
         guard !clean.isEmpty else { return }
         self.nearbyTimeEntries = nearbyTimeEntries
         ensureCurrentThread()
+        if handleMemoryCorrectionIfNeeded(clean) {
+            return
+        }
         let requestThreadID = currentThreadID
         let requestToken = UUID()
         activeRequestToken = requestToken
@@ -179,6 +186,7 @@ final class AgentManager: ObservableObject {
                 "currentDate": today,
                 "currentTime": now,
                 "contextSummary": request.contextSummary,
+                "memoryDebug": AgentOrchestrator.memoryDebugSummary(memories, input: clean),
                 "messages": AgentTracePayload.json(request.messages)
             ]
         )
@@ -1379,12 +1387,53 @@ final class AgentManager: ObservableObject {
         forceCreateNewThread()
     }
 
-    func addMemory(content: String, category: String = "fact", source: String = "user") {
+    func addMemory(content: String, category: String = "fact", source: String = "user", scope: String = "state") {
         let clean = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         if memories.contains(where: { $0.content == clean }) { return }
-        memories.append(AgentMemory(content: clean, category: category, source: source))
+        memories.append(AgentMemory(
+            content: clean,
+            category: category,
+            source: source,
+            scope: scope,
+            expiresAt: defaultExpiry(for: scope),
+            confidence: source == "user" ? 1.0 : 0.7,
+            sourceThreadId: currentThreadID,
+            lastConfirmedAt: source == "user" ? Date() : nil
+        ))
         trimMemories()
+        saveMemories()
+    }
+
+    func updateMemory(id: UUID, content: String, scope: String, status: String) {
+        guard let index = memories.firstIndex(where: { $0.id == id }) else { return }
+        let clean = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        memories[index].content = clean
+        memories[index].scope = AgentMemory.normalizedScope(scope, category: memories[index].category)
+        memories[index].status = status
+        memories[index].lastConfirmedAt = Date()
+        if memories[index].scope == "profile" || memories[index].scope == "preference" {
+            memories[index].expiresAt = nil
+        } else if memories[index].expiresAt == nil && status == "active" {
+            memories[index].expiresAt = defaultExpiry(for: memories[index].scope)
+        }
+        saveMemories()
+    }
+
+    func confirmMemoryAsLongTerm(id: UUID) {
+        guard let index = memories.firstIndex(where: { $0.id == id }) else { return }
+        memories[index].scope = "profile"
+        memories[index].expiresAt = nil
+        memories[index].lastConfirmedAt = Date()
+        memories[index].status = "active"
+        saveMemories()
+    }
+
+    func expireMemory(id: UUID) {
+        guard let index = memories.firstIndex(where: { $0.id == id }) else { return }
+        memories[index].expiresAt = Date()
+        memories[index].status = "archived"
         saveMemories()
     }
 
@@ -1399,6 +1448,61 @@ final class AgentManager: ObservableObject {
             memories[i].lastUsedAt = now
         }
         saveMemories()
+    }
+
+    @discardableResult
+    private func handleMemoryCorrectionIfNeeded(_ input: String) -> Bool {
+        let clean = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let forgetPrefixes = ["忘掉", "忘记", "别再提", "不要再提", "这个不对"]
+        if forgetPrefixes.contains(where: { clean.contains($0) }) {
+            let target = forgetPrefixes.reduce(clean) { partial, prefix in
+                partial.replacingOccurrences(of: prefix, with: "")
+            }
+            let matched = markMatchingMemoriesInactive(keyword: target)
+            appendMessage(AgentChatMessage(role: "user", content: clean))
+            let reply = matched > 0
+                ? "好，我已经把相关记忆先放下了。之后不会再主动拿它当背景。"
+                : "好，我会注意不再主动提这件事。如果你愿意，也可以到设置里的猫猫记忆里检查一下。"
+            appendMessage(AgentChatMessage(role: "assistant", content: reply))
+            return true
+        }
+
+        let rememberPrefixes = ["记住", "你可以记住", "以后你要知道"]
+        guard rememberPrefixes.contains(where: { clean.contains($0) }) else { return false }
+        let content = rememberPrefixes.reduce(clean) { partial, prefix in
+            partial.replacingOccurrences(of: prefix, with: "")
+        }
+        let trimmed = content.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+        guard !trimmed.isEmpty else { return false }
+        addMemory(content: trimmed, category: "preference", source: "user", scope: inferredScope(for: trimmed))
+        appendMessage(AgentChatMessage(role: "user", content: clean))
+        appendMessage(AgentChatMessage(role: "assistant", content: "我先记住这一点，之后你可以随时让我忘掉或改掉。"))
+        return true
+    }
+
+    private func markMatchingMemoriesInactive(keyword: String) -> Int {
+        let clean = keyword.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+        guard !clean.isEmpty else { return 0 }
+        var count = 0
+        for index in memories.indices {
+            let shouldMatch = memories[index].content.localizedCaseInsensitiveContains(clean) || clean.localizedCaseInsensitiveContains(memories[index].content)
+            guard shouldMatch else { continue }
+            memories[index].status = "rejected"
+            memories[index].expiresAt = Date()
+            count += 1
+        }
+        if count > 0 { saveMemories() }
+        return count
+    }
+
+    private func inferredScope(for content: String) -> String {
+        if content.contains("喜欢") || content.contains("偏好") || content.localizedCaseInsensitiveContains("prefer") {
+            return "preference"
+        }
+        if content.contains("下周") || content.contains("明天") || content.contains("周五") || content.contains("面试") {
+            return "plan"
+        }
+        return "state"
     }
 
     func threadMatchesSearch(_ item: AgentChatThreadIndexItem, query: String) -> Bool {
@@ -1441,10 +1545,17 @@ final class AgentManager: ObservableObject {
     private func buildAgentPersona() -> [String: String]? {
         let name = writer?.catName ?? ""
         let style = writer?.catStyle ?? ""
-        guard !name.isEmpty || !style.isEmpty else { return nil }
+        let role = writer?.catRole ?? "安静陪伴"
+        let proactivity = writer?.catProactivity ?? "偶尔接回"
+        let memoryPreference = writer?.catMemoryPreference ?? "平衡记忆"
+        let instructions = writer?.catInstructions ?? ""
         var p: [String: String] = [:]
         if !name.isEmpty { p["catName"] = name }
         if !style.isEmpty { p["style"] = style }
+        p["role"] = role.isEmpty ? "安静陪伴" : role
+        p["proactivity"] = proactivity.isEmpty ? "偶尔接回" : proactivity
+        p["memoryPreference"] = memoryPreference.isEmpty ? "平衡记忆" : memoryPreference
+        if !instructions.isEmpty { p["customInstructions"] = String(instructions.prefix(1200)) }
         return p
     }
 
@@ -1798,6 +1909,16 @@ final class AgentManager: ObservableObject {
         memories = Array(memories.prefix(Self.maxMemories))
     }
 
+    private func defaultExpiry(for scope: String) -> Date? {
+        let days: Int
+        switch scope {
+        case "plan": days = 14
+        case "state": days = 30
+        default: return nil
+        }
+        return Calendar.current.date(byAdding: .day, value: days, to: Date())
+    }
+
     private func extractMemories(from messages: [AgentChatMessage]) async {
         do {
             let validMessages = messages.filter { !$0.isError }
@@ -1806,32 +1927,23 @@ final class AgentManager: ObservableObject {
             )
             await MainActor.run {
                 var added = 0
-                let profileItems = extracted.filter { $0.scope == "profile" }
-                let memoryItems = extracted.filter { $0.scope != "profile" }
+                let memoryItems = extracted
 
                 for item in memoryItems where !self.memories.contains(where: { $0.content == item.content }) {
+                    let scope = AgentMemory.normalizedScope(item.scope, category: item.category)
                     self.memories.append(AgentMemory(
                         content: item.content,
                         category: item.category,
-                        source: "auto"
+                        source: "auto",
+                        scope: scope,
+                        expiresAt: self.defaultExpiry(for: scope),
+                        confidence: item.confidence ?? 0.75,
+                        sourceThreadId: self.currentThreadID
                     ))
                     added += 1
                 }
                 self.trimMemories()
                 self.saveMemories()
-
-                if !profileItems.isEmpty, let writer = self.writer {
-                    let current = writer.userProfile
-                    let newFacts = profileItems
-                        .map(\.content)
-                        .filter { fact in !current.contains(fact) }
-                    if !newFacts.isEmpty {
-                        let updated = current.isEmpty
-                            ? newFacts.joined(separator: "\n")
-                            : current + "\n" + newFacts.joined(separator: "\n")
-                        writer.userProfile = updated
-                    }
-                }
 
                 self.memoryStatus = added > 0 ? "已记住 \(added) 条新信息" : nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {

@@ -52,6 +52,35 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    catOptionRow(
+                        title: L.catRoleLabel,
+                        value: store.catRole.isEmpty ? L.roleQuiet : displayRole(store.catRole),
+                        options: catRoleOptions,
+                        selection: Binding(get: { store.catRole }, set: { store.catRole = $0 })
+                    )
+
+                    catOptionRow(
+                        title: L.catProactivityLabel,
+                        value: store.catProactivity.isEmpty ? L.proactivityOccasional : displayProactivity(store.catProactivity),
+                        options: catProactivityOptions,
+                        selection: Binding(get: { store.catProactivity }, set: { store.catProactivity = $0 })
+                    )
+
+                    catOptionRow(
+                        title: L.catMemoryPreferenceLabel,
+                        value: store.catMemoryPreference.isEmpty ? L.memoryPreferenceBalanced : displayMemoryPreference(store.catMemoryPreference),
+                        options: catMemoryPreferenceOptions,
+                        selection: Binding(get: { store.catMemoryPreference }, set: { store.catMemoryPreference = $0 })
+                    )
+
+                    editableProfileRow(
+                        title: L.catInstructionsLabel,
+                        value: store.catInstructions.isEmpty
+                            ? L.catInstructionsEmpty
+                            : String(store.catInstructions.prefix(40)) + (store.catInstructions.count > 40 ? "…" : ""),
+                        field: .catInstructions
+                    )
                 }
 
                 Section(L.languageSection) {
@@ -459,15 +488,22 @@ struct SettingsView: View {
             Form {
                 if field.isMultiline {
                     TextEditor(text: $draftValue)
-                        .frame(minHeight: 120)
+                        .frame(minHeight: field == .catInstructions ? 220 : 120)
                 } else {
                     TextField(field.title, text: $draftValue)
                 }
             }
-            .navigationTitle(field == .aboutMe ? L.editAboutMe : field == .catName ? L.editCatName : L.editNickname)
+            .navigationTitle(editTitle(for: field))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L.cancel) { editingField = nil }
+                }
+                if field == .catInstructions && draftValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(L.useInstructionTemplate) {
+                            draftValue = L.catInstructionsTemplate
+                        }
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L.save) {
@@ -485,6 +521,7 @@ struct SettingsView: View {
         case .nickname: return displayNickname
         case .aboutMe: return store.userProfile
         case .catName: return store.catName
+        case .catInstructions: return store.catInstructions
         }
     }
 
@@ -497,6 +534,17 @@ struct SettingsView: View {
             store.userProfile = clean
         case .catName:
             store.catName = clean
+        case .catInstructions:
+            store.catInstructions = clean
+        }
+    }
+
+    private func editTitle(for field: ProfileField) -> String {
+        switch field {
+        case .aboutMe: return L.editAboutMe
+        case .catName: return L.editCatName
+        case .catInstructions: return L.editCatInstructions
+        case .nickname: return L.editNickname
         }
     }
 
@@ -506,6 +554,74 @@ struct SettingsView: View {
         case "简洁直接": return L.styleDirect
         case "幽默毒舌": return L.styleWitty
         case "知性冷静": return L.styleCalm
+        default: return key
+        }
+    }
+
+    private var catRoleOptions: [(label: String, key: String, desc: String)] {
+        [
+            (L.roleQuiet, "安静陪伴", L.isEn ? "Listen first, fewer suggestions" : "少建议，多接住"),
+            (L.roleAction, "行动搭子", L.isEn ? "Break things into tiny next steps" : "帮你拆一个很小的下一步"),
+            (L.roleAdvisor, "冷静参谋", L.isEn ? "Structured, calm tradeoffs" : "结构化分析，帮你看清取舍"),
+            (L.roleWittyFriend, "轻松吐槽朋友", L.isEn ? "Light humor without pressure" : "轻松一点，但不制造压力"),
+        ]
+    }
+
+    private var catProactivityOptions: [(label: String, key: String, desc: String)] {
+        [
+            (L.proactivityReplyOnly, "只回应", L.isEn ? "Only respond to what you say now" : "只回应当下，不主动提过去"),
+            (L.proactivityOccasional, "偶尔接回", L.isEn ? "Occasionally recall useful context" : "偶尔自然接回重要背景"),
+            (L.proactivityActive, "主动关心", L.isEn ? "Gentle check-ins for important plans" : "轻轻关心近期计划和状态"),
+        ]
+    }
+
+    private var catMemoryPreferenceOptions: [(label: String, key: String, desc: String)] {
+        [
+            (L.memoryPreferenceBalanced, "平衡记忆", L.isEn ? "Remember only useful context" : "只记有帮助的背景"),
+            (L.memoryPreferencePrivate, "少记私人细节", L.isEn ? "Be conservative with sensitive details" : "对私人信息更保守"),
+            (L.memoryPreferencePlans, "多记计划", L.isEn ? "Pay more attention to short-term plans" : "更关注近期计划"),
+            (L.memoryPreferencePreferences, "多记偏好", L.isEn ? "Prioritize interaction preferences" : "优先记住互动偏好"),
+        ]
+    }
+
+    private func catOptionRow(title: String, value: String, options: [(label: String, key: String, desc: String)], selection: Binding<String>) -> some View {
+        NavigationLink {
+            CatOptionPickerView(title: title, options: options, selection: selection)
+        } label: {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(value)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func displayRole(_ key: String) -> String {
+        switch key {
+        case "安静陪伴": return L.roleQuiet
+        case "行动搭子": return L.roleAction
+        case "冷静参谋": return L.roleAdvisor
+        case "轻松吐槽朋友": return L.roleWittyFriend
+        default: return key
+        }
+    }
+
+    private func displayProactivity(_ key: String) -> String {
+        switch key {
+        case "只回应": return L.proactivityReplyOnly
+        case "偶尔接回": return L.proactivityOccasional
+        case "主动关心": return L.proactivityActive
+        default: return key
+        }
+    }
+
+    private func displayMemoryPreference(_ key: String) -> String {
+        switch key {
+        case "平衡记忆": return L.memoryPreferenceBalanced
+        case "少记私人细节": return L.memoryPreferencePrivate
+        case "多记计划": return L.memoryPreferencePlans
+        case "多记偏好": return L.memoryPreferencePreferences
         default: return key
         }
     }
@@ -522,6 +638,7 @@ private enum ProfileField: String, Identifiable {
     case nickname
     case aboutMe
     case catName
+    case catInstructions
 
     var id: String { rawValue }
 
@@ -530,11 +647,12 @@ private enum ProfileField: String, Identifiable {
         case .nickname: return L.nickname
         case .aboutMe: return L.aboutMe
         case .catName: return L.catNameLabel
+        case .catInstructions: return L.catInstructionsLabel
         }
     }
 
     var isMultiline: Bool {
-        self == .aboutMe
+        self == .aboutMe || self == .catInstructions
     }
 }
 
@@ -583,63 +701,213 @@ private struct CatStylePickerView: View {
     }
 }
 
+private struct CatOptionPickerView: View {
+    let title: String
+    let options: [(label: String, key: String, desc: String)]
+    @Binding var selection: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            ForEach(options, id: \.key) { option in
+                Button {
+                    selection = option.key
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(option.label)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(CreamTheme.text)
+                            Text(option.desc)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if (selection.isEmpty ? (options.first?.key ?? "") : selection) == option.key {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(CreamTheme.green)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .listStyle(.insetGrouped)
+        .tint(CreamTheme.green)
+        .scrollContentBackground(.hidden)
+        .background(CreamTheme.glassStrong)
+    }
+}
+
 private struct AgentMemoryListView: View {
     @EnvironmentObject var store: AppStore
     @State private var newMemoryText = ""
+    @State private var newMemoryScope = "state"
+    @State private var editingMemory: AgentMemory?
 
     var body: some View {
         List {
             Section {
-                HStack {
+                VStack(alignment: .leading, spacing: 10) {
                     TextField(L.addMemoryPlaceholder, text: $newMemoryText)
                         .textFieldStyle(.plain)
+                    Picker("", selection: $newMemoryScope) {
+                        Text(L.memoryScopeProfile).tag("profile")
+                        Text(L.memoryScopePreference).tag("preference")
+                        Text(L.memoryScopeState).tag("state")
+                        Text(L.memoryScopePlan).tag("plan")
+                    }
+                    .pickerStyle(.segmented)
                     Button {
-                        store.addAgentMemory(content: newMemoryText)
+                        store.addAgentMemory(content: newMemoryText, scope: newMemoryScope)
                         newMemoryText = ""
                     } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundStyle(CreamTheme.green)
+                        Label(L.save, systemImage: "plus.circle.fill")
                     }
                     .disabled(newMemoryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
 
-            Section {
-                if store.agentMemories.isEmpty {
+            if store.agentMemories.isEmpty {
+                Section {
                     Text(L.noMemories)
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(store.agentMemories) { memory in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(memory.content)
-                                .font(.subheadline)
-                            HStack(spacing: 8) {
-                                Text(memory.category)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Capsule().fill(Color.purple.opacity(0.1)))
-                                    .foregroundStyle(.purple)
-                                Text(memory.source == "auto" ? L.autoExtracted : L.manuallyAdded)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(memory.createdAt, style: .date)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                }
+            } else {
+                ForEach(["profile", "preference", "state", "plan"], id: \.self) { scope in
+                    let items = store.agentMemories.filter { $0.scope == scope }
+                    if !items.isEmpty {
+                        Section(memoryScopeLabel(scope)) {
+                            ForEach(items) { memory in
+                                memoryRow(memory)
                             }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            store.removeAgentMemory(id: store.agentMemories[index].id)
                         }
                     }
                 }
             }
         }
         .navigationTitle(L.agentMemoryTitle)
+        .sheet(item: $editingMemory) { memory in
+            AgentMemoryEditView(memory: memory)
+                .environmentObject(store)
+        }
+    }
+
+    private func memoryRow(_ memory: AgentMemory) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(memory.content)
+                .font(.subheadline)
+            HStack(spacing: 8) {
+                Text(memoryScopeLabel(memory.scope))
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.purple.opacity(0.1)))
+                    .foregroundStyle(.purple)
+                Text(memory.source == "auto" ? L.autoExtracted : L.manuallyAdded)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if memory.status != "active" {
+                    Text(memory.status == "rejected" ? L.memoryStatusRejected : L.memoryStatusArchived)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(memory.createdAt, style: .date)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                store.removeAgentMemory(id: memory.id)
+            } label: {
+                Label(L.delete, systemImage: "trash")
+            }
+            Button {
+                store.expireAgentMemory(id: memory.id)
+            } label: {
+                Label(L.expireMemory, systemImage: "archivebox")
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                editingMemory = memory
+            } label: {
+                Label(L.editMemory, systemImage: "pencil")
+            }
+            Button {
+                store.confirmAgentMemoryAsLongTerm(id: memory.id)
+            } label: {
+                Label(L.makeLongTerm, systemImage: "pin")
+            }
+            .tint(CreamTheme.green)
+        }
+    }
+
+    private func memoryScopeLabel(_ scope: String) -> String {
+        switch scope {
+        case "profile": return L.memoryScopeProfile
+        case "preference": return L.memoryScopePreference
+        case "plan": return L.memoryScopePlan
+        default: return L.memoryScopeState
+        }
+    }
+}
+
+private struct AgentMemoryEditView: View {
+    @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    let memory: AgentMemory
+    @State private var content: String
+    @State private var scope: String
+    @State private var status: String
+
+    init(memory: AgentMemory) {
+        self.memory = memory
+        _content = State(initialValue: memory.content)
+        _scope = State(initialValue: memory.scope)
+        _status = State(initialValue: memory.status)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $content)
+                        .frame(minHeight: 100)
+                }
+                Section {
+                    Picker(L.agentMemoryTitle, selection: $scope) {
+                        Text(L.memoryScopeProfile).tag("profile")
+                        Text(L.memoryScopePreference).tag("preference")
+                        Text(L.memoryScopeState).tag("state")
+                        Text(L.memoryScopePlan).tag("plan")
+                    }
+                    Picker(L.memoryStatusLabel, selection: $status) {
+                        Text(L.memoryStatusActive).tag("active")
+                        Text(L.memoryStatusArchived).tag("archived")
+                        Text(L.memoryStatusRejected).tag("rejected")
+                    }
+                }
+            }
+            .navigationTitle(L.editMemory)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L.cancel) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L.save) {
+                        store.updateAgentMemory(id: memory.id, content: content, scope: scope, status: status)
+                        dismiss()
+                    }
+                    .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 }
 

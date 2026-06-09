@@ -46,6 +46,7 @@ enum AgentOrchestrator {
             input: input,
             messages: recentMessages,
             contextSummary: makeContextSummary(
+                input: input,
                 turns: turns,
                 tasks: tasks,
                 timeEntries: timeEntries,
@@ -61,6 +62,7 @@ enum AgentOrchestrator {
     }
 
     static func makeContextSummary(
+        input: String = "",
         turns: [ConversationTurn],
         tasks: [TaskEntry],
         timeEntries: [TimeEntry],
@@ -130,9 +132,25 @@ enum AgentOrchestrator {
             sections.append("今日日历：\n" + calendarLines.joined(separator: "\n"))
         }
 
-        let memoryLines = memories.prefix(10).map { "- \($0.content)" }
-        if !memoryLines.isEmpty {
-            sections.append("历史记忆：\n" + memoryLines.joined(separator: "\n"))
+        let selectedMemories = selectMemories(memories, input: input)
+        let profileLines = selectedMemories.filter { $0.scope == "profile" }.prefix(3).map { "- \($0.content)" }
+        if !profileLines.isEmpty {
+            sections.append("长期画像记忆：\n" + profileLines.joined(separator: "\n"))
+        }
+
+        let preferenceLines = selectedMemories.filter { $0.scope == "preference" }.prefix(3).map { "- \($0.content)" }
+        if !preferenceLines.isEmpty {
+            sections.append("互动偏好记忆：\n" + preferenceLines.joined(separator: "\n"))
+        }
+
+        let stateLines = selectedMemories.filter { $0.scope == "state" }.prefix(4).map { "- \($0.content)" }
+        if !stateLines.isEmpty {
+            sections.append("近期状态记忆：\n" + stateLines.joined(separator: "\n"))
+        }
+
+        let planLines = selectedMemories.filter { $0.scope == "plan" }.prefix(4).map { "- \($0.content)" }
+        if !planLines.isEmpty {
+            sections.append("近期计划记忆：\n" + planLines.joined(separator: "\n"))
         }
 
         if let weekly = weeklySummary, !weekly.isEmpty {
@@ -147,6 +165,54 @@ enum AgentOrchestrator {
             return "暂无近期 LifeOS 记录。"
         }
         return sections.joined(separator: "\n\n")
+    }
+
+    static func selectMemories(_ memories: [AgentMemory], input: String = "", referenceDate: Date = Date()) -> [AgentMemory] {
+        let active = memories.filter { $0.isActive && !$0.isExpired(referenceDate: referenceDate) }
+        let tokens = memoryTokens(from: input)
+        return active.sorted { lhs, rhs in
+            let lhsScore = memoryScore(lhs, tokens: tokens)
+            let rhsScore = memoryScore(rhs, tokens: tokens)
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            return lhs.lastUsedAt > rhs.lastUsedAt
+        }
+        .prefix(12)
+        .map { $0 }
+    }
+
+    static func memoryDebugSummary(_ memories: [AgentMemory], input: String = "", referenceDate: Date = Date()) -> String {
+        let selected = Set(selectMemories(memories, input: input, referenceDate: referenceDate).map(\.id))
+        let injected = memories.filter { selected.contains($0.id) }.map { "\($0.scope):\($0.content)" }
+        let filtered = memories.filter { !selected.contains($0.id) }.compactMap { memory -> String? in
+            if !memory.isActive { return "\(memoryDebugLabel(memory)):status=\(memory.status)" }
+            if memory.isExpired(referenceDate: referenceDate) { return "\(memoryDebugLabel(memory)):expired" }
+            return nil
+        }
+        return "injected=[\(injected.joined(separator: " | "))]; filtered=[\(filtered.joined(separator: " | "))]"
+    }
+
+    private static func memoryScore(_ memory: AgentMemory, tokens: Set<String>) -> Double {
+        var score = memory.confidence
+        if memory.scope == "profile" { score += 2.0 }
+        if memory.scope == "preference" { score += 1.8 }
+        if memory.lastConfirmedAt != nil { score += 1.0 }
+        if !tokens.isEmpty && tokens.contains(where: { memory.content.localizedCaseInsensitiveContains($0) }) {
+            score += 2.0
+        }
+        let age = max(0, Date().timeIntervalSince(memory.lastUsedAt))
+        score -= min(age / (60 * 60 * 24 * 30), 1.5)
+        return score
+    }
+
+    private static func memoryTokens(from input: String) -> Set<String> {
+        let clean = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return [] }
+        let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        return Set(clean.components(separatedBy: separators).filter { $0.count >= 2 }.prefix(12))
+    }
+
+    private static func memoryDebugLabel(_ memory: AgentMemory) -> String {
+        "\(memory.scope):\(memory.content.prefix(18))"
     }
 
     static func fallbackResponse(for input: String, weeklySummary: String? = nil) -> AgentChatResponse {

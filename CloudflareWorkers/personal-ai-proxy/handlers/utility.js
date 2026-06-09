@@ -69,13 +69,16 @@ export async function handleUtility(body, provider, apiKey, trace) {
     const transcript = messages
       .map((m) => `${m.role === "user" ? "用户" : "AI"}: ${String(m.content || "").slice(0, 300)}`)
       .join("\n");
-    const prompt = `从这段对话中提取 1-3 条值得长期记住的关键信息。每条不超过 30 字。
+    const prompt = `从这段对话中提取 1-3 条值得猫猫后续陪伴用户时记住的关键信息。每条不超过 30 字。
 
 区分 scope：
-- "profile"：关于用户身份、性格、长期偏好、职业等不容易变的信息（如"用户是产品经理"、"不喜欢啰嗦"）
-- "memory"：近期事件、短期状态、具体计划（如"下午要面试"、"最近在学 Swift"）
+- "profile"：长期画像，如身份、职业、长期目标、稳定背景（如"用户是产品经理"）
+- "preference"：互动偏好和边界（如"用户喜欢简洁回答"、"用户不想被催"）
+- "state"：近期状态或情绪阶段（如"最近在学 Swift"、"这几天压力大"）
+- "plan"：短期计划或明确时间事件（如"下周有面试"、"周五要提交材料"）
 
-只返回 JSON：{"memories":[{"content":"...","category":"fact|preference|summary","scope":"profile|memory"}]}
+不要提取医疗诊断、敏感推断或你不确定的私人事实。
+只返回 JSON：{"memories":[{"content":"...","category":"fact|preference|summary","scope":"profile|preference|state|plan","confidence":0.0到1.0}]}
 
 对话记录：
 ${transcript}`;
@@ -98,7 +101,8 @@ ${transcript}`;
           .map((m) => ({
             content: m.content.trim().slice(0, 60),
             category: ["fact", "preference", "summary"].includes(m.category) ? m.category : "fact",
-            scope: m.scope === "profile" ? "profile" : "memory",
+            scope: ["profile", "preference", "state", "plan"].includes(m.scope) ? m.scope : "state",
+            confidence: typeof m.confidence === "number" ? Math.max(0, Math.min(1, m.confidence)) : 0.75,
           }))
           .slice(0, 3)
       : [];
