@@ -1,7 +1,7 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-06-04
+> 最后更新：2026-06-12
 
 ---
 
@@ -416,6 +416,26 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - 全界面中英文双语支持
 - 每日一言 70 条英文原版语录
 
+### 6.11 1.12.0 上架收尾（已上架 ✅）
+
+- ✅ `1.12.0 (build 16)` 已通过审核并上架（2026-06-04）。
+- ✅ 当前 `main` / `project.yml` 状态为 `1.12.0 (build 16)`。
+- ✅ App Store Connect 状态：Ready for Distribution。
+
+**关键改动清单（供历史回看）：**
+- AI 对话消息支持时间、复制、点赞和点踩。
+- 对话历史支持长按重命名。
+- 英文模式补齐日历弹层、时间圆盘拖拽手柄和设置页同步状态小字。
+- 修复 AI 流式回复 JSON 片段外露和 DBT Coach 流程卡住 / 未保存的问题。
+
+### 6.12 1.13.0 发版准备（代码准备中 🚧）
+
+- 🚧 发版分支：`chore/release-1.13.0-clean`。
+- 🚧 版本号准备：`1.13.0 (build 17)`，等待 PR 合入 `main` 后由用户手动 Archive / Upload / Submit。
+- ✅ 已在 [`docs/operations/appstore/ASC_COPY_DRAFT_v1.md`](docs/operations/appstore/ASC_COPY_DRAFT_v1.md) §0 整理 `1.13.0` What's New 草稿。
+- ✅ `CHANGELOG.md [Unreleased]` 将归档为 `1.13.0 (build 17)`。
+- ⚠️ Codex 不替用户执行 Archive / Upload / Submit；这些步骤仍需用户在 Xcode / App Store Connect 手动完成。
+
 ---
 
 ## 7. 仓库内与上架最相关的文件
@@ -436,4 +456,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 ~ 1.11.0 均已在 App Store 在线。最新线上版本为 `1.11.0 (build 15)`（中英文双语支持 + AI 语言匹配）。**
+**LifeOS 1.0.0 ~ 1.12.0 均已在 App Store 在线。最新线上版本为 `1.12.0 (build 16)`（DBT 修复 + Agent 对话体验优化）；`1.13.0 (build 17)` 发版准备在 `chore/release-1.13.0-clean`，等待 PR 合入后由用户手动 Archive / Upload / Submit。**
