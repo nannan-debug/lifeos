@@ -49,7 +49,6 @@
 		8739E3A8FDB2DD6B5B1D6031 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 70AAAE0DD5353FCA3FCC86FB /* PrivacyInfo.xcprivacy */; };
 		892A76B6DCDC71F8653AD002 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A91D26AC13B0637910C124F /* UsageTracker.swift */; };
 		992143D2E8B7975DC7F7FF51 /* TestPersonaSwitcherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 024BF41E19C1550E79DC6C84 /* TestPersonaSwitcherView.swift */; };
-		A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E49D2D37FD2539D75275B /* Secrets.swift */; };
 		ADC741CD0C011A6AD7FF2AF8 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36385E1762B561F298163F27 /* TodayView.swift */; };
 		C19ACFF8ABFFB35B452B3C49 /* PersonalSystemSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF4057C56974C73581881A3 /* PersonalSystemSmokeTests.swift */; };
 		C2010821D5C31C01EB300652 /* mascot-cat.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A74F453355CC52805ED86CD /* mascot-cat.png */; };
@@ -134,7 +133,6 @@
 		7ED93A393A73A15095567370 /* AgentTraceLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTraceLogger.swift; sourceTree = "<group>"; };
 		8A1C212C5B39C02449173866 /* ReviewSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewSessionView.swift; sourceTree = "<group>"; };
 		8BBF87E4E76069B1B9D80DD0 /* ReviewHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewHubView.swift; sourceTree = "<group>"; };
-		8C9E49D2D37FD2539D75275B /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		8DC94A1F56E8F18346B77F0B /* CheckWidgetExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = CheckWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		94F8857927CDD70BD40D9BF0 /* CloudSyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncController.swift; sourceTree = "<group>"; };
 		9CBFA4BCDE96C31BD474865A /* CreamCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreamCalendar.swift; sourceTree = "<group>"; };
@@ -188,7 +186,6 @@
 				AA04E72F7DB31F5F8F56A605 /* DailyStateReminderService.swift */,
 				6FFAF1862AB2EC84D861931B /* DataArchive.swift */,
 				73E18984156BED9EA042B0E9 /* HealthKitSyncService.swift */,
-				8C9E49D2D37FD2539D75275B /* Secrets.swift */,
 				2A91D26AC13B0637910C124F /* UsageTracker.swift */,
 				CBD0637444A64170704B6348 /* WakeDreamReminderService.swift */,
 			);
@@ -499,7 +496,6 @@
 				F1B5AA7984E72D5162D2962E /* ReviewHubView.swift in Sources */,
 				5D44142D106F280B67EE7F4E /* ReviewSessionView.swift in Sources */,
 				F6896693D277FD78E861D75F /* RootTabView.swift in Sources */,
-				A6B4D43BD36DB2A15BDFDFB1 /* Secrets.swift in Sources */,
 				EECA22D6609959135391624F /* SettingsView.swift in Sources */,
 				389E8685ABC1255281C3AC53 /* TaskIntentDetector.swift in Sources */,
 				F96D53CFE677E0A9F36B5135 /* TestPersonaSeeder.swift in Sources */,
@@ -560,7 +556,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/Widgets/CheckWidget/CheckWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/Widgets/CheckWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -568,7 +564,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.12.0;
+				MARKETING_VERSION = 1.13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.anna.personalsystem.CheckWidgetExtension;
 				PRODUCT_NAME = CheckWidgetExtension;
 				SDKROOT = iphoneos;
@@ -583,14 +579,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.12.0;
+				MARKETING_VERSION = 1.13.0;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -678,14 +674,14 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/App/PersonalSystem.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.12.0;
+				MARKETING_VERSION = 1.13.0;
 				PRODUCT_NAME = PersonalSystem;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -761,7 +757,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/Widgets/CheckWidget/CheckWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = 355RQ5S3DW;
 				INFOPLIST_FILE = Sources/Widgets/CheckWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -769,7 +765,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.12.0;
+				MARKETING_VERSION = 1.13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.anna.personalsystem.CheckWidgetExtension;
 				PRODUCT_NAME = CheckWidgetExtension;
 				SDKROOT = iphoneos;
