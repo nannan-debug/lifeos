@@ -7,7 +7,7 @@
 
 ## 0. 当前结论
 
-**LifeOS 1.12.0 (build 16) 已通过审核并上架 App Store；1.13.0 (build 17) 已提交审核，等待 Apple Review。**
+**LifeOS 1.13.0 (build 17) 已通过审核并上架 App Store。**
 
 - ✅ `1.0.0 (build 1)` — App Store 首发（2026-04）
 - ✅ `1.1.0 (build 3)` — 2026-04-30 上架
@@ -22,9 +22,9 @@
 - ✅ `1.8.0 (build 12)` — 2026-05-21 上架
 - ✅ `1.11.0 (build 15)` — 2026-05-26 上架（中英文双语支持 + AI 语言匹配）
 - ✅ `1.12.0 (build 16)` — 2026-06-04 上架（DBT 修复 + Agent 体验优化）
-- 🟡 `1.13.0 (build 17)` — 2026-06-12 已提交审核（Waiting for Review）
+- ✅ `1.13.0 (build 17)` — 2026-06-14 上架（猫猫首次问卷、人设设置、分层记忆与情绪梳理体验优化）
 - ✅ App ID：`6763877227`
-- 🟡 App Store Connect 状态：1.0.0 ~ 1.12.0 均 Ready for Distribution；1.13.0 Waiting for Review
+- ✅ App Store Connect 状态：1.0.0 ~ 1.13.0 均 Ready for Distribution
 
 **注：1.9.0 (build 13) 和 1.10.0 (build 14) 已合入 main 但未单独发版上架，功能随 1.11.0 一起发布。**
 
@@ -43,8 +43,8 @@
 | 主语言 | 简体中文（zh-Hans），应用内支持中英文切换 |
 | 目标区域 | 除中国大陆外全球区 |
 | 定价 | 免费，无内购 |
-| 已上架营销版本 | `1.12.0` (build 16) |
-| 当前 main 状态 | `1.13.0 (build 17)` 代码已合入 main，并已提交 App Review；线上仍是 `1.12.0 (build 16)` |
+| 已上架营销版本 | `1.13.0` (build 17) |
+| 当前 main 状态 | `1.13.0 (build 17)` 已上架 App Store |
 | Development Team | `355RQ5S3DW` |
 
 关键路径：
@@ -429,14 +429,15 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - 英文模式补齐日历弹层、时间圆盘拖拽手柄和设置页同步状态小字。
 - 修复 AI 流式回复 JSON 片段外露和 DBT Coach 流程卡住 / 未保存的问题。
 
-### 6.12 1.13.0 提交审核（等待审核 🟡）
+### 6.12 1.13.0 上架收尾（已上架 ✅）
 
 - ✅ 发版 PR 已合入 `main`：`1.13.0 (build 17)` 版本号 / changelog / What's New / 本清单状态更新（[#105](https://github.com/nannan-debug/lifeos/pull/105)）。
 - ✅ 用户已手动 Archive / Upload 到 App Store Connect，并 Submit to App Review（2026-06-12）。
-- 🟡 ASC 当前状态：`1.13.0 Waiting for Review`。
+- ✅ `1.13.0 (build 17)` 已通过审核并上架（2026-06-14，用户确认）。
+- ✅ ASC 当前状态：`1.13.0 Ready for Distribution`。
 - ✅ 已在 [`docs/operations/appstore/ASC_COPY_DRAFT_v1.md`](docs/operations/appstore/ASC_COPY_DRAFT_v1.md) §0 整理 `1.13.0` What's New 草稿。
 - ✅ `CHANGELOG.md [Unreleased]` 已归档为 `1.13.0 (build 17)`。
-- ⚠️ 目前不要打 `v1.13.0` tag，也不要创建 GitHub Release；必须等 ASC 显示 Ready for Distribution / 已上架后再做。
+- ✅ Tag `v1.13.0` / GitHub Release 待本次状态 PR 合并后完成。
 
 ---
 
@@ -458,4 +459,4 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 
 ## 8. 一句话交接
 
-**LifeOS 1.0.0 ~ 1.12.0 均已在 App Store 在线。最新线上版本为 `1.12.0 (build 16)`（DBT 修复 + Agent 对话体验优化）；`1.13.0 (build 17)` 已于 2026-06-12 提交 App Review，当前等待 Apple 审核。**
+**LifeOS 1.0.0 ~ 1.13.0 均已在 App Store 在线。最新线上版本为 `1.13.0 (build 17)`（猫猫首次问卷、人设设置、分层记忆与情绪梳理体验优化）。**
