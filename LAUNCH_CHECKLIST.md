@@ -437,7 +437,8 @@ Apple 后台拒绝重复 build number。哪怕只是改一个 typo 重新 archiv
 - ✅ ASC 当前状态：`1.13.0 Ready for Distribution`。
 - ✅ 已在 [`docs/operations/appstore/ASC_COPY_DRAFT_v1.md`](docs/operations/appstore/ASC_COPY_DRAFT_v1.md) §0 整理 `1.13.0` What's New 草稿。
 - ✅ `CHANGELOG.md [Unreleased]` 已归档为 `1.13.0 (build 17)`。
-- ✅ Tag `v1.13.0` / GitHub Release 待本次状态 PR 合并后完成。
+- ✅ Tag `v1.13.0` 已 push（指向 `fa77dc3`，即 1.13.0 提审 / 上架版本 commit）。
+- ✅ GitHub Release [v1.13.0](https://github.com/nannan-debug/lifeos/releases/tag/v1.13.0) 已发布。
 
 ---
 
