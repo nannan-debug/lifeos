@@ -1133,6 +1133,155 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertEqual(store.timeEntries.first?.end, "10:30")
     }
 
+    func testCommitAITimeTurnRejectsOverlappingTimeRange() {
+        let store = AppStore()
+        XCTAssertNil(store.addTimeEntry(name: "看房子", start: "09:30", end: "11:00", category: "其他"))
+
+        guard let turnID = store.addTurnDraft(
+            rawText: "9:30 到 11 点看电影",
+            recognizedType: "时间记录",
+            targetBucket: "time",
+            confidence: 1.0,
+            payload: [
+                "name": "看电影",
+                "start": "09:30",
+                "end": "11:00",
+                "category": "娱乐",
+                "note": "9:30 到 11 点看电影"
+            ]
+        ) else {
+            return XCTFail("addTurnDraft failed")
+        }
+
+        let err = store.commitTurn(id: turnID)
+        XCTAssertEqual(err, "这个时间段已经有「看房子」（09:30-11:00），一个时间段只能保留一条时间记录。")
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.turns.first?.status, "needs_fix")
+    }
+
+    func testAgentTimeActionLeavesNoteEmptyWhenDetailIsEmpty() {
+        let uid = "agent-time-note-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        let action = AgentActionDraft(
+            kind: .time,
+            module: "其他",
+            title: "看房子",
+            detail: "",
+            date: nil,
+            startTime: "09:30",
+            endTime: "11:00",
+            confidence: 0.9,
+            reason: "用户提到明确时间段"
+        )
+        let response = AgentChatResponse(reply: "收到。", followUpQuestion: nil, actionSuggestions: [action])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("早上 9:30 到 11 点去看房子，房子被截胡很烦")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertNil(store.timeEntries.first?.extra["备注"])
+    }
+
+    func testAgentTimeActionDoesNotSaveFullInputAsEveryNote() {
+        let uid = "agent-time-note-full-input-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        let input = "我今天的话，早上 8 点半起床，然后吃了些早餐，现在到大碗这里，已经快 10 点了。下午 1 点半要去看房，然后 5 点坐高铁回北京。"
+        let action = AgentActionDraft(
+            kind: .time,
+            module: "休息",
+            title: "起床 + 早餐",
+            detail: input,
+            date: nil,
+            startTime: "08:30",
+            endTime: "10:00",
+            confidence: 0.9,
+            reason: "用户提到明确时间段"
+        )
+        let response = AgentChatResponse(reply: "收到。", followUpQuestion: nil, actionSuggestions: [action])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText(input)
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertNil(store.timeEntries.first?.extra["备注"])
+        XCTAssertEqual(store.timeEntries.first?.category, "其他")
+    }
+
+    func testAgentTimeActionKeepsShortSegmentSpecificNote() {
+        let uid = "agent-time-note-short-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        let action = AgentActionDraft(
+            kind: .time,
+            module: "其他",
+            title: "起床 + 早餐",
+            detail: "起床、早餐、到大碗",
+            date: nil,
+            startTime: "08:30",
+            endTime: "10:00",
+            confidence: 0.9,
+            reason: "用户提到明确时间段"
+        )
+        let response = AgentChatResponse(reply: "收到。", followUpQuestion: nil, actionSuggestions: [action])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("早上 8 点半起床，吃了些早餐，到大碗这里快 10 点。")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries.first?.extra["备注"], "起床、早餐、到大碗")
+    }
+
+    func testAgentMergesOverlappingTimeActionsInSameBatch() {
+        let uid = "agent-time-overlap-\(UUID().uuidString)"
+        cleanupAgentThreadFiles(uid)
+        let first = AgentActionDraft(
+            kind: .time,
+            module: "其他",
+            title: "看房子",
+            detail: "早上 9:30 到 11 点去看房子",
+            startTime: "09:30",
+            endTime: "11:00",
+            confidence: 0.9,
+            reason: "明确时间段"
+        )
+        let second = AgentActionDraft(
+            kind: .time,
+            module: "休息",
+            title: "休息准备睡觉",
+            detail: "同一段描述里的另一个活动",
+            startTime: "09:45",
+            endTime: "10:30",
+            confidence: 0.9,
+            reason: "模型过度拆分"
+        )
+        let response = AgentChatResponse(reply: "收到。", followUpQuestion: nil, actionSuggestions: [first, second])
+        let mock = MockAIClient(result: .success(response))
+        let store = AppStore()
+        store.agent = AgentManager(writer: store, userIdSuffix: uid, client: mock)
+
+        store.submitAgentText("早上 9:30 到 11 点去看房子，后面还吃饭看电影")
+        let exp = expectation(description: "agent finishes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+
+        XCTAssertEqual(store.timeEntries.count, 1)
+        XCTAssertEqual(store.timeEntries.first?.name, "看房子")
+    }
+
     func testLowConfidenceTaskCanBeConfirmedLater() {
         let store = AppStore()
         guard let turnID = store.addTurnDraft(

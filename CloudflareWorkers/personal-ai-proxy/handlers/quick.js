@@ -18,15 +18,16 @@ export async function handleQuick(body, provider, apiKey, trace) {
     { role: "system", content: systemPrompt },
     { role: "user", content: input },
   ];
+  const maxTokens = input.length > 80 ? 1500 : 500;
   trace("prompt_built", {
     model: provider.model,
     provider: "deepseek",
     temperature: 0.3,
-    maxTokens: 500,
+    maxTokens,
     payload: { messages },
   });
 
-  const parsed = await callAIJSON(provider, apiKey, messages, 0.3, 500, 0, trace);
+  const parsed = await callAIJSON(provider, apiKey, messages, 0.3, maxTokens, 0, trace);
 
   if (parsed.errorResponse) return parsed.errorResponse;
 
