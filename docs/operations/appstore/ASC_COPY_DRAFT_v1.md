@@ -320,9 +320,7 @@ https://apps.apple.com/app/lifeos/id6763877227
 ## 11. Pricing and Availability
 
 - **Price**: Free
-- **Availability**:
-  1. 先选 "Available in all territories"（全选）
-  2. 再单独取消勾 **China mainland**
+- **Availability**: Available in all territories（全选，含 China mainland — 2026-06 起已开放中国大陆区）
 - **Pre-Order**: 不开（首版没必要）
 - **Educational Discount**: 不开（免费 app 用不上）
 
