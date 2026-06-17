@@ -581,6 +581,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     // MARK: - Time entries
     func addTimeEntry(name: String, start: String, end: String, category: String, extra: [String: String] = [:]) -> String? {
         if let err = validateTimeInput(name: name, start: start, end: end) { return err }
+        if let err = timeOverlapError(start: start, end: end, dateKey: selectedDateKey) { return err }
         timeEntries.insert(.init(name: name, start: start, end: end, category: category, extra: extra), at: 0)
         saveTimeForDate()
         UsageTracker.track(UsageTracker.timeEntryCreated)
@@ -590,6 +591,7 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
     func updateTimeEntry(id: UUID, name: String, start: String, end: String, category: String, extra: [String: String] = [:]) -> String? {
         if let err = validateTimeInput(name: name, start: start, end: end) { return err }
         guard let idx = timeEntries.firstIndex(where: { $0.id == id }) else { return "记录不存在" }
+        if let err = timeOverlapError(start: start, end: end, dateKey: selectedDateKey, ignoring: id) { return err }
         timeEntries[idx].name = name
         timeEntries[idx].start = start
         timeEntries[idx].end = end
@@ -1383,6 +1385,9 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         if let err = validateTimeInput(name: name, start: start, end: end) {
             return (err, TimeCommitResult(id: nil, dateKey: nil))
         }
+        if let err = timeOverlapError(start: start, end: end, dateKey: targetDateKey) {
+            return (err, TimeCommitResult(id: nil, dateKey: nil))
+        }
         let entry = TimeEntry(name: name.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end, category: category, extra: extra)
         insertTimeEntry(entry, dateKey: targetDateKey)
         syncICloudAfterLocalChange()
@@ -1514,6 +1519,13 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         let groupID = UUID().uuidString
         let startText = Self.clockText(from: startMinutes)
         let endText = Self.clockText(from: endMinutes)
+        if let err = timeOverlapError(start: startText, end: "24:00", dateKey: startDateKey) {
+            return (err, TimeCommitResult(id: nil, dateKey: nil))
+        }
+        if endMinutes > 0,
+           let err = timeOverlapError(start: "00:00", end: endText, dateKey: endDateKey) {
+            return (err, TimeCommitResult(id: nil, dateKey: nil))
+        }
 
         var startExtra = extra
         startExtra[TimeEntryCrossDayKey.groupID] = groupID
@@ -1966,6 +1978,12 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
 
     func updateTimeEntryFromAgent(id: UUID, name: String?, start: String?, end: String?, category: String?, targetDate: String?) -> String? {
         if let idx = timeEntries.firstIndex(where: { $0.id == id }) {
+            let nextStart = start ?? timeEntries[idx].start
+            let nextEnd = end ?? timeEntries[idx].end
+            let destKey = (targetDate != nil && !targetDate!.isEmpty) ? targetDate! : selectedDateKey
+            if let err = validateTimeInput(name: name ?? timeEntries[idx].name, start: nextStart, end: nextEnd) { return err }
+            if let err = timeOverlapError(start: nextStart, end: nextEnd, dateKey: destKey, ignoring: id) { return err }
+
             if let n = name { timeEntries[idx].name = n }
             if let s = start { timeEntries[idx].start = s }
             if let e = end { timeEntries[idx].end = e }
@@ -2002,6 +2020,12 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         if let c = category { rows[rowIdx]["category"] = c }
 
         let destKey = (targetDate != nil && !targetDate!.isEmpty) ? targetDate! : sourceKey
+        let nextName = rows[rowIdx]["name"] ?? ""
+        let nextStart = rows[rowIdx]["start"] ?? ""
+        let nextEnd = rows[rowIdx]["end"] ?? ""
+        if let err = validateTimeInput(name: nextName, start: nextStart, end: nextEnd) { return err }
+        if let err = timeOverlapError(start: nextStart, end: nextEnd, dateKey: destKey, ignoring: id) { return err }
+
         if destKey != sourceKey {
             let updatedRow = rows[rowIdx]
             rows.remove(at: rowIdx)
@@ -2439,6 +2463,29 @@ final class AppStore: ObservableObject, CloudSyncDataSource, AgentDataWriter {
         }
         if e <= s { return "结束时间必须晚于开始时间" }
         return nil
+    }
+
+    private func timeOverlapError(start: String, end: String, dateKey: String, ignoring ignoredID: UUID? = nil) -> String? {
+        guard let startMinutes = Self.clockMinutes(from: start, allow24: false),
+              let endMinutes = Self.clockMinutes(from: end, allow24: true),
+              endMinutes > startMinutes else { return nil }
+
+        for entry in timeEntries(forDateKey: dateKey) {
+            if let ignoredID, entry.id == ignoredID { continue }
+            guard let existingStart = Self.clockMinutes(from: entry.start, allow24: false),
+                  let existingEnd = Self.clockMinutes(from: entry.end, allow24: true),
+                  existingEnd > existingStart else { continue }
+            if max(startMinutes, existingStart) < min(endMinutes, existingEnd) {
+                return "这个时间段已经有「\(entry.name)」（\(entry.start)-\(entry.end)），一个时间段只能保留一条时间记录。"
+            }
+        }
+        return nil
+    }
+
+    private func timeEntries(forDateKey dateKey: String) -> [TimeEntry] {
+        if dateKey == selectedDateKey { return timeEntries }
+        let map = defaults.dictionary(forKey: keyTime) as? [String: [[String: String]]] ?? [:]
+        return (map[dateKey] ?? []).map(timeEntry(from:))
     }
 
     private static func clockMinutes(from value: String, allow24: Bool) -> Int? {

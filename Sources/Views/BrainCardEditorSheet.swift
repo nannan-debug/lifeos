@@ -25,9 +25,8 @@ struct BrainCardEditorSheet: View {
     @State private var aiSuggestionTask: Task<Void, Never>? = nil
     @State private var aiTitleTask: Task<Void, Never>? = nil
     @State private var aiTitleLoading: Bool = false
-    @State private var aiTitleSuggestion: String? = nil
 
-    private static let defaultTopics = ["#工作", "#学习", "#生活", "#灵感", "#人际"]
+    private static let defaultTopics = ["#生活", "#工作", "#学习", "#读书摘要", "#情绪", "#灵感"]
 
     private var editingID: UUID? {
         if case .edit(let c) = mode { return c.id }
@@ -65,33 +64,6 @@ struct BrainCardEditorSheet: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                    } else if let aiTitleSuggestion, !aiTitleSuggestion.isEmpty {
-                        Button {
-                            title = aiTitleSuggestion
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text("AI")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(CreamTheme.green)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(CreamTheme.green.opacity(0.10))
-                                    .clipShape(Capsule())
-                                Text(aiTitleSuggestion)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(CreamTheme.green)
-                                    .lineLimit(1)
-                            }
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 6)
-                            .background(CreamTheme.green.opacity(0.08))
-                            .overlay(
-                                Capsule()
-                                    .stroke(CreamTheme.green.opacity(0.18), lineWidth: 1)
-                            )
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
 
@@ -167,7 +139,6 @@ struct BrainCardEditorSheet: View {
             let raw = turn.rawText
             title = ""
             content = raw
-            aiTitleSuggestion = nil
             // 来源 excerpt 取 turn 原文前 30 字（与 → ToDo 同款）
             let excerpt = raw.count > 30 ? String(raw.prefix(30)) + "…" : raw
             sources = [BrainCardSource(noteId: turn.id, excerpt: excerpt)]
@@ -193,7 +164,6 @@ struct BrainCardEditorSheet: View {
                 let suggestion = try await AIParser.suggestBrainTitle(content: cleanContent)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    aiTitleSuggestion = suggestion
                     aiTitleLoading = false
                     if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         title = suggestion
@@ -203,7 +173,6 @@ struct BrainCardEditorSheet: View {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     store.recordAIFailure(context: "brain_title", input: cleanContent, error: error)
-                    aiTitleSuggestion = nil
                     aiTitleLoading = false
                 }
             }
@@ -227,7 +196,8 @@ struct BrainCardEditorSheet: View {
                 let suggestions = try await AIParser.suggestTopics(title: cleanTitle, content: cleanContent)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    aiSuggestions = suggestions
+                    applyDefaultTopicsIfNeeded(suggestions)
+                    aiSuggestions = []
                     aiLoading = false
                 }
             } catch {
@@ -236,6 +206,16 @@ struct BrainCardEditorSheet: View {
                     aiSuggestions = []
                     aiLoading = false
                 }
+            }
+        }
+    }
+
+    private func applyDefaultTopicsIfNeeded(_ suggestions: [String]) {
+        guard topics.isEmpty else { return }
+        for suggestion in suggestions.prefix(2) {
+            let value = suggestion.hasPrefix("#") ? suggestion : "#\(suggestion)"
+            if !topics.contains(value) {
+                topics.append(value)
             }
         }
     }

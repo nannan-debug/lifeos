@@ -25,5 +25,6 @@ export function normalizeFeelings(value) {
 
 export function normalizeTimeModule(value) {
   const module = String(value || "").trim();
-  return ["工作", "学习", "运动", "休息", "社交", "其他"].includes(module) ? module : null;
+  if (module === "休息") return "其他";
+  return ["睡觉", "社交", "运动", "其他", "娱乐", "工作", "学习"].includes(module) ? module : null;
 }

@@ -56,7 +56,7 @@ struct ReviewHubView: View {
                         timeDistributionCard
 
                         NavigationLink {
-                            ReviewSessionView().environmentObject(store)
+                            ReviewSessionView(period: currentPeriod).environmentObject(store)
                         } label: {
                             pendingIdeasCard
                         }

@@ -76,9 +76,14 @@ private struct DerivePayload: Identifiable {
 
 struct ReviewSessionView: View {
     @EnvironmentObject var store: AppStore
+    private let period: (start: Date, end: Date)?
 
     @State private var deriveTodoFromTurn: DerivePayload?
     @State private var deriveBrainFromTurn: DerivePayload?
+
+    init(period: (start: Date, end: Date)? = nil) {
+        self.period = period
+    }
 
     private static let timeStampFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -87,12 +92,26 @@ struct ReviewSessionView: View {
     }()
 
     private var queue: [ConversationTurn] {
-        ReviewQueue.queue(turns: store.turns)
+        if let period {
+            return ReviewQueue.queue(turns: store.turns, start: period.start, end: period.end)
+        }
+        return ReviewQueue.queue(turns: store.turns)
     }
 
     private var pending: Int { queue.count }
-    private var archived: Int { ReviewQueue.archivedCount(turns: store.turns) }
-    private var dismissed: Int { ReviewQueue.dismissedCount(turns: store.turns) }
+    private var archived: Int {
+        if let period {
+            return ReviewQueue.archivedCount(turns: store.turns, start: period.start, end: period.end)
+        }
+        return ReviewQueue.archivedCount(turns: store.turns)
+    }
+
+    private var dismissed: Int {
+        if let period {
+            return ReviewQueue.dismissedCount(turns: store.turns, start: period.start, end: period.end)
+        }
+        return ReviewQueue.dismissedCount(turns: store.turns)
+    }
 
     var body: some View {
         List {

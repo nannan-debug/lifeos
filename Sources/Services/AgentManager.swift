@@ -568,6 +568,7 @@ final class AgentManager: ObservableObject {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         ensureCurrentThread()
+        lastUserInput = clean
         let traceID = UUID().uuidString
         let threadID = currentThreadID?.uuidString
         appendMessage(AgentChatMessage(role: "user", content: clean))
@@ -675,6 +676,8 @@ final class AgentManager: ObservableObject {
             action = validateAction(action)
             resolved.append(action)
         }
+
+        resolved = coalescedTimeActions(resolved)
 
         let autoConfirmableCreates = resolved.filter { !$0.isMutation && shouldAutoConfirm($0) }
         let useBatchChecklist = autoConfirmableCreates.count >= 2
@@ -846,6 +849,64 @@ final class AgentManager: ObservableObject {
         return a
     }
 
+    private func coalescedTimeActions(_ actions: [AgentActionDraft]) -> [AgentActionDraft] {
+        var kept: [AgentActionDraft] = []
+        for action in actions {
+            guard action.kind == .time,
+                  let actionRange = timeRange(for: action) else {
+                kept.append(action)
+                continue
+            }
+
+            if let existingIndex = kept.firstIndex(where: { existing in
+                guard existing.kind == .time,
+                      sameActionDate(existing, action),
+                      let existingRange = timeRange(for: existing) else { return false }
+                return rangesOverlap(actionRange, existingRange)
+            }) {
+                if timeActionScore(action) > timeActionScore(kept[existingIndex]) {
+                    kept[existingIndex] = action
+                }
+            } else {
+                kept.append(action)
+            }
+        }
+        return kept
+    }
+
+    private func sameActionDate(_ lhs: AgentActionDraft, _ rhs: AgentActionDraft) -> Bool {
+        (lhs.date ?? writer?.selectedDateKey ?? "") == (rhs.date ?? writer?.selectedDateKey ?? "")
+    }
+
+    private func timeRange(for action: AgentActionDraft) -> Range<Int>? {
+        guard let start = clockMinutes(action.startTime, allow24: false),
+              let end = clockMinutes(action.endTime, allow24: true),
+              end > start else { return nil }
+        return start..<end
+    }
+
+    private func rangesOverlap(_ lhs: Range<Int>, _ rhs: Range<Int>) -> Bool {
+        max(lhs.lowerBound, rhs.lowerBound) < min(lhs.upperBound, rhs.upperBound)
+    }
+
+    private func clockMinutes(_ value: String?, allow24: Bool) -> Int? {
+        guard let value else { return nil }
+        let parts = value.split(separator: ":")
+        guard parts.count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0...59).contains(minute) else { return nil }
+        if allow24, hour == 24, minute == 0 { return 24 * 60 }
+        guard (0...23).contains(hour) else { return nil }
+        return hour * 60 + minute
+    }
+
+    private func timeActionScore(_ action: AgentActionDraft) -> Int {
+        completenessScore(action) * 100
+            + action.detail.trimmingCharacters(in: .whitespacesAndNewlines).count
+            + action.title.trimmingCharacters(in: .whitespacesAndNewlines).count
+    }
+
     /// 判断是否自动保存：AI confidence 只做参考，用规则兜底
     private func shouldAutoConfirm(_ action: AgentActionDraft) -> Bool {
         // Mutation 操作永不自动确认
@@ -1010,9 +1071,10 @@ final class AgentManager: ObservableObject {
         let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let start = action.startTime ?? ""
         let end = action.endTime ?? ""
+        let note = timeNote(for: action)
         guard !start.isEmpty, !end.isEmpty else { return nil }
         guard let id = writer.addTurnDraft(
-            rawText: action.detail.isEmpty ? title : action.detail,
+            rawText: note.isEmpty ? title : note,
             recognizedType: "时间记录",
             targetBucket: "time",
             confidence: action.confidence,
@@ -1021,7 +1083,7 @@ final class AgentManager: ObservableObject {
                 "start": start,
                 "end": end,
                 "category": timeModule(for: action),
-                "note": action.detail,
+                "note": note,
                 "date": action.date ?? writer.selectedDateKey,
                 "ai_source": "agent"
             ],
@@ -1032,6 +1094,27 @@ final class AgentManager: ObservableObject {
         ) else { return nil }
         let err = writer.commitTurn(id: id)
         return err == nil ? id : nil
+    }
+
+    private func timeNote(for action: AgentActionDraft) -> String {
+        let detail = action.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty, !isOverbroadTimeDetail(detail, title: title) {
+            return detail
+        }
+        return ""
+    }
+
+    private func isOverbroadTimeDetail(_ detail: String, title: String) -> Bool {
+        if detail.count > 48 { return true }
+        let normalizedTitle = normalizedText(title)
+        if !normalizedTitle.isEmpty, normalizedText(detail) == normalizedTitle { return true }
+        let input = lastUserInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return false }
+        let normalizedDetail = normalizedText(detail)
+        let normalizedInput = normalizedText(input)
+        if normalizedDetail == normalizedInput { return true }
+        return normalizedDetail.count >= 24 && normalizedInput.contains(normalizedDetail)
     }
 
     private func emitTrace(
@@ -2015,9 +2098,10 @@ final class AgentManager: ObservableObject {
         let title = action.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let start = action.startTime ?? ""
         let end = action.endTime ?? ""
+        let note = timeNote(for: action)
         guard !start.isEmpty, !end.isEmpty else { return "时间记录缺少开始/结束时间" }
         guard let id = writer.addTurnDraft(
-            rawText: action.detail.isEmpty ? title : action.detail,
+            rawText: note.isEmpty ? title : note,
             recognizedType: "时间记录",
             targetBucket: "time",
             confidence: action.confidence,
@@ -2026,7 +2110,7 @@ final class AgentManager: ObservableObject {
                 "start": start,
                 "end": end,
                 "category": timeModule(for: action),
-                "note": action.detail,
+                "note": note,
                 "date": action.date ?? writer.selectedDateKey,
                 "ai_source": "agent"
             ],
@@ -2161,10 +2245,29 @@ final class AgentManager: ObservableObject {
     }
 
     private func timeModule(for action: AgentActionDraft) -> String {
-        let allowedModules = ["工作", "学习", "运动", "休息", "社交", "其他"]
-        if let module = action.module?.trimmingCharacters(in: .whitespacesAndNewlines),
-           allowedModules.contains(module) {
-            return module
+        let allowedModules = ["睡觉", "社交", "运动", "其他", "娱乐", "工作", "学习"]
+        if let module = action.module?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            if module == "休息" { return "其他" }
+            if allowedModules.contains(module) { return module }
+        }
+        let combined = "\(action.title) \(action.detail)"
+        if combined.contains("睡觉") || combined.contains("睡眠") || combined.contains("卧床") {
+            return "睡觉"
+        }
+        if combined.contains("电影") || combined.contains("游戏") || combined.contains("娱乐") {
+            return "娱乐"
+        }
+        if combined.contains("朋友") || combined.contains("聚会") || combined.contains("社交") {
+            return "社交"
+        }
+        if combined.contains("运动") || combined.contains("健身") || combined.contains("跑步") {
+            return "运动"
+        }
+        if combined.contains("工作") || combined.contains("会议") || combined.contains("项目") {
+            return "工作"
+        }
+        if combined.contains("学习") || combined.contains("读书") || combined.contains("课程") {
+            return "学习"
         }
         return "其他"
     }

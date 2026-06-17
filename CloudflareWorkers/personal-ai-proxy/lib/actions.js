@@ -93,5 +93,66 @@ export function limitActionSuggestions(actions) {
   const mutations = actions.filter(a => ["editTask","editTime","deleteTask","deleteTime","completeTask"].includes(a.kind));
   const creates = actions.filter(a => ["inbox","brain","task","time","calendarEvent"].includes(a.kind));
   if (mutations.length > 0) return mutations.slice(0, 3);
-  return creates.slice(0, 8);
+  return coalescedTimeActions(creates).slice(0, 8);
+}
+
+function coalescedTimeActions(actions) {
+  const kept = [];
+  for (const action of actions) {
+    if (action.kind !== "time") {
+      kept.push(action);
+      continue;
+    }
+
+    const range = timeRange(action);
+    if (!range) {
+      kept.push(action);
+      continue;
+    }
+
+    const existingIndex = kept.findIndex(existing => {
+      if (existing.kind !== "time") return false;
+      if ((existing.date || "") !== (action.date || "")) return false;
+      const existingRange = timeRange(existing);
+      return existingRange && rangesOverlap(range, existingRange);
+    });
+
+    if (existingIndex === -1) {
+      kept.push(action);
+    } else if (timeActionScore(action) > timeActionScore(kept[existingIndex])) {
+      kept[existingIndex] = action;
+    }
+  }
+  return kept;
+}
+
+function timeRange(action) {
+  const start = clockMinutes(action.startTime, false);
+  const end = clockMinutes(action.endTime, true);
+  if (start === null || end === null || end <= start) return null;
+  return { start, end };
+}
+
+function clockMinutes(value, allow24) {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || minute < 0 || minute > 59) return null;
+  if (allow24 && hour === 24 && minute === 0) return 24 * 60;
+  if (hour < 0 || hour > 23) return null;
+  return hour * 60 + minute;
+}
+
+function rangesOverlap(lhs, rhs) {
+  return Math.max(lhs.start, rhs.start) < Math.min(lhs.end, rhs.end);
+}
+
+function timeActionScore(action) {
+  const fields = [action.title, action.detail, action.date, action.startTime, action.endTime, action.reason];
+  const completeness = fields.reduce((score, value) => {
+    return score + (typeof value === "string" && value.trim() ? 1 : 0);
+  }, 0);
+  return completeness * 100 + String(action.detail || "").trim().length + String(action.title || "").trim().length;
 }

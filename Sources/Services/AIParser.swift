@@ -169,7 +169,7 @@ enum AIParser {
         do {
             let data = try await postWorker(body: body)
             let wrapper = try JSONDecoder().decode(UtilityArrayResponse.self, from: data)
-            let topics = wrapper.result.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let topics = normalizedBrainTopics(title: title, content: content, suggestions: wrapper.result)
             if !topics.isEmpty { return Array(topics.prefix(5)) }
         } catch {}
         return fallbackTopics(title: title, content: content)
@@ -186,8 +186,8 @@ enum AIParser {
         do {
             let data = try await postWorker(body: body)
             let wrapper = try JSONDecoder().decode(UtilityStringResponse.self, from: data)
-            let title = wrapper.result.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !title.isEmpty { return String(title.prefix(10)) }
+            let title = normalizedBrainTitle(wrapper.result)
+            if !title.isEmpty { return title }
         } catch {}
         return fallbackTitle(from: content)
     }
@@ -360,23 +360,122 @@ enum AIParser {
 
     // MARK: - Local fallbacks
 
-    private static func fallbackTopics(title: String, content: String) -> [String] {
+    static let fixedBrainTopics = ["生活", "工作", "学习", "读书摘要", "情绪", "灵感"]
+
+    static func normalizedBrainTitle(_ raw: String, maxLength: Int = 22) -> String {
+        let clean = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'\u{201c}\u{201d}\u{2018}\u{2019}\u{300c}\u{300d}\u{300e}\u{300f}[]\u{3010}\u{3011}\u{ff08}\u{ff09}()\u{3002}.\u{ff01}!\u{ff1f}?\u{ff1a}:\u{ff0c},\u{3001}"))
+        guard !clean.isEmpty else { return "" }
+        if clean.count <= maxLength { return clean }
+
+        let separators = CharacterSet(charactersIn: "。.!！?？\n；;")
+        if let sentence = clean.components(separatedBy: separators).first?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sentence.isEmpty,
+           sentence.count <= maxLength {
+            return sentence
+        }
+
+        let softSeparators = CharacterSet(charactersIn: "，,、：:")
+        let phrase = clean.components(separatedBy: softSeparators).first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if phrase.count >= 6 && phrase.count <= maxLength {
+            return phrase
+        }
+
+        return String(clean.prefix(maxLength))
+    }
+
+    static func normalizedBrainTopics(title: String, content: String, suggestions: [String]) -> [String] {
         let text = "\(title) \(content)"
+        var result: [String] = []
+
+        for suggestion in suggestions {
+            appendTopic(mappedBrainTopic(for: suggestion, context: text), to: &result)
+        }
+        for topic in inferredBrainTopics(from: text) {
+            appendTopic(topic, to: &result)
+        }
+
+        return Array(result.prefix(2))
+    }
+
+    private static func fallbackTopics(title: String, content: String) -> [String] {
+        let topics = normalizedBrainTopics(title: title, content: content, suggestions: [])
+        return topics.isEmpty ? ["灵感"] : topics
+    }
+
+    private static func inferredBrainTopics(from text: String) -> [String] {
         let rules: [(String, [String])] = [
-            ("工作", ["工作", "项目", "产品", "会议", "客户", "同事", "PRD", "需求", "开发", "代码"]),
-            ("学习", ["学习", "读书", "课程", "考试", "复习", "论文", "知识", "研究"]),
+            ("读书摘要", ["读书", "书摘", "读后感", "阅读", "摘录", "摘要", "书里", "这本书"]),
+            ("工作", ["工作", "项目", "产品", "会议", "客户", "同事", "PRD", "需求", "开发", "代码", "技术", "行业", "公司", "面试", "taste"]),
+            ("学习", ["学习", "课程", "考试", "复习", "论文", "知识", "研究", "教程"]),
             ("生活", ["生活", "吃饭", "睡觉", "运动", "打球", "休息", "健康"]),
-            ("人际", ["朋友", "家人", "沟通", "关系", "聊天", "社交", "同学"]),
-            ("灵感", ["灵感", "想法", "创意", "点子", "设计", "感觉", "突然想到"])
+            ("情绪", ["情绪", "感受", "焦虑", "开心", "难过", "失望", "压力", "DBT", "心情"]),
+            ("灵感", ["灵感", "想法", "创意", "点子", "设计", "观察", "洞察", "突然想到"])
         ]
         var result: [String] = []
         for (topic, keywords) in rules {
             if keywords.contains(where: { text.localizedCaseInsensitiveContains($0) }) {
                 result.append(topic)
             }
-            if result.count == 3 { break }
+            if result.count == 2 { break }
         }
-        return result.isEmpty ? ["灵感"] : result
+        return result
+    }
+
+    private static func mappedBrainTopic(for raw: String, context: String) -> String? {
+        let clean = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#＃"))
+        guard !clean.isEmpty else { return nil }
+        if clean == "灵感", contextContainsWorkSignal(context) { return "工作" }
+        if fixedBrainTopics.contains(clean) { return clean }
+        if clean.localizedCaseInsensitiveContains("读书")
+            || clean.localizedCaseInsensitiveContains("书摘")
+            || clean.localizedCaseInsensitiveContains("阅读") {
+            return "读书摘要"
+        }
+        if clean.localizedCaseInsensitiveContains("情绪")
+            || clean.localizedCaseInsensitiveContains("感受")
+            || clean.localizedCaseInsensitiveContains("心情") {
+            return "情绪"
+        }
+        if clean.localizedCaseInsensitiveContains("工作")
+            || clean.localizedCaseInsensitiveContains("职业")
+            || clean.localizedCaseInsensitiveContains("产品")
+            || clean.localizedCaseInsensitiveContains("技术")
+            || clean.localizedCaseInsensitiveContains("行业")
+            || clean.localizedCaseInsensitiveContains("商业") {
+            return "工作"
+        }
+        if clean.localizedCaseInsensitiveContains("学习")
+            || clean.localizedCaseInsensitiveContains("研究")
+            || clean.localizedCaseInsensitiveContains("课程") {
+            return "学习"
+        }
+        if clean.localizedCaseInsensitiveContains("生活")
+            || clean.localizedCaseInsensitiveContains("健康")
+            || clean.localizedCaseInsensitiveContains("日常") {
+            return "生活"
+        }
+        if clean.localizedCaseInsensitiveContains("灵感")
+            || clean.localizedCaseInsensitiveContains("想法")
+            || clean.localizedCaseInsensitiveContains("创意")
+            || clean.localizedCaseInsensitiveContains("观察") {
+            return contextContainsWorkSignal(context) ? "工作" : "灵感"
+        }
+        return nil
+    }
+
+    private static func contextContainsWorkSignal(_ text: String) -> Bool {
+        ["工作", "项目", "产品", "技术", "行业", "商业", "公司", "客户", "需求", "PRD", "taste"].contains {
+            text.localizedCaseInsensitiveContains($0)
+        }
+    }
+
+    private static func appendTopic(_ topic: String?, to result: inout [String]) {
+        guard let topic, fixedBrainTopics.contains(topic), !result.contains(topic) else { return }
+        result.append(topic)
     }
 
     private static func fallbackTitle(from content: String) -> String {
@@ -400,7 +499,7 @@ enum AIParser {
             title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             break
         }
-        return String(title.prefix(14))
+        return normalizedBrainTitle(title, maxLength: 22)
     }
 }
 

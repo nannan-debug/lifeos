@@ -9,7 +9,15 @@ export async function handleUtility(body, provider, apiKey, trace) {
     const title = (body.title || "").trim();
     const content = (body.content || "").trim();
     if (!title && !content) return jsonError(400, "empty_content");
-    const prompt = `给以下笔记建议 2-4 个主题标签（中文短语，不带 # 号）。只返回 JSON：{"topics":["标签1","标签2"]}
+    const prompt = `给以下笔记建议 1-2 个主题标签。只能从这些固定主题中选择：生活、工作、学习、读书摘要、情绪、灵感。
+选择规则：
+- 工作：职业、项目、产品、技术、行业、商业、会议、客户、面试
+- 学习：课程、考试、论文、研究、教程、知识整理
+- 读书摘要：书摘、读后感、阅读笔记、文章/书籍摘要
+- 生活：健康、饮食、睡眠、运动、家务、旅行、日常安排
+- 情绪：感受、心情、焦虑、失望、开心、压力、DBT
+- 灵感：创意、点子、设计想法、非工作语境下的观察和洞察
+只返回 JSON：{"topics":["工作"]}
 标题：${title}
 正文：${content}`;
     const messages = [
@@ -25,7 +33,7 @@ export async function handleUtility(body, provider, apiKey, trace) {
     });
     const parsed = await callAIJSON(provider, apiKey, messages, 0.2, 200, 0, trace);
     if (parsed.errorResponse) return parsed.errorResponse;
-    const topics = Array.isArray(parsed.topics) ? parsed.topics.map(t => String(t).trim()).filter(Boolean).slice(0, 5) : [];
+    const topics = normalizeBrainTopics(parsed.topics, `${title} ${content}`);
     trace("response_decoded", {
       model: provider.model,
       provider: "deepseek",
@@ -38,7 +46,7 @@ export async function handleUtility(body, provider, apiKey, trace) {
   if (task === "suggest_title") {
     const content = (body.content || "").trim();
     if (!content) return jsonError(400, "empty_content");
-    const prompt = `给以下笔记内容起一个简短标题（6-12个字，不要标点）。只返回 JSON：{"title":"标题"}
+    const prompt = `给以下笔记内容起一个相对完整的简短标题（8-20个字，保留核心主谓宾，不要标点，不要从短语中间截断）。只返回 JSON：{"title":"标题"}
 正文：${content}`;
     const messages = [
       { role: "system", content: "你是标题生成工具。只输出 JSON，不要解释。" },
@@ -116,4 +124,60 @@ ${transcript}`;
   }
 
   return jsonError(400, "unknown_task", { task });
+}
+
+const FIXED_BRAIN_TOPICS = ["生活", "工作", "学习", "读书摘要", "情绪", "灵感"];
+
+function normalizeBrainTopics(rawTopics, context) {
+  const result = [];
+  if (Array.isArray(rawTopics)) {
+    for (const raw of rawTopics) appendTopic(result, mapBrainTopic(raw, context));
+  }
+  for (const topic of inferBrainTopics(context)) appendTopic(result, topic);
+  return result.slice(0, 2);
+}
+
+function appendTopic(result, topic) {
+  if (topic && FIXED_BRAIN_TOPICS.includes(topic) && !result.includes(topic)) {
+    result.push(topic);
+  }
+}
+
+function mapBrainTopic(raw, context) {
+  const clean = String(raw || "").trim().replace(/^[#＃]+|[#＃]+$/g, "");
+  if (!clean) return null;
+  if (clean === "灵感" && hasWorkSignal(context)) return "工作";
+  if (FIXED_BRAIN_TOPICS.includes(clean)) return clean;
+  if (/(读书|书摘|阅读)/i.test(clean)) return "读书摘要";
+  if (/(情绪|感受|心情)/i.test(clean)) return "情绪";
+  if (/(工作|职业|产品|技术|行业|商业)/i.test(clean)) return "工作";
+  if (/(学习|研究|课程)/i.test(clean)) return "学习";
+  if (/(生活|健康|日常)/i.test(clean)) return "生活";
+  if (/(灵感|想法|创意|观察)/i.test(clean)) return hasWorkSignal(context) ? "工作" : "灵感";
+  return null;
+}
+
+function inferBrainTopics(text) {
+  const rules = [
+    ["读书摘要", ["读书", "书摘", "读后感", "阅读", "摘录", "摘要", "书里", "这本书"]],
+    ["工作", ["工作", "项目", "产品", "会议", "客户", "同事", "PRD", "需求", "开发", "代码", "技术", "行业", "公司", "面试", "taste"]],
+    ["学习", ["学习", "课程", "考试", "复习", "论文", "知识", "研究", "教程"]],
+    ["生活", ["生活", "吃饭", "睡觉", "运动", "打球", "休息", "健康"]],
+    ["情绪", ["情绪", "感受", "焦虑", "开心", "难过", "失望", "压力", "DBT", "心情"]],
+    ["灵感", ["灵感", "想法", "创意", "点子", "设计", "观察", "洞察", "突然想到"]],
+  ];
+  const result = [];
+  for (const [topic, keywords] of rules) {
+    if (keywords.some((keyword) => text.toLowerCase().includes(keyword.toLowerCase()))) {
+      result.push(topic);
+      if (result.length === 2) break;
+    }
+  }
+  return result;
+}
+
+function hasWorkSignal(text) {
+  return ["工作", "项目", "产品", "技术", "行业", "商业", "公司", "客户", "需求", "PRD", "taste"].some((keyword) =>
+    text.toLowerCase().includes(keyword.toLowerCase())
+  );
 }
