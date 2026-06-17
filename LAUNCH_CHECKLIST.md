@@ -1,7 +1,7 @@
 # LifeOS · 上架真实进度清单
 
 > 目的：给新的 AI / 协作者一个能立即接手的真实状态，而不是历史计划。
-> 最后更新：2026-06-12
+> 最后更新：2026-06-17
 
 ---
 
@@ -41,7 +41,7 @@
 | Swift 版本 | 5.9 |
 | Xcode project | XcodeGen 生成（源头是 `project.yml`） |
 | 主语言 | 简体中文（zh-Hans），应用内支持中英文切换 |
-| 目标区域 | 除中国大陆外全球区 |
+| 目标区域 | 全球（含中国大陆） |
 | 定价 | 免费，无内购 |
 | 已上架营销版本 | `1.13.0` (build 17) |
 | 当前 main 状态 | `1.13.0 (build 17)` 已上架 App Store |
@@ -94,7 +94,31 @@
 - ✅ App Store 截图执行方案已整理：`docs/operations/appstore/ASC_SCREENSHOT_PLAN.md`
 - ✅ App Review Notes 英文草稿已准备
 
-### 2.4 支持页面
+### 2.4 中国大陆合规（ICP 备案 + 公安备案）
+
+- ✅ **ICP 备案已通过**
+  - 主体备案号：`京ICP备2026033954号`
+  - APP 备案号：`京ICP备2026033954号-1A`
+  - ICP 备案号已展示在网站底部（`docs/index.html`、`docs/privacy.html`）
+- ✅ **App Store 中国大陆区已开放**
+  - Pricing & Availability 已移除 China mainland 排除
+- ⏳ **公安联网备案（审核中）**
+  - 备案网站：`beian.mps.gov.cn`
+  - 主体备案：已提交，审核中
+  - APP 备案（LifeOS）：已提交，审核中
+    - 应用类型：生活服务类 C — 家庭服务类 C6
+    - 运行平台：IOS
+    - 应用包名：`com.dogdada.LifeOS`
+    - 生成式人工智能：是（使用 DeepSeek）
+    - 人脸识别：否
+  - 版本信息：v1.13.0 已保存（苹果 App Store，上线时间 2026-06-17）
+    - 文件包 SHA1：`9481d8e9d9ecf05526605b0813a559aac4c10126`
+  - 预计审核周期：3–10 个工作日
+  - **审核通过后待办**：
+    - [ ] 将公安备案号展示在网站底部（与 ICP 备案号并列）
+    - [ ] 确认是否需要更新 ASC metadata
+
+### 2.5 支持页面
 
 - ✅ 已在仓库内准备 GitHub Pages 用的静态页面：
   - `docs/index.html` → Support URL
@@ -112,7 +136,7 @@
 - ✅ 通过 TestFlight 测试
 - ✅ App Privacy 问卷填写保存
 - ✅ Age Rating 填写
-- ✅ Pricing & Availability 设置（已排除 China mainland）
+- ✅ Pricing & Availability 设置（初期排除 China mainland，2026-06 已开放中国大陆区）
 - ✅ 5 张 6.7" 截图生成并上传
 - ✅ ASC metadata 文案填写（按 [ASC_COPY_DRAFT_v1.md](docs/operations/appstore/ASC_COPY_DRAFT_v1.md)）
 - ✅ Support URL / Privacy Policy URL 公开链接落地
