@@ -150,9 +150,7 @@ struct BrainCardDetailView: View {
                     .foregroundStyle(.primary)
 
                 if !card.topics.isEmpty {
-                    Text(card.topics.joined(separator: "  "))
-                        .font(.caption)
-                        .foregroundStyle(CreamTheme.green)
+                    topicChips(card.topics)
                 }
 
                 if !card.content.isEmpty {
@@ -163,6 +161,19 @@ struct BrainCardDetailView: View {
             }
             .padding(.vertical, 4)
             .listRowBackground(Color.white.opacity(0.9))
+        }
+    }
+
+    private func topicChips(_ topics: [String]) -> some View {
+        HStack(spacing: 6) {
+            ForEach(topics, id: \.self) { topic in
+                Text(topic.hasPrefix("#") ? topic : "#\(topic)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(CreamTheme.green)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(CreamTheme.green.opacity(0.12)))
+            }
         }
     }
 
@@ -184,9 +195,7 @@ struct BrainCardDetailView: View {
                     .foregroundStyle(.primary)
 
                 if !card.topics.isEmpty {
-                    Text(card.topics.joined(separator: "  "))
-                        .font(.caption)
-                        .foregroundStyle(CreamTheme.green)
+                    topicChips(card.topics)
                 }
 
                 if let shift = session.emotionalShift, !shift.isEmpty {
