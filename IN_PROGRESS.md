@@ -19,6 +19,9 @@
 
 ## 最近完成
 
+- AI 时间记录/复盘/卡片识别修复 + Worker prompt 优化 — [#108](https://github.com/nannan-debug/lifeos/pull/108) 已合入 main（2026-06-17）。
+- 公安备案进展同步 + 英文 ASC 文案 — [#109](https://github.com/nannan-debug/lifeos/pull/109) 已合入 main（2026-06-17）。
+- 过期 PR 清理（#36, #62, #90, #93, #95, #99 已关闭）、本地旧分支清理（70+ 分支已删）。
 - 中英文双语支持 — `1.11.0 (build 15)` 已提交审核（2026-05-25）。[#83](https://github.com/nannan-debug/lifeos/pull/83)。
   - 轻量 i18n 方案：`Sources/Localization/L.swift` 集中管理 ~150 个双语字符串，`UserDefaults("app.language")` 切换
   - 设置页语言 Picker + 全 App UI 替换 + AI 语言匹配 + 70 条英文每日语录
