@@ -27,7 +27,7 @@ struct BrainCardEditorSheet: View {
     @State private var aiTitleLoading: Bool = false
     @State private var aiTitleSuggestion: String? = nil
 
-    private static let defaultTopics = ["#工作", "#学习", "#生活", "#灵感", "#人际"]
+    private static let defaultTopics = ["#生活", "#工作", "#学习", "#读书摘要", "#情绪", "#灵感"]
 
     private var editingID: UUID? {
         if case .edit(let c) = mode { return c.id }

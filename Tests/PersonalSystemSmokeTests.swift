@@ -1396,6 +1396,24 @@ final class PersonalSystemSmokeTests: XCTestCase {
         XCTAssertLessThanOrEqual(reloaded.aiFailureLogs.first?.inputExcerpt.count ?? 0, 123)
     }
 
+    func testBrainTitleKeepsCompleteShortSentence() {
+        let title = AIParser.normalizedBrainTitle("上海强调 taste 和对技术的感知")
+
+        XCTAssertEqual(title, "上海强调 taste 和对技术的感知")
+        XCTAssertGreaterThan(title.count, 10)
+    }
+
+    func testBrainTopicsUseFixedCategoriesAndWorkSignal() {
+        let topics = AIParser.normalizedBrainTopics(
+            title: "上海强调 taste 和对技术的感知",
+            content: "上海强调 taste 和对技术的感知，技术没那么强调。北京强调技术方向。",
+            suggestions: ["灵感", "技术观察", "随便造的标签"]
+        )
+
+        XCTAssertEqual(topics, ["工作"])
+        XCTAssertTrue(topics.allSatisfy { AIParser.fixedBrainTopics.contains($0) })
+    }
+
     // MARK: - Review queue (PR 4 新增)
 
     private func makeTurn(
